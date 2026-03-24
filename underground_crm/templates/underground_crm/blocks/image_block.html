@@ -1,0 +1,7 @@
+{% load wagtailimages_tags %}
+<figure class="image-block image-block--{{ value.alignment }}">
+  {% image value.image max-1200x1200 class="img" %}
+  {% if value.caption %}
+    <figcaption>{{ value.caption }}</figcaption>
+  {% endif %}
+</figure>

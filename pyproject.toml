@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "underground-crm"
+version = "0.1.0"
+description = "Open-source CRM and CMS toolkit for political parties and grassroots movements"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = [
+    "Django>=5.0,<6.0",
+    "wagtail>=6.0,<7.0",
+    "Pillow>=10.0",
+    "django-money>=3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["underground_crm*"]

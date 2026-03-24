@@ -1,0 +1,12 @@
+{% extends "underground_crm/base.html" %}
+
+{% block title %}Log in{% endblock %}
+
+{% block content %}
+<form method="post" novalidate>
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Log in</button>
+</form>
+<p><a href="{% url 'underground_crm:signup' %}">Create an account</a></p>
+{% endblock %}
