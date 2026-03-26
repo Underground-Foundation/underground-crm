@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Open-source CRM and CMS toolkit for political parties and grassroots movements"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {text = "AGPL-3.0-only"}
 dependencies = [
     "Django>=5.0,<6.0",
     "wagtail>=6.0,<7.0",
