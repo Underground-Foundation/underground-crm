@@ -1,64 +1,71 @@
 # Underground CRM
-This project aims to provide political movements with the following key functionality:
-* Customer Relationship Management (CRM) − keeping a database of people and keeping tabs on your ongoing relationship with them
-* Content Management System (CMS) − allowing your somewhat technical organisers to publish web pages regularly
-* Bulk emails − connect SendGrid to send bulk emails to your members
 
-The service will also come with migration tools to help you move from your pre-existing CRM.
+Underground CRM is an open-source Django library that gives political movements
+three core capabilities:
 
-## Setup
+- **CRM** — a database of people and a full record of your ongoing relationship
+  with each of them
+- **CMS** — Wagtail-powered page editing for your organisers
+- **Bulk email** — SendGrid integration for member communications
 
-Underground CRM is a pip-installable Django library. It is not a standalone
-project — you run it by installing it into a **deployment project** that
-provides site-specific settings, templates, and static files. The sibling
-repo `fusion-underground` is the reference deployment for the Fusion Party,
-and is the easiest way to get started.
+Migration tooling is included to help you move from a previous CRM.
 
-### Building a new deployment project
+## Architecture
 
-If you want to build a deployment for a different organisation rather than
-using `fusion-underground`, create a new Django project and wire in the
-library:
+Underground CRM is a pip-installable Django library, not a standalone project.
+You run it by creating a **theme project** that installs the library and provides
+a site name, branding templates, and any organisation-specific page models.
+
+The sibling repo `fusion-underground` is the reference theme for the Fusion
+Party and is the easiest way to see a working deployment.
+
+## Setting up a theme project
 
 ```bash
-mkdir my-deployment && cd my-deployment
+mkdir my-theme && cd my-theme
 python -m venv .venv && source .venv/bin/activate
 pip install underground-crm
 django-admin startproject my_site .
 ```
 
-Add the following to `INSTALLED_APPS` in your settings file, and set
-`AUTH_USER_MODEL`:
+In `my_site/settings.py`, replace the generated contents with:
 
 ```python
-INSTALLED_APPS = [
-    "underground_crm",
-    "wagtail.contrib.forms",
-    "wagtail.contrib.redirects",
-    "wagtail.embeds",
-    "wagtail.sites",
-    "wagtail.users",
-    "wagtail.snippets",
-    "wagtail.documents",
-    "wagtail.images",
-    "wagtail.search",
-    "wagtail.admin",
-    "wagtail",
-    "taggit",
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-]
+import os
+from pathlib import Path
+from underground_crm.settings import *  # noqa: F401, F403
 
-AUTH_USER_MODEL = "underground_crm.Person"
-WAGTAIL_SITE_NAME = "My Site"
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "change-me")
+DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost 127.0.0.1").split()
+
+INSTALLED_APPS = ["my_app"] + INSTALLED_APPS  # noqa: F405
+
+WSGI_APPLICATION = "my_site.wsgi.application"
+
+STATIC_ROOT = BASE_DIR / "static"
+MEDIA_ROOT = BASE_DIR / "media"
+
+WAGTAIL_SITE_NAME = "My Organisation"
 ```
 
-Then follow the setup steps from fusion-underground.
+The base settings supply everything else: installed apps, middleware, URL
+routing, auth model, database config (via `PG*` env vars), Wagtail, and
+timezone. See `underground_crm/settings.py` for the full list.
+
+Then apply migrations and create a superuser:
+
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+- Django admin: `/django-admin/`
+- Wagtail CMS: `/cms/`
+- Login: `/account/login/`
 
 ---
 
@@ -100,11 +107,12 @@ python manage.py import_legacy_private_notes <legacy_person_id>
 Requires a valid cookie file pointed to by `LEGACY_COOKIE_FILE` (or passed
 via `--cookie-file`). The legacy admin session must still be active.
 
-Get the cookie file using eg the Chrome plugin [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc?hl=fr&utm_source=ext_sidebar):
+Get the cookie file using e.g. the Chrome extension
+[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc?hl=fr&utm_source=ext_sidebar):
 
 ![A screenshot of the cookies extension](./docs/cookies_extension.png)
 
-Get the user agent from eg <https://whatmyuseragent.com/>
+Get the user agent from e.g. <https://whatmyuseragent.com/>
 
 ### Standalone fetch scripts
 

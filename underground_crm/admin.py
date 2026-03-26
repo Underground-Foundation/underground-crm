@@ -12,6 +12,14 @@ class PersonNoteInline(admin.TabularInline):
     readonly_fields = ["created_at"]
 
 
+class InteractionInline(admin.TabularInline):
+    model = Interaction
+    fk_name = "person"
+    extra = 0
+    fields = ["method", "status", "author", "note", "created_at"]
+    readonly_fields = ["created_at"]
+
+
 @admin.register(Person)
 class PersonAdmin(UserAdmin):
     ordering = ["email"]
@@ -19,7 +27,7 @@ class PersonAdmin(UserAdmin):
     list_filter = ["is_supporter", "is_volunteer", "is_donor", "email_opt_in", "is_staff", "is_active", "is_prospect", "is_deceased"]
     search_fields = ["email", "first_name", "last_name"]
     readonly_fields = ["created_at", "updated_at"]
-    inlines = [PersonNoteInline]
+    inlines = [PersonNoteInline, InteractionInline]
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),

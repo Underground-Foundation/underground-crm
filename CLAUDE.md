@@ -6,19 +6,22 @@ Underground CRM is a pip-installable Django library providing CRM, CMS, and bulk
 capabilities for political parties and grassroots movements. It is intentionally
 open-source and vendor-neutral, designed to be reused by any party, not just Fusion.
 
-During development, we have a companion deployment repo `fusion-underground` (a sibling directory),
-which installs this library and adds Fusion-specific configuration and templates.
+Downstream **theme projects** install this library and contribute only what is
+organisation-specific: a site name, branding templates, and any custom page models.
+The sibling repo `fusion-underground` is the reference theme for the Fusion Party.
 
 ## Repo layout
 
 ```
 underground_crm/          Django app (the pip-installable library)
   models/                 Core data models
-  migrations/             Owned exclusively by this library — downstream sites never modify these
+  migrations/             Owned exclusively by this library — downstream themes never modify these
   management/commands/    CLI-only tools (no UI exposure)
-  templates/              Base templates, overridable by downstream sites
+  templates/              Base templates, overridable by downstream themes
   admin.py                Django admin registrations
   wagtail_hooks.py        Wagtail snippet and image format registrations
+  settings.py             Base Django settings — theme projects import and extend these
+  site_urls.py            Default root URL configuration — theme projects may override if needed
 
 migration/                One-off data migration scripts (not Django management commands)
   config.py               Loads ../.env and exports LEGACY_* constants — import from here
@@ -54,9 +57,9 @@ migration/                One-off data migration scripts (not Django management 
 
 ## Migration philosophy
 
-- This library owns its migrations. Downstream sites (`fusion-underground` etc.) must
+- This library owns its migrations. Downstream themes (`fusion-underground` etc.) must
   never create migrations that touch `underground_crm` models.
-- Downstream sites extend Person via `OneToOneField` or `JSONField`, never by modifying
+- Downstream themes extend Person via `OneToOneField` or `JSONField`, never by modifying
   the library's models directly.
 - When cleaning up migration history, apply migrations first, then edit the files — Django
   only validates that the current model state matches the current DB state.
@@ -84,7 +87,7 @@ This makes it easy to pipe output to a file or directly into an import command.
 ## Django management commands
 
 Management commands live in `underground_crm/management/commands/` and are
-invoked via `python manage.py <command>` from the deployment repo (`fusion-underground`).
+invoked via `python manage.py <command>` from the theme repo (`fusion-underground`).
 They are intentionally CLI-only — none of them are exposed through the Wagtail or
 Django admin UI.
 
@@ -95,7 +98,7 @@ Current commands:
 
 ## Running locally
 
-The deployment project is `../fusion-underground`. From that directory:
+The theme project is `../fusion-underground`. From that directory:
 
 ```bash
 source .venv/bin/activate
@@ -103,8 +106,8 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Database is PostgreSQL (`fusion_underground`). Settings read from environment variables;
-copy `.env.example` to `.env` and fill in values.
+Database is PostgreSQL. Settings are read from environment variables; copy
+`.env.example` to `.env` and fill in values.
 
 ## Auth
 
@@ -118,6 +121,6 @@ copy `.env.example` to `.env` and fill in values.
 For consistency with global coding conventions (not because I prefer it), all
 code should be in US English.
 
-Please use US English spelling for the documentation too, but maintain clearer grammar than 
-mainstream US parlance. Comments (and your own speech) should always be clear prose, never 
+Please use US English spelling for the documentation too, but maintain clearer grammar than
+mainstream US parlance. Comments (and your own speech) should always be clear prose, never
 "keyword soup". A "grammar Nazi" should not be able to criticize you for omitting words.

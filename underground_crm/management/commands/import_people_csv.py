@@ -90,6 +90,7 @@ def _parse_date(value):
     if not value:
         return None
     value = value.strip()
+    # Notice that the American format is attempted first. Our legacy system is assumed to be US-centric.
     for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
         try:
             return datetime.strptime(value, fmt).date()

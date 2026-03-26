@@ -16,6 +16,12 @@ dependencies = [
     "django-money>=3.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pylint>=3.0",
+    "pylint-django>=2.5",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["underground_crm*"]

@@ -8,3 +8,4 @@ build/
 .env
 db.sqlite3
 *cookies.txt
+.claude/
