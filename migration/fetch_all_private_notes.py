@@ -13,6 +13,7 @@ Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
 LEGACY_COOKIE_FILE from the environment (see ../.env).
 """
 
+import argparse
 import html
 import http.cookiejar
 import json
@@ -145,8 +146,12 @@ def fetch_all_person_ids():
 
 # ---- Main ----
 
-if len(sys.argv) > 1:
-    person_ids = [int(sys.argv[1])]
+parser = argparse.ArgumentParser(description="Fetch private notes from the legacy CRM.")
+parser.add_argument("person_id", nargs="?", type=int, help="Fetch only notes for this person ID.")
+args = parser.parse_args()
+
+if args.person_id:
+    person_ids = [args.person_id]
 else:
     print("Fetching all person IDs...", file=sys.stderr)
     person_ids = fetch_all_person_ids()

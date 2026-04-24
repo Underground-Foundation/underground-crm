@@ -16,6 +16,7 @@ Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
 the environment (see ../.env).
 """
 
+import argparse
 import json
 import sys
 import time
@@ -104,10 +105,13 @@ def fetch_all_interactions():
 
 # ---- Main ----
 
-if len(sys.argv) > 1:
-    person_id = int(sys.argv[1])
-    print(f"Fetching interactions for person {person_id}...", file=sys.stderr)
-    interactions = fetch_interactions_for_person(person_id)
+parser = argparse.ArgumentParser(description="Fetch interactions (contacts) from the legacy API.")
+parser.add_argument("person_id", nargs="?", type=int, help="Fetch only interactions for this person ID.")
+args = parser.parse_args()
+
+if args.person_id:
+    print(f"Fetching interactions for person {args.person_id}...", file=sys.stderr)
+    interactions = fetch_interactions_for_person(args.person_id)
 else:
     print("Fetching all interactions...", file=sys.stderr)
     interactions = fetch_all_interactions()
