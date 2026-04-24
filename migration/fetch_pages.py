@@ -1,43 +1,51 @@
 #!/usr/bin/env python3
 """
-Fetch pages from the legacy party website's v2 API.
+Fetch a single page from the legacy party website's v2 API and its rendered HTML.
 
 Usage:
-  python fetch_pages.py
-  python fetch_pages.py <slug>
+  python fetch_pages.py <domain> <slug>
 
-With a slug, fetches only the page matching that slug.
-Without one, pages through all pages in the legacy system.
+Creates a directory named <domain>/ (if it does not already exist), then writes:
+  <domain>/<slug>.json   — the JSON:API record from /api/v2/pages?filter[slug]=<slug>
+  <domain>/<slug>.html   — the rendered HTML from https://<domain>/<slug>
 
-Outputs newline-delimited JSON to stdout. Redirect to a file for import.
-
-Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
-the environment (see ../.env).
+Reads LEGACY_API_TOKEN, LEGACY_WEBSITE_URL, and LEGACY_USER_AGENT from the
+environment (see ../.env).
 """
 
 import argparse
+import http.cookiejar
 import json
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
-from config import LEGACY_API_TOKEN, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
+from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
 
-HEADERS = {
+API_HEADERS = {
     "Authorization": f"Bearer {LEGACY_API_TOKEN}",
     "Accept": "application/vnd.api+json",
     "Content-Type": "application/vnd.api+json",
     "User-Agent": LEGACY_USER_AGENT,
 }
 
+# Cookie-aware opener for fetching rendered HTML pages.
+_cookie_jar = http.cookiejar.MozillaCookieJar(LEGACY_ADMIN_COOKIE_FILE)
+_cookie_jar.load(ignore_discard=True, ignore_expires=True)
+_html_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_cookie_jar))
+_html_opener.addheaders = [
+    ("User-Agent", LEGACY_USER_AGENT),
+    ("Accept", "text/html"),
+]
 
-def get(path, params=None):
+
+def api_get(path, params=None):
     url = f"{LEGACY_WEBSITE_URL}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers=HEADERS)
+    req = urllib.request.Request(url, headers=API_HEADERS)
     try:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read()), resp.status
@@ -46,53 +54,54 @@ def get(path, params=None):
         return {"error": str(e), "body": body}, e.code
 
 
-def fetch_pages(slug=None):
-    """Fetch pages from the v2 API, optionally filtered to a single slug."""
-    pages = []
-    params = {"page[size]": 100}
-    if slug:
-        params["filter[slug]"] = slug
+def fetch_page_json(slug):
+    """Return the JSON:API record for a single slug, or None on failure."""
+    data, status = api_get("/api/v2/pages", {"filter[slug]": slug, "page[size]": 1})
+    if status != 200:
+        print(f"[error] API returned HTTP {status} for slug '{slug}': {data}", file=sys.stderr)
+        return None
+    records = data.get("data", [])
+    if not records:
+        print(f"[error] No page found with slug '{slug}'.", file=sys.stderr)
+        return None
+    return records[0]
 
-    page_num = 1
 
-    while True:
-        params["page[number]"] = page_num
-        data, status = get("/api/v2/pages", params)
-
-        if status != 200:
-            print(f"  [error] page {page_num}: HTTP {status} — {data}", file=sys.stderr)
-            break
-
-        records = data.get("data", [])
-        pages.extend(records)
-
-        if page_num % 5 == 0:
-            print(f"  [info] fetched {len(pages)} pages so far (page {page_num})...", file=sys.stderr)
-
-        # JSON:API uses links.next to signal whether more pages exist.
-        if not records or not data.get("links", {}).get("next"):
-            break
-
-        page_num += 1
-        time.sleep(0.1)
-
-    return pages
+def fetch_page_html(domain, slug):
+    """Return the rendered HTML bytes for https://<domain>/<slug>."""
+    url = f"https://{domain}/{slug}"
+    try:
+        with _html_opener.open(url) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        print(f"[error] HTTP {e.code} fetching {url}", file=sys.stderr)
+        return None
 
 
 # ---- Main ----
 
-parser = argparse.ArgumentParser(description="Fetch pages from the legacy v2 API.")
-parser.add_argument("slug", nargs="?", help="Fetch only the page with this slug.")
+parser = argparse.ArgumentParser(description="Fetch a single legacy page's JSON and HTML.")
+parser.add_argument("--domain", required=True, help="Domain to fetch the rendered HTML from (e.g. example.com).")
+parser.add_argument("--slug", required=True, help="Page slug to fetch.")
 args = parser.parse_args()
 
-if args.slug:
-    print(f"Fetching page with slug '{args.slug}'...", file=sys.stderr)
-else:
-    print("Fetching all pages...", file=sys.stderr)
+output_dir = Path(args.domain)
+output_dir.mkdir(exist_ok=True)
 
-pages = fetch_pages(args.slug)
+print(f"Fetching JSON for slug '{args.slug}'...", file=sys.stderr)
+page_json = fetch_page_json(args.slug)
+if page_json is None:
+    sys.exit(1)
 
-for page in pages:
-    print(json.dumps(page))
+json_path = output_dir / f"{args.slug}.json"
+json_path.write_text(json.dumps(page_json, indent=2))
+print(f"Saved {json_path}", file=sys.stderr)
 
-print(f"\nDone. Total pages: {len(pages)}", file=sys.stderr)
+print(f"Fetching HTML from https://{args.domain}/{args.slug}...", file=sys.stderr)
+html_bytes = fetch_page_html(args.domain, args.slug)
+if html_bytes is None:
+    sys.exit(1)
+
+html_path = output_dir / f"{args.slug}.html"
+html_path.write_bytes(html_bytes)
+print(f"Saved {html_path}", file=sys.stderr)

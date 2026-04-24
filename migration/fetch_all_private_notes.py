@@ -10,7 +10,7 @@ Without a person_id, pages through all signups and fetches notes for each.
 Outputs newline-delimited JSON to stdout. Redirect to a file for import.
 
 Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
-LEGACY_COOKIE_FILE from the environment (see ../.env).
+LEGACY_ADMIN_COOKIE_FILE from the environment (see ../.env).
 """
 
 import argparse
@@ -23,10 +23,10 @@ import time
 import urllib.parse
 import urllib.request
 
-from config import LEGACY_API_TOKEN, LEGACY_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
+from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
 
 # --- HTTP setup with cookie jar ---
-cookie_jar = http.cookiejar.MozillaCookieJar(LEGACY_COOKIE_FILE)
+cookie_jar = http.cookiejar.MozillaCookieJar(LEGACY_ADMIN_COOKIE_FILE)
 cookie_jar.load(ignore_discard=True, ignore_expires=True)
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
 opener.addheaders = [

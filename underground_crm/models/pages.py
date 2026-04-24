@@ -87,7 +87,12 @@ class BasicPage(PageWithMetadata):
 
     The Raw HTML block makes it straightforward to migrate content from
     other platforms by pasting existing markup directly.
+
+    Marked non-creatable so that theme repos can subclass or replace it
+    without editors seeing a duplicate entry in the page chooser.
     """
+
+    is_creatable = False
 
     body = StreamField(
         [
@@ -155,3 +160,22 @@ class BasicPage(PageWithMetadata):
 
     class Meta:
         verbose_name = "Basic Page"
+
+
+class UndergroundBasicPage(BasicPage):
+    """
+    Extends BasicPage with a table-of-contents control. Intended as a base
+    class for theme-specific page types; not directly creatable.
+    """
+
+    is_creatable = False
+
+    show_toc = models.BooleanField(
+        default=False,
+        help_text="Show the table-of-contents sidebar for this page.",
+        verbose_name="Show table of contents"
+    )
+    default=True
+
+    class Meta:
+        verbose_name = "Underground Basic Page"

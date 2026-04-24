@@ -15,13 +15,13 @@ Optional flags:
                         the legacy CRM API and import them (requires LEGACY_API_TOKEN).
   --with-notes          After importing each person, fetch their private notes from
                         the legacy CRM admin endpoint and import them (requires
-                        LEGACY_COOKIE_FILE and browser session cookies).
+                        LEGACY_ADMIN_COOKIE_FILE and browser session cookies).
   --dry-run             Parse and validate the CSV without writing anything to the
                         database.
 
 The legacy CRM connection is configured via environment variables (see .env.example):
   LEGACY_WEBSITE_URL, LEGACY_API_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT,
-  LEGACY_COOKIE_FILE
+  LEGACY_ADMIN_COOKIE_FILE
 """
 
 import csv
@@ -52,7 +52,7 @@ from underground_crm.models.address import Address
 _LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
 _LEGACY_API_TOKEN = os.environ.get("LEGACY_API_TOKEN", "")
 _LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
-_LEGACY_COOKIE_FILE = os.environ.get("LEGACY_COOKIE_FILE", "")
+_LEGACY_ADMIN_COOKIE_FILE = os.environ.get("LEGACY_ADMIN_COOKIE_FILE", "")
 
 _LOCAL_TZ = ZoneInfo("Australia/Melbourne")
 
@@ -423,8 +423,8 @@ class Command(BaseCommand):
 
         if with_interactions and not _LEGACY_API_TOKEN:
             raise CommandError("LEGACY_API_TOKEN is required for --with-interactions.")
-        if with_notes and not _LEGACY_COOKIE_FILE:
-            raise CommandError("LEGACY_COOKIE_FILE is required for --with-notes.")
+        if with_notes and not _LEGACY_ADMIN_COOKIE_FILE:
+            raise CommandError("LEGACY_ADMIN_COOKIE_FILE is required for --with-notes.")
         if (with_interactions or with_notes) and not _LEGACY_WEBSITE_URL:
             raise CommandError("LEGACY_WEBSITE_URL is required for --with-interactions / --with-notes.")
 
@@ -436,9 +436,9 @@ class Command(BaseCommand):
         note_opener = None
         if with_notes:
             try:
-                note_opener = _build_cookie_opener(_LEGACY_COOKIE_FILE)
+                note_opener = _build_cookie_opener(_LEGACY_ADMIN_COOKIE_FILE)
             except FileNotFoundError:
-                raise CommandError(f"Cookie file not found: {_LEGACY_COOKIE_FILE}")
+                raise CommandError(f"Cookie file not found: {_LEGACY_ADMIN_COOKIE_FILE}")
 
         rows = list(csv.DictReader(csv_fh))
         csv_fh.close()

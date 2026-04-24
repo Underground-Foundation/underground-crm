@@ -93,7 +93,7 @@ Django admin UI.
 
 Current commands:
 - `import_legacy_private_notes <legacy_person_id>` — imports private notes for one person.
-  Requires `LEGACY_WEBSITE_URL`, `LEGACY_USER_AGENT`, and `LEGACY_COOKIE_FILE` env vars
+  Requires `LEGACY_WEBSITE_URL`, `LEGACY_USER_AGENT`, and `LEGACY_ADMIN_COOKIE_FILE` env vars
   (or `--cookie-file` override). Idempotent via `legacy_activity_id` deduplication.
 
 ## Running locally
@@ -116,6 +116,15 @@ Database is PostgreSQL. Settings are read from environment variables; copy
 - Django admin: `/django-admin/`
 - Wagtail CMS: `/cms/`
 - Public auth views: `/account/login/`, `/account/signup/`, `/account/logout/`
+
+## Python style
+Please use type hints for Python as much as possible, even though it's not strictly required. 
+
+## CLI argument style
+
+Always use named arguments (e.g. `--slug foo`) rather than positional arguments in
+management commands and migration scripts. This applies to new code and to any
+arguments added to existing commands.
 
 ## Final instructions
 For consistency with global coding conventions (not because I prefer it), all

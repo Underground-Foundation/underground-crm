@@ -8,7 +8,7 @@ Requires an admin session cookie file (Netscape format) for the legacy CRM.
 Export your cookies from the browser using a cookie export extension,
 then point --cookie-file at the file.
 
-Reads LEGACY_WEBSITE_URL, LEGACY_USER_AGENT, and LEGACY_COOKIE_FILE from
+Reads LEGACY_WEBSITE_URL, LEGACY_USER_AGENT, and LEGACY_ADMIN_COOKIE_FILE from
 the environment (see .env.example). The cookie file path can be overridden
 with --cookie-file.
 
@@ -32,7 +32,7 @@ from underground_crm.models import Person, PersonNote
 
 LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
 LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
-LEGACY_COOKIE_FILE = os.environ.get("LEGACY_COOKIE_FILE", "")
+LEGACY_ADMIN_COOKIE_FILE = os.environ.get("LEGACY_ADMIN_COOKIE_FILE", "")
 
 
 def _build_opener(cookie_file):
@@ -122,7 +122,7 @@ class Command(BaseCommand):
             "--cookie-file",
             default=None,
             help="Path to a Netscape-format cookie file for the legacy CRM. "
-                 "Defaults to LEGACY_COOKIE_FILE env var.",
+                 "Defaults to LEGACY_ADMIN_COOKIE_FILE env var.",
         )
         parser.add_argument(
             "--dry-run",
@@ -132,7 +132,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         legacy_person_id = options["legacy_person_id"]
-        cookie_file = options["cookie_file"] or LEGACY_COOKIE_FILE
+        cookie_file = options["cookie_file"] or LEGACY_ADMIN_COOKIE_FILE
         dry_run = options["dry_run"]
 
         self.stdout.write(f"Importing private notes for legacy ID {legacy_person_id}...")
@@ -142,7 +142,7 @@ class Command(BaseCommand):
         for var, val in [
             ("LEGACY_WEBSITE_URL", LEGACY_WEBSITE_URL),
             ("LEGACY_USER_AGENT", LEGACY_USER_AGENT),
-            ("LEGACY_COOKIE_FILE", cookie_file),
+            ("LEGACY_ADMIN_COOKIE_FILE", cookie_file),
         ]:
             if not val:
                 raise CommandError(f"{var} is not set. Add it to .env or pass --cookie-file.")

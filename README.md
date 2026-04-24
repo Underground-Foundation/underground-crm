@@ -80,7 +80,7 @@ in the `LEGACY_*` environment variables in your `.env`:
 | `LEGACY_API_URL` | Base URL of the legacy REST API. |
 | `LEGACY_API_TOKEN` | Bearer token for the legacy API. |
 | `LEGACY_USER_AGENT` | Browser user-agent string for cookie-authenticated requests. |
-| `LEGACY_COOKIE_FILE` | Path to a Netscape-format cookie file exported from your browser. |
+| `LEGACY_ADMIN_COOKIE_FILE` | Path to a Netscape-format cookie file exported from your browser. |
 
 ### Import people from a CSV export
 
@@ -104,7 +104,7 @@ The command is idempotent — it is safe to run multiple times.
 python manage.py import_legacy_private_notes <legacy_person_id>
 ```
 
-Requires a valid cookie file pointed to by `LEGACY_COOKIE_FILE` (or passed
+Requires a valid cookie file pointed to by `LEGACY_ADMIN_COOKIE_FILE` (or passed
 via `--cookie-file`). The legacy admin session must still be active.
 
 Get the cookie file using e.g. the Chrome extension
@@ -134,3 +134,48 @@ python fetch_all_interactions.py > interactions.ndjson
 ```
 
 These scripts read their configuration from `../.env` automatically.
+
+### Import CMS pages
+
+Pages are imported in three steps: fetch, parse, then import.
+
+**Step 1 — fetch each page's JSON and HTML from the legacy CRM:**
+
+```bash
+cd migration
+python fetch_pages.py --domain fusionparty.org.au --slug climate_rescue
+python fetch_pages.py --domain fusionparty.org.au --slug future_focused
+```
+
+This creates `<domain>/<slug>.json` (the JSON:API metadata record) and
+`<domain>/<slug>.html` (the full rendered HTML) for each slug. Run it once
+per page you want to migrate.
+
+**Step 2 — parse the HTML and import into Wagtail:**
+
+```bash
+python import_pages.py --domain fusionparty.org.au
+```
+
+For each `<slug>.html` in the domain directory, the script reads the
+corresponding JSON, extracts the element with `id="content"` from the HTML
+(writing it to `<domain>/importable/<slug>.html`), then creates the page in
+Wagtail. The legacy `page_type_name` is mapped to a Wagtail model
+(`"Basic"` → `BasicPage`); unrecognised types are logged as warnings and
+skipped.
+
+Run this from your theme project's root directory (where `manage.py` lives),
+or set `DJANGO_PROJECT_DIR` to that path in your `.env`. The script also
+requires `DJANGO_SETTINGS_MODULE`:
+
+| Variable | Description |
+|---|---|
+| `DJANGO_SETTINGS_MODULE` | Python dotted path to your theme's settings module (e.g. `fusion_site.settings`). |
+| `DJANGO_PROJECT_DIR` | Path to the theme project root, if it is not the working directory. |
+
+If a page with the same slug already exists, pass `--replace` to delete and
+recreate it:
+
+```bash
+python import_pages.py --domain fusionparty.org.au --replace
+```
