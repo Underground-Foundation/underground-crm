@@ -17,7 +17,9 @@ Supported page types:
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict
 
 from bs4 import BeautifulSoup, Tag
 from django.core.management.base import BaseCommand, CommandError
@@ -28,6 +30,26 @@ from underground_crm.models import UndergroundBasicPage
 PAGE_TYPE_MAP: dict[str, type[UndergroundBasicPage]] = {
     "Basic": UndergroundBasicPage,
 }
+
+
+@dataclass
+class ImportCounter:
+    """Tracks counts of imported, replaced, and skipped pages."""
+    imported: int = 0
+    replaced: int = 0
+    skipped: int = 0
+
+    def increment_imported(self) -> None:
+        self.imported += 1
+
+    def increment_replaced(self) -> None:
+        self.replaced += 1
+
+    def increment_skipped(self) -> None:
+        self.skipped += 1
+
+    def get_summary(self) -> str:
+        return f"Imported: {self.imported}, replaced: {self.replaced}, skipped: {self.skipped}."
 
 
 def should_show_toc(soup: BeautifulSoup) -> bool:
@@ -111,6 +133,7 @@ def build_importable_page(
 
 class Command(BaseCommand):
     help = "Parse and import legacy CMS pages into Wagtail from pre-fetched HTML files."
+    counter = ImportCounter()
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -124,8 +147,32 @@ class Command(BaseCommand):
             help="Replace any existing Wagtail page that has the same slug.",
         )
 
-    def handle(self, *args, **options) -> None:
-        domain_dir = Path(options["domain"])
+    def _should_continue_with_json_path(self, json_path: Path, slug: str):
+        if json_path.exists():
+            return True
+        self.stderr.write(f"  [skip] no JSON metadata file for slug '{slug}'.")
+        self.counter.increment_skipped()
+        return False
+
+    def _get_attributes_for_continuation(self, json_path: Path) -> dict | None:
+        attributes = _load_page_attributes(json_path)
+        if attributes is None:
+            self.stderr.write(f"  [skip] could not read attributes from '{json_path.name}'.")
+            self.counter.increment_skipped()
+            return None
+        return attributes
+
+    def _get_type_name_for_continuation(self, attributes: dict, page_type_map: dict, slug: str):
+        type_name = attributes.get("page_type_name")
+        if type_name in page_type_map:
+            return True
+        self.stderr.write(
+            f"  [skip] unsupported page type '{type_name}' for slug '{slug}'."
+        )
+        self.counter.increment_skipped()
+        return False
+
+    def create_pages_from_path(self, domain_dir: Path, should_replace: bool, page_type_map: Dict[str, Page]) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
 
@@ -147,80 +194,73 @@ class Command(BaseCommand):
             self.stderr.write(self.style.WARNING(f"No .html files found in '{domain_dir}'."))
             return
 
-        imported = 0
-        replaced = 0
-        skipped = 0
-
         for html_file in html_files:
             slug = html_file.stem
             json_path = domain_dir / f"{slug}.json"
-
-            if not json_path.exists():
-                self.stderr.write(f"  [skip] no JSON metadata file for slug '{slug}'.")
-                skipped += 1
+            if not self._should_continue_with_json_path(json_path, slug):
                 continue
 
-            attributes = _load_page_attributes(json_path)
-            if attributes is None:
-                self.stderr.write(f"  [skip] could not read attributes from '{json_path.name}'.")
-                skipped += 1
+            attributes = self._get_attributes_for_continuation(json_path)
+            if not attributes:
                 continue
 
-            type_name = attributes.get("page_type_name")
-            if type_name not in PAGE_TYPE_MAP:
-                self.stderr.write(
-                    f"  [skip] unsupported page type '{type_name}' for slug '{slug}'."
+            type_name = self._get_type_name_for_continuation(attributes, page_type_map, slug)
+            if not type_name:
+                continue
+
+            existing = Page.objects.filter(slug=slug).first()
+            is_replacing = False
+
+            if existing is not None:
+                if not should_replace:
+                    self.stderr.write(
+                        f"  [skip] page with slug '{slug}' already exists (pk={existing.pk}). "
+                        "Pass --replace to overwrite it."
+                    )
+                    self.counter.increment_skipped()
+                    continue
+                self.stdout.write(
+                    f"  Deleting existing page '{slug}' (pk={existing.pk}) for replacement."
                 )
-                skipped += 1
-                continue
+                existing.delete()
+                is_replacing = True
 
             extracted = _extract_importable_html(html_file, importable_dir)
             if extracted is None:
                 self.stderr.write(
                     f"  [skip] no element with id='content' found in '{html_file.name}'."
                 )
-                skipped += 1
+                self.counter.increment_skipped()
                 continue
 
             soup, html_content = extracted
             self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
 
-            page_class = PAGE_TYPE_MAP[type_name]
-            title = attributes.get("name") or attributes.get("headline") or slug
+            page_class = page_type_map[type_name]
+            # The name attribute is an administrative label for the page. The headline is what public viewers see as a
+            # prominent h1.
+            name = attributes.get("name") or attributes.get("headline") or slug
             seo_title = attributes.get("title", "")
 
-            existing = Page.objects.filter(slug=slug).first()
-            is_replace = False
-
-            if existing is not None:
-                if not options["replace"]:
-                    self.stderr.write(
-                        f"  [skip] page with slug '{slug}' already exists (pk={existing.pk}). "
-                        "Pass --replace to overwrite it."
-                    )
-                    skipped += 1
-                    continue
-                self.stdout.write(
-                    f"  Deleting existing page '{slug}' (pk={existing.pk}) for replacement."
-                )
-                existing.delete()
-                is_replace = True
-
             new_page = build_importable_page(
-                page_class, slug, title, seo_title, html_content, soup
+                page_class, slug, name, seo_title, html_content, soup
             )
             parent_page.add_child(instance=new_page)
 
             self.stdout.write(
-                f"  Created {page_class.__name__} '{title}'"
+                f"  Created {page_class.__name__} '{name}'"
                 f" (slug='{slug}') under '{parent_page.title}'."
             )
 
-            if is_replace:
-                replaced += 1
+            if is_replacing:
+                self.counter.increment_replaced()
             else:
-                imported += 1
+                self.counter.increment_imported()
 
         self.stdout.write(self.style.SUCCESS(
-            f"Done. Imported: {imported}, replaced: {replaced}, skipped: {skipped}."
+            f"Done. {self.counter.get_summary()}"
         ))
+
+    def handle(self, *args, **options) -> None:
+        domain_dir = Path(options["domain"])
+        return self.create_pages_from_path(domain_dir=domain_dir, should_replace=options["replace"], page_type_map=PAGE_TYPE_MAP)
