@@ -15,22 +15,20 @@ For each <slug>.html found in <domain>/, the command:
 Supported page types:
   "Basic" -> UndergroundBasicPage
 """
-
+import datetime
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from django.db.models import Q
+from django.contrib.auth import get_user_model
+from typing import Any, Callable, Dict, Optional
 
 from bs4 import BeautifulSoup, Tag
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models.functions import Coalesce
 from wagtail.models import Page, Site
 
 from underground_crm.models import UndergroundBasicPage
-
-PAGE_TYPE_MAP: dict[str, type[UndergroundBasicPage]] = {
-    "Basic": UndergroundBasicPage,
-}
-
 
 @dataclass
 class ImportCounter:
@@ -99,37 +97,95 @@ def _extract_importable_html(
 
     Returns None if no id='content' element is found.
     """
-    soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
-    content = soup.find(id="content")
+    document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
+    content = document_soup.find(id="content")
     if content is None:
         return None
     html_content = _prettify(content)
     (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
-    return soup, html_content
+    return document_soup, html_content
 
-def build_importable_page(
-    page_class: type[UndergroundBasicPage],
-    slug: str,
-    title: str,
-    seo_title: str,
-    html_content: str,
-    soup: BeautifulSoup,
-) -> UndergroundBasicPage:
-    """Build and return an unsaved Wagtail page from imported HTML content.
+def extract_author(soup) -> Optional[str]:
+    byline = soup.find('div', class_='byline')
+    if not byline:
+        return None
+    author_name = soup.find('span', class_='linked-signup-name')
+    if not author_name:
+        return None
+    name_parts = author_name.text.split(" ")
+    User = get_user_model()
+    authors = User.objects.annotate(
+        search_name=Coalesce('preferred_name', 'first_name')
+    ).filter(
+        # todo: use more than 2 words of a name
+        Q(search_name__startswith=name_parts[0]),
+        last_name__endswith=name_parts[-1]
+    ).order_by(
+        '-is_admin',    # True first
+        '-is_staff',    # True first
+        '-is_active'    # True first
+    )
+    if authors.count() > 1:
+        print(f"Author {author_name} is ambiguous")
+    if authors.count() == 0:
+        print(f"Author {author_name} could not be found in our database. Please import users before pages")
+    return authors.first()
+
+def extract_og_image(head) -> Optional[str]:
+    og_image = head.find('meta', property='og:image')
+    return og_image.get("content")
+
+def extract_og_type(head) -> Optional[str]:
+    og_type = head.find('meta', property='og:type')
+    return og_type.get("content")
+
+def extract_og_description(head) -> Optional[str]:
+    og_description = head.find('meta', property='og:description')
+    return og_description.get("content")
+
+def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.datetime]:
+    raw_date = attributes.get("published_at")
+    if not raw_date:
+        return None
+    return datetime.datetime.fromisoformat(raw_date)
+
+def build_underground_basic_page(document_soup, importable_html, attributes, slug,
+                                 return_class=UndergroundBasicPage) -> UndergroundBasicPage:
+    """
+    Build and return an unsaved Wagtail page from imported HTML content.
 
     The caller is responsible for saving it via parent_page.add_child().
     Subclasses of UndergroundBasicPage are accepted; any fields they add
     beyond the base set must be set on the returned instance before saving.
     """
-    page_kwargs: dict = {
-        "title": title,
-        "slug": slug,
-        "seo_title": seo_title,
-        "body": json.dumps([{"type": "html", "value": html_content}]),
-        "show_toc": should_show_toc(soup),
-    }
-    return page_class(**page_kwargs)
+    # The name attribute is an administrative label for the page. The headline is what public viewers see as a
+    # prominent h1.
+    name = attributes.get("name") or attributes.get("headline") or slug
+    head = document_soup.find("head")
+    seo_title = attributes.get("title", "")
+    seo_image_url = extract_og_image(head)
+    if seo_image_url:
+        # This cannot be used in the importing script just yet, as the search_image property of PageWithMetadata is a
+        # hosted Wagtail image, not a URL.
+        pass
+    author=extract_author(document_soup)
+    return return_class(
+        title=seo_title,
+        slug=slug,
+        owner=author,
+        seo_title=seo_title,
+        search_description=extract_og_description(head),
+        latest_revision_created_at=get_publication_date(attributes),
+        author=author,
+        og_type=extract_og_type(head),
+        body=json.dumps([{"type": "html", "value": importable_html}]),
+        show_toc=should_show_toc(document_soup)
+    )
 
+
+PAGE_BUILDING_MAP: dict[str, Any] = {
+    "Basic": build_underground_basic_page,
+}
 
 class Command(BaseCommand):
     help = "Parse and import legacy CMS pages into Wagtail from pre-fetched HTML files."
@@ -162,17 +218,18 @@ class Command(BaseCommand):
             return None
         return attributes
 
-    def _get_type_name_for_continuation(self, attributes: dict, page_type_map: dict, slug: str):
+    def _get_page_builder_for_continuation(self, attributes: dict, page_building_map: dict,
+                                           slug: str) -> Optional[Callable]:
         type_name = attributes.get("page_type_name")
-        if type_name in page_type_map:
-            return True
+        if type_name in page_building_map:
+            return page_building_map[type_name]
         self.stderr.write(
             f"  [skip] unsupported page type '{type_name}' for slug '{slug}'."
         )
         self.counter.increment_skipped()
-        return False
+        return None
 
-    def create_pages_from_path(self, domain_dir: Path, should_replace: bool, page_type_map: Dict[str, Page]) -> None:
+    def create_pages_from_path(self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page]) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
 
@@ -204,8 +261,8 @@ class Command(BaseCommand):
             if not attributes:
                 continue
 
-            type_name = self._get_type_name_for_continuation(attributes, page_type_map, slug)
-            if not type_name:
+            page_builder = self._get_page_builder_for_continuation(attributes, page_building_map, slug)
+            if not page_builder:
                 continue
 
             existing = Page.objects.filter(slug=slug).first()
@@ -233,22 +290,14 @@ class Command(BaseCommand):
                 self.counter.increment_skipped()
                 continue
 
-            soup, html_content = extracted
             self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
-
-            page_class = page_type_map[type_name]
-            # The name attribute is an administrative label for the page. The headline is what public viewers see as a
-            # prominent h1.
-            name = attributes.get("name") or attributes.get("headline") or slug
-            seo_title = attributes.get("title", "")
-
-            new_page = build_importable_page(
-                page_class, slug, name, seo_title, html_content, soup
-            )
+            document_soup, importable_html = extracted
+            new_page = page_builder(document_soup=document_soup, importable_html=importable_html,
+                                    attributes=attributes, slug=slug)
             parent_page.add_child(instance=new_page)
 
             self.stdout.write(
-                f"  Created {page_class.__name__} '{name}'"
+                f"  Created {new_page.__class__.__name__} '{new_page.name}'"
                 f" (slug='{slug}') under '{parent_page.title}'."
             )
 
@@ -263,4 +312,5 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options) -> None:
         domain_dir = Path(options["domain"])
-        return self.create_pages_from_path(domain_dir=domain_dir, should_replace=options["replace"], page_type_map=PAGE_TYPE_MAP)
+        return self.create_pages_from_path(domain_dir=domain_dir, should_replace=options["replace"],
+                                           page_building_map=PAGE_BUILDING_MAP)
