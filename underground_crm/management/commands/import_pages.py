@@ -158,11 +158,11 @@ def build_underground_basic_page(document_soup, importable_html, attributes, slu
     Subclasses of UndergroundBasicPage are accepted; any fields they add
     beyond the base set must be set on the returned instance before saving.
     """
-    # The name attribute is an administrative label for the page. The headline is what public viewers see as a
-    # prominent h1.
-    name = attributes.get("name") or attributes.get("headline") or slug
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
+    # The name attribute is an administrative label for the page. The headline is what public viewers see as a
+    # prominent h1.
+    headline = attributes.get("headline") or attributes.get("name") or seo_title
     seo_image_url = extract_og_image(head)
     if seo_image_url:
         # This cannot be used in the importing script just yet, as the search_image property of PageWithMetadata is a
@@ -170,7 +170,7 @@ def build_underground_basic_page(document_soup, importable_html, attributes, slu
         pass
     author=extract_author(document_soup)
     return return_class(
-        title=seo_title,
+        title=headline,
         slug=slug,
         owner=author,
         seo_title=seo_title,
