@@ -13,6 +13,8 @@ from wagtail.blocks import (
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.admin.panels import FieldPanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
+from .address import Address
+from .engagement import Engagement
 
 
 class PageWithMetadataForm(WagtailAdminPageForm):
@@ -179,3 +181,36 @@ class UndergroundBasicPage(BasicPage):
 
     class Meta:
         verbose_name = "Underground Basic Page"
+
+class EventPage(BasicPage):
+    host = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+"
+    )
+    start_time = models.DateTimeField(null=True)
+    end_time = models.DateTimeField(null=True)
+    venue = models.ForeignKey(Address, null=True, blank=True, on_delete=models.SET_NULL)
+    capacity = models.PositiveIntegerField(null=True, blank=True)
+
+    @property
+    def is_multi_day(self):
+        if self.start_time and self.end_time:
+            return self.start_time.date() != self.end_time.date()
+        return False
+
+
+class EventGuest(models.Model):
+    event_page = models.ForeignKey(EventPage, on_delete=models.DO_NOTHING)
+    # The guest might sign up on the event page
+    guest = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+"
+    )
+    # todo: on post-save, propagate this to an Engagement entry
+    accompanying_population = models.PositiveIntegerField(null=True, blank=True, default=0)

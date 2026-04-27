@@ -1,6 +1,7 @@
 import uuid
 
 from django.db.models import BigAutoField, UUIDField
+from django.utils.functional import cached_property
 
 
 class UUIDAutoField(UUIDField, BigAutoField):
@@ -19,3 +20,16 @@ class UUIDAutoField(UUIDField, BigAutoField):
         kwargs.setdefault("default", uuid.uuid4)
         kwargs.setdefault("editable", False)
         super().__init__(*args, **kwargs)
+
+    @cached_property
+    def validators(self):
+        # IntegerField.validators tries to look up integer range bounds by internal
+        # type name, but get_internal_type() returns 'UUIDField', which is not in
+        # that table. UUIDs have no numeric range, so return plain field validators.
+        return list(self._validators)
+
+    def _check_max_length_warning(self):
+        # UUIDField.__init__ always sets max_length=32 for internal storage.
+        # IntegerField._check_max_length_warning would flag this as an error,
+        # but it is intentional here, not a user mistake.
+        return []
