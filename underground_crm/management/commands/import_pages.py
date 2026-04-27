@@ -280,6 +280,7 @@ class Command(BaseCommand):
                     f"  Deleting existing page '{slug}' (pk={existing.pk}) for replacement."
                 )
                 existing.delete()
+                parent_page.refresh_from_db()
                 is_replacing = True
 
             extracted = _extract_importable_html(html_file, importable_dir)
@@ -292,12 +293,12 @@ class Command(BaseCommand):
 
             self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
             document_soup, importable_html = extracted
-            new_page = page_builder(document_soup=document_soup, importable_html=importable_html,
-                                    attributes=attributes, slug=slug)
+            new_page: UndergroundBasicPage = page_builder(document_soup=document_soup, importable_html=importable_html,
+                                                          attributes=attributes, slug=slug)
             parent_page.add_child(instance=new_page)
 
             self.stdout.write(
-                f"  Created {new_page.__class__.__name__} '{new_page.name}'"
+                f"  Created {new_page.__class__.__name__} '{new_page.slug}'"
                 f" (slug='{slug}') under '{parent_page.title}'."
             )
 

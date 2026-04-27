@@ -143,8 +143,8 @@ Pages are imported in three steps: fetch, parse, then import.
 
 ```bash
 cd migration
-python fetch_pages.py --domain fusionparty.org.au --slug climate_rescue
-python fetch_pages.py --domain fusionparty.org.au --slug future_focused
+python manage.py fetch_pages --domain fusionparty.org.au --slug climate_rescue
+python manage.py fetch_pages --domain fusionparty.org.au --slug future_focused
 ```
 
 This creates `<domain>/<slug>.json` (the JSON:API metadata record) and
@@ -154,7 +154,7 @@ per page you want to migrate.
 **Step 2 — parse the HTML and import into Wagtail:**
 
 ```bash
-python import_pages.py --domain fusionparty.org.au
+python manage.py import_pages --domain fusionparty.org.au
 ```
 
 For each `<slug>.html` in the domain directory, the script reads the

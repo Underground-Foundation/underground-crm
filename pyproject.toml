@@ -11,9 +11,10 @@ requires-python = ">=3.11"
 license = {text = "AGPL-3.0-only"}
 dependencies = [
     "Django>=5.0,<6.0",
-    "wagtail>=6.0,<7.0",
-    "Pillow>=10.0",
     "django-money>=3.0",
+    "Pillow>=10.0",
+    "psycopg[binary]",
+    "wagtail>=6.0,<7.0",
 ]
 
 [project.optional-dependencies]
