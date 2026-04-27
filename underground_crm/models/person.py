@@ -1,8 +1,10 @@
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from djmoney.models.fields import MoneyField
+from phonenumber_field.modelfields import PhoneNumberField
 
 from .address import Address
 
@@ -84,15 +86,15 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Contact ---
-    phone_number = models.CharField(max_length=50, blank=True)
-    mobile_number = models.CharField(max_length=50, blank=True)
+    phone_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
+    mobile_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
     mobile_opt_in = models.BooleanField(
         default=False, help_text="Person has opted in to receive SMS updates."
     )
     is_mobile_bad = models.BooleanField(
         default=False, help_text="Mobile number is known to be invalid or unreachable."
     )
-    work_phone_number = models.CharField(max_length=50, blank=True)
+    work_phone_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
     twitter_login = models.CharField(max_length=100, blank=True)
     facebook_username = models.CharField(max_length=100, blank=True)
 

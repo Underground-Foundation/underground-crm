@@ -3,6 +3,7 @@
 import django.db.models.deletion
 import djmoney.models.fields
 import djmoney.money
+import phonenumber_field.modelfields
 import uuid
 from django.conf import settings
 from django.db import migrations, models
@@ -125,8 +126,18 @@ class Migration(migrations.Migration):
                         help_text="Whether this record represents an individual or an organisation.",
                     ),
                 ),
-                ("phone_number", models.CharField(blank=True, max_length=50)),
-                ("mobile_number", models.CharField(blank=True, max_length=50)),
+                (
+                    "phone_number",
+                    phonenumber_field.modelfields.PhoneNumberField(
+                        blank=True, max_length=128, null=True, region="AU"
+                    ),
+                ),
+                (
+                    "mobile_number",
+                    phonenumber_field.modelfields.PhoneNumberField(
+                        blank=True, max_length=128, null=True, region="AU"
+                    ),
+                ),
                 (
                     "mobile_opt_in",
                     models.BooleanField(
@@ -140,7 +151,12 @@ class Migration(migrations.Migration):
                         help_text="Mobile number is known to be invalid or unreachable.",
                     ),
                 ),
-                ("work_phone_number", models.CharField(blank=True, max_length=50)),
+                (
+                    "work_phone_number",
+                    phonenumber_field.modelfields.PhoneNumberField(
+                        blank=True, max_length=128, null=True, region="AU"
+                    ),
+                ),
                 ("twitter_login", models.CharField(blank=True, max_length=100)),
                 ("facebook_username", models.CharField(blank=True, max_length=100)),
                 (

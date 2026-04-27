@@ -18,11 +18,16 @@ Supported page types:
 
 import datetime
 import json
+import phonenumbers
 from dataclasses import dataclass
+from dateutil import parser
+from email.utils import parseaddr
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, Tuple, cast
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
@@ -110,7 +115,7 @@ def _extract_importable_html(
     return document_soup, html_content
 
 
-def extract_author(soup: BeautifulSoup) -> Optional[str]:
+def extract_author(soup: BeautifulSoup) -> Optional[User]:
     byline = soup.find("div", class_="byline")
     if not byline:
         return None
@@ -159,13 +164,119 @@ def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.dateti
     return datetime.datetime.fromisoformat(raw_date)
 
 
-def extract_event_time(soup: BeautifulSoup) -> Optional[datetime.datetime]:
-    for event_detail in soup.find("p", class_="event-detail"):
-        if not event_detail.children:
-            continue
-        if len(event_detail.children) != 2:
-            continue
-        # raw_date =
+# Map the state to an IANA timezone
+SUBDIVISION_TO_TIMEZONE = {
+    "NSW": "Australia/Sydney",
+    "ACT": "Australia/Sydney",
+    "VIC": "Australia/Melbourne",
+    "QLD": "Australia/Brisbane",
+    "SA": "Australia/Adelaide",
+    "WA": "Australia/Perth",
+    "TAS": "Australia/Hobart",
+    "NT": "Australia/Darwin",
+}
+
+
+def parse_event_datetime(event_string):
+    """
+    Parse an event string like:
+    "        May 16, 2026 at 18:00 - 11pm (NSW/ACT/VIC/TAS timezone)"
+
+    Returns:
+        tuple: (start_datetime, end_datetime)
+    """
+    # Clean up the string
+    event_string = event_string.strip()
+
+    # Split on " - " to separate start datetime from end time + timezone
+    parts = event_string.split(" - ")
+    start_part = parts[0]
+    remaining = parts[1]
+
+    # Split on " (" to separate the end time from the timezone
+    end_parts = remaining.split(" (")
+    end_time_string = end_parts[0]
+    timezone_label = end_parts[1].replace(")", "").replace(" timezone", "")
+
+    # Split on "/" and take the first state/territory
+    first_state = timezone_label.split("/")[0]
+    iana_name = SUBDIVISION_TO_TIMEZONE.get(first_state, settings.TIME_ZONE)
+    timezone_obj = ZoneInfo(iana_name)
+
+    # Parse the start datetime
+    naive_start = datetime.datetime.strptime(start_part, "%B %d, %Y at %H:%M")
+    start_datetime = naive_start.replace(tzinfo=timezone_obj)
+    ending_default = start_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_datetime = parser.parse(end_time_string, default=ending_default)
+
+    if end_datetime < start_datetime:
+        end_datetime += datetime.timedelta(days=1)
+
+    return start_datetime, end_datetime
+
+
+def get_event_detail_pairs(soup: BeautifulSoup):
+    return [e for e in soup.find("p", class_="event-detail") if e.children and len(e.children) == 2]
+
+
+def extract_event_time(
+    soup: BeautifulSoup,
+) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
+    for event_detail in get_event_detail_pairs(soup):
+        # The first event-detail with 2 children is the When
+        raw_date = event_detail.children[1].text
+        return parse_event_datetime(raw_date)
+    return None, None
+
+
+def extract_event_venue(soup: BeautifulSoup) -> Optional[str]:
+    pairs = get_event_detail_pairs(soup)
+    if len(pairs) < 2:
+        print("Unable to determine event location")
+        return None
+    location_pair = pairs[1]
+    if (
+        not location_pair.children
+        or len(location_pair.children) != 2
+        or not location_pair.children[0].text.strip() == "Where"
+    ):
+        print("Unable to determine location from wrong event detail")
+        return None
+    return location_pair.children[1].strip()
+
+
+def get_host_by_phone(raw_phone: str) -> Optional[User]:
+    try:
+        phone = phonenumbers.parse(parts[2])
+    except phonenumbers.NumberParseException as e:
+        print(f"Unable to determine an event host: {e}")
+        return None
+    host = User.objects.find(phone_number=phone)
+
+
+def extract_event_host(soup: BeautifulSoup) -> Optional[User]:
+    pairs = get_event_detail_pairs(soup)
+    if len(pairs) < 3:
+        print("Unable to determine event host")
+        return None
+    host_pair = pairs[1]
+    if (
+        not host_pair.children
+        or len(host_pair.children) != 2
+        or not host_pair.children[0].text.strip() == "Contact"
+    ):
+        print("Unable to determine host from wrong event detail")
+        return None
+    raw_host = host_pair.children[1].strip()
+    host_parts = raw_host.split("·")
+    if len(parts) > 1:
+        name, email_address = parseaddr(parts[1])
+        if email_address:
+            host = User.objects.find(email=email_address)
+            if host:
+                return host
+    if len(parts) > 2:
+        return get_host_by_phone(parts[2])
 
 
 def build_underground_basic_page(
@@ -216,7 +327,9 @@ def build_event_page(
             return_class=EventPage,
         ),
     )
-    # TODO: extract start_time / end_time / venue from attributes
+    page.start_time, page.end_time = extract_event_time(document_soup)
+    page.venue = extract_event_venue(document_soup)
+    page.host = extract_event_host(document_soup)
     return page
 
 

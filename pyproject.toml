@@ -14,8 +14,10 @@ dependencies = [
     "django-money>=3.0",
     "django-q2",
     "redis",
+    "django-phonenumber-field[phonenumbers]",
     "Pillow>=10.0",
     "psycopg[binary]",
+    "python-dateutil>=2.9.0.post0,<3.0",
     "wagtail>=6.0,<7.0",
 ]
 

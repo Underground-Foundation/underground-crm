@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "wagtail",
     "modelcluster",
     "taggit",
+    "phonenumber_field",
     # https://django-q2.readthedocs.io/en/master/install.html
     "django_q",
     # Django
@@ -96,6 +97,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-au"
+PHONE_REGION = "AU"
 TIME_ZONE = "Australia/Melbourne"
 USE_I18N = True
 USE_TZ = True

@@ -1,3 +1,5 @@
+import datetime
+
 from django.conf import settings
 from django.db import models
 from wagtail.models import Page
@@ -210,6 +212,15 @@ class EventPage(BasicPage):
         if self.start_time and self.end_time:
             return self.start_time.date() != self.end_time.date()
         return False
+
+    @property
+    def has_started(self):
+        if not self.start_time:
+            return None
+        return self.start_time <= datetime.datetime.utcnow()
+
+    def __str__(self):
+        return self.slug or self.title
 
 
 class EventGuest(models.Model):
