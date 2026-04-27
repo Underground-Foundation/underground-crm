@@ -43,9 +43,7 @@ class Engagement(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    person = models.ForeignKey(
-        Person, on_delete=models.CASCADE, related_name="engagements"
-    )
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="engagements")
     action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, db_index=True)
 
     # Loose reference to the page or campaign that triggered this engagement.
@@ -57,7 +55,8 @@ class Engagement(models.Model):
     # Staff member who recorded a manual contact, if applicable
     recorded_by = models.ForeignKey(
         Person,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="recorded_engagements",
     )

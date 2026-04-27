@@ -6,13 +6,19 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('underground_crm', '0002_basicpage'),
+        ("underground_crm", "0002_basicpage"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='interaction',
-            name='legacy_contact_id',
-            field=models.PositiveIntegerField(blank=True, db_index=True, help_text='Contact ID from the legacy system, used to deduplicate imports.', null=True, unique=True),
+            model_name="interaction",
+            name="legacy_contact_id",
+            field=models.PositiveIntegerField(
+                blank=True,
+                db_index=True,
+                help_text="Contact ID from the legacy system, used to deduplicate imports.",
+                null=True,
+                unique=True,
+            ),
         ),
     ]

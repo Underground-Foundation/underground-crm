@@ -30,12 +30,11 @@ import http.cookiejar
 import json
 import os
 import re
-import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -61,7 +60,7 @@ _LOCAL_TZ = ZoneInfo("Australia/Melbourne")
 # ---------------------------------------------------------------------------
 
 _DT_FORMATS = [
-    "%m/%d/%Y %I:%M %p",   # 05/26/2020  6:51 AM  (with extra space handled below)
+    "%m/%d/%Y %I:%M %p",  # 05/26/2020  6:51 AM  (with extra space handled below)
     "%m/%d/%Y",
     "%Y-%m-%d %H:%M:%S %z",
     "%Y-%m-%dT%H:%M:%S%z",
@@ -125,6 +124,7 @@ def _money(value):
 # Address builder
 # ---------------------------------------------------------------------------
 
+
 def _build_address(row, prefix):
     """
     Create and return an Address from CSV columns like {prefix}_address1, {prefix}_city, etc.
@@ -137,7 +137,7 @@ def _build_address(row, prefix):
     state = row.get(f"{prefix}_state", "").strip()
     postcode = row.get(f"{prefix}_zip", "").strip()
     country_code = (row.get(f"{prefix}_country_code", "") or "AU").strip()
-    submitted = row.get(f"{prefix}_submitted_address", "").strip()
+    _submitted = row.get(f"{prefix}_submitted_address", "").strip()
 
     if not any([line1, line2, city, postcode]):
         return None
@@ -156,6 +156,7 @@ def _build_address(row, prefix):
 # ---------------------------------------------------------------------------
 # Person field mapper
 # ---------------------------------------------------------------------------
+
 
 def _person_fields(row):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
@@ -250,15 +251,17 @@ def _fetch_interactions_for_person(legacy_person_id):
     contacts = data.get("results", [])
     normalized = []
     for c in contacts:
-        normalized.append({
-            "contact_id": c.get("contact_id"),
-            "person_legacy_id": c.get("person_id") or c.get("recipient_id"),
-            "author_legacy_id": c.get("author_id") or c.get("sender_id"),
-            "method": c.get("method", ""),
-            "note": c.get("note", "") or "",
-            "status": c.get("status", "") or "",
-            "created_at": c.get("created_at", ""),
-        })
+        normalized.append(
+            {
+                "contact_id": c.get("contact_id"),
+                "person_legacy_id": c.get("person_id") or c.get("recipient_id"),
+                "author_legacy_id": c.get("author_id") or c.get("sender_id"),
+                "method": c.get("method", ""),
+                "note": c.get("note", "") or "",
+                "status": c.get("status", "") or "",
+                "created_at": c.get("created_at", ""),
+            }
+        )
     return normalized, None
 
 
@@ -304,6 +307,7 @@ def _import_interactions(person, legacy_person_id, dry_run, stderr):
 # Private note fetching (mirrors logic in import_legacy_private_notes.py)
 # ---------------------------------------------------------------------------
 
+
 def _build_cookie_opener(cookie_file):
     jar = http.cookiejar.MozillaCookieJar(cookie_file)
     jar.load(ignore_discard=True, ignore_expires=True)
@@ -320,13 +324,18 @@ def _fetch_private_notes(opener, legacy_person_id):
     notes = []
     page = 1
     while True:
-        params = urllib.parse.urlencode({
-            "id": legacy_person_id, "page": page,
-            "range": "All time", "type_id": "",
-        })
+        params = urllib.parse.urlencode(
+            {
+                "id": legacy_person_id,
+                "page": page,
+                "range": "All time",
+                "type_id": "",
+            }
+        )
         url = f"{_LEGACY_WEBSITE_URL}/admin/activities/signup.json?{params}"
         req = urllib.request.Request(
-            url, headers={"Referer": f"{_LEGACY_WEBSITE_URL}/admin/signups/{legacy_person_id}"},
+            url,
+            headers={"Referer": f"{_LEGACY_WEBSITE_URL}/admin/signups/{legacy_person_id}"},
         )
         with opener.open(req) as resp:
             data = json.loads(resp.read())
@@ -344,12 +353,14 @@ def _fetch_private_notes(opener, legacy_person_id):
                 if match:
                     text = html.unescape(re.sub(r"<[^>]+>", " ", match.group(1)))
                     text = re.sub(r"\s+", " ", text).strip()
-                notes.append({
-                    "activity_id": act["id"],
-                    "author_legacy_id": related.get("author", {}).get("id"),
-                    "text": text,
-                    "created_at": act.get("timestamp", ""),
-                })
+                notes.append(
+                    {
+                        "activity_id": act["id"],
+                        "author_legacy_id": related.get("author", {}).get("id"),
+                        "text": text,
+                        "created_at": act.get("timestamp", ""),
+                    }
+                )
         if len(activities) < 20:
             break
         page += 1
@@ -389,6 +400,7 @@ def _import_notes(person, legacy_person_id, opener, dry_run, stderr):
 # Management command
 # ---------------------------------------------------------------------------
 
+
 class Command(BaseCommand):
     help = "Import people from a legacy CRM CSV export, optionally including interactions and private notes."
 
@@ -415,7 +427,9 @@ class Command(BaseCommand):
             help="Parse and validate the CSV without writing to the database.",
         )
 
-    def handle(self, *args, **options):
+    def handle(
+        self, *args, **options
+    ):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         csv_file = options["csv_file"]
         with_interactions = options["with_interactions"]
         with_notes = options["with_notes"]
@@ -426,40 +440,44 @@ class Command(BaseCommand):
         if with_notes and not _LEGACY_ADMIN_COOKIE_FILE:
             raise CommandError("LEGACY_ADMIN_COOKIE_FILE is required for --with-notes.")
         if (with_interactions or with_notes) and not _LEGACY_WEBSITE_URL:
-            raise CommandError("LEGACY_WEBSITE_URL is required for --with-interactions / --with-notes.")
+            raise CommandError(
+                "LEGACY_WEBSITE_URL is required for --with-interactions / --with-notes."
+            )
 
         try:
             csv_fh = open(csv_file, newline="", encoding="utf-8-sig")
-        except FileNotFoundError:
-            raise CommandError(f"File not found: {csv_file}")
+        except FileNotFoundError as exc:
+            raise CommandError(f"File not found: {csv_file}") from exc
 
         note_opener = None
         if with_notes:
             try:
                 note_opener = _build_cookie_opener(_LEGACY_ADMIN_COOKIE_FILE)
-            except FileNotFoundError:
-                raise CommandError(f"Cookie file not found: {_LEGACY_ADMIN_COOKIE_FILE}")
+            except FileNotFoundError as exc:
+                raise CommandError(f"Cookie file not found: {_LEGACY_ADMIN_COOKIE_FILE}") from exc
 
         rows = list(csv.DictReader(csv_fh))
         csv_fh.close()
 
         if dry_run:
-            self.stdout.write(self.style.WARNING(f"Dry run — no database writes will occur."))
+            self.stdout.write(self.style.WARNING("Dry run — no database writes will occur."))
 
         # ---- Pass 1: create / update Person records and their addresses ----
 
         # Track legacy_id → person for the FK back-fill pass.
         legacy_id_to_person = {}
         # Track recruiter / point_person legacy IDs for back-fill.
-        pending_recruiter = {}      # {person.pk: recruiter_legacy_id}
-        pending_point_person = {}   # {person.pk: point_person_legacy_id}
+        pending_recruiter = {}  # {person.pk: recruiter_legacy_id}
+        pending_point_person = {}  # {person.pk: point_person_legacy_id}
 
         created_count = updated_count = skipped_count = 0
 
         for row in rows:
             legacy_id = _int_or_none(row.get("nationbuilder_id", ""))
             if not legacy_id:
-                self.stderr.write(f"  [skip] row has no nationbuilder_id: {row.get('full_name', '?')}")
+                self.stderr.write(
+                    f"  [skip] row has no nationbuilder_id: {row.get('full_name', '?')}"
+                )
                 skipped_count += 1
                 continue
 
@@ -535,6 +553,7 @@ class Command(BaseCommand):
 
             for person_pk, (lookup_type, lookup_value) in pending_point_person.items():
                 try:
+                    pp = None
                     if lookup_type == "email":
                         pp = Person.objects.get(email=lookup_value)
                     Person.objects.filter(pk=person_pk).update(point_person=pp)
@@ -588,14 +607,14 @@ class Command(BaseCommand):
         # ---- Summary ----
 
         action = "Would import" if dry_run else "Imported"
-        self.stdout.write(self.style.SUCCESS(
-            f"{action} {created_count} new, {updated_count} updated, {skipped_count} skipped."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"{action} {created_count} new, {updated_count} updated, {skipped_count} skipped."
+            )
+        )
         if with_interactions:
             self.stdout.write(
                 f"  Interactions: {interaction_imported} imported, {interaction_skipped} already existed."
             )
         if with_notes:
-            self.stdout.write(
-                f"  Notes: {note_imported} imported, {note_skipped} already existed."
-            )
+            self.stdout.write(f"  Notes: {note_imported} imported, {note_skipped} already existed.")

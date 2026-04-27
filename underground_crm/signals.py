@@ -7,7 +7,7 @@ from .models.pages import EventGuest
 
 @receiver(post_save, sender=EventGuest)
 def on_event_guest_saved(
-    sender: type[EventGuest], instance: EventGuest, created: bool, **kwargs
+    _sender: type[EventGuest], instance: EventGuest, created: bool, **kwargs
 ) -> None:
     if created:
         async_task("underground_crm.tasks.record_rsvp_engagement", str(instance.pk))

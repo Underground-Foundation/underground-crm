@@ -7,4 +7,4 @@ class UndergroundCrmConfig(AppConfig):
     verbose_name = "Underground CRM"
 
     def ready(self) -> None:
-        import underground_crm.signals  # noqa: F401
+        import underground_crm.signals  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import

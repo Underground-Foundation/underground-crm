@@ -98,7 +98,9 @@ def fetch_all_interactions(stdout):
 
 
 class Command(BaseCommand):
-    help = "Import interactions from the legacy CRM into Interaction for a given person or all people."
+    help = (
+        "Import interactions from the legacy CRM into Interaction for a given person or all people."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -149,9 +151,9 @@ class Command(BaseCommand):
                 raw = fetch_all_interactions(self.stdout)
                 self.stdout.write(f"  Fetched {len(raw)} interaction(s) total.")
         except urllib.error.HTTPError as e:
-            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}")
+            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
         except urllib.error.URLError as e:
-            raise CommandError(f"Network error reaching legacy CRM: {e.reason}")
+            raise CommandError(f"Network error reaching legacy CRM: {e.reason}") from e
 
         if not raw:
             self.stdout.write("No interactions found.")
@@ -227,9 +229,7 @@ class Command(BaseCommand):
                 )
                 imported += 1
             else:
-                self.stdout.write(
-                    f"  Skipped interaction {contact['contact_id']} (already exists)"
-                )
+                self.stdout.write(f"  Skipped interaction {contact['contact_id']} (already exists)")
                 skipped += 1
 
         summary = f"imported={imported}, skipped={skipped}"

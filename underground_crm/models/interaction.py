@@ -33,7 +33,10 @@ class Interaction(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     legacy_contact_id = models.PositiveIntegerField(
-        null=True, blank=True, unique=True, db_index=True,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
         help_text="Contact ID from the legacy system, used to deduplicate imports.",
     )
     person = models.ForeignKey(

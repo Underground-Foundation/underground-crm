@@ -43,6 +43,7 @@ class Membership(models.Model):
     @property
     def is_active(self):
         from django.utils import timezone
+
         if self.suspended_at:
             return False
         if self.expires_on and self.expires_on < timezone.now().date():

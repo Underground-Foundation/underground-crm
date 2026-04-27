@@ -12,6 +12,8 @@ license = {text = "AGPL-3.0-only"}
 dependencies = [
     "Django>=5.0,<6.0",
     "django-money>=3.0",
+    "django-q2",
+    "redis",
     "Pillow>=10.0",
     "psycopg[binary]",
     "wagtail>=6.0,<7.0",
@@ -21,6 +23,8 @@ dependencies = [
 dev = [
     "pylint>=3.0",
     "pylint-django>=2.5",
+    "black>=25.0",
+    "pre-commit>=4.0",
 ]
 migration = [
     "beautifulsoup4>=4.12",
@@ -29,3 +33,42 @@ migration = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["underground_crm*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pylint.main]
+load-plugins = ["pylint_django"]
+django-settings-module = "underground_crm.settings"
+# Migrations are auto-generated; the migration/ dir contains standalone scripts
+# that import a config module not on the pylint path.
+ignore-paths = [
+    "underground_crm/migrations",
+    "migration",
+]
+
+[tool.pylint.format]
+# Allow slightly more room than black's 100 so comments and warning strings
+# in f-strings don't trip the linter; black still enforces 100 for real code.
+max-line-length = 120
+
+[tool.pylint.design]
+# Wagtail pages inherit from long chains (Page → BasicPage → UndergroundBasicPage → …).
+max-parents = 20
+# Management commands are intentionally large procedural functions.
+max-locals = 25
+max-branches = 25
+max-statements = 90
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    # TODO comments are intentional — tracked in code, not in a ticket system.
+    "fixme",
+    # duplicate-code fires across management commands that share urllib boilerplate;
+    # that code will be consolidated when the commands are refactored.
+    "duplicate-code",
+]

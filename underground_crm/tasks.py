@@ -14,9 +14,7 @@ def record_rsvp_engagement(event_guest_id: str) -> None:
             pk=uuid.UUID(event_guest_id)
         )
     except EventGuest.DoesNotExist:
-        logger.warning(
-            "record_rsvp_engagement: EventGuest %s not found", event_guest_id
-        )
+        logger.warning("record_rsvp_engagement: EventGuest %s not found", event_guest_id)
         return
 
     if event_guest.guest is None:

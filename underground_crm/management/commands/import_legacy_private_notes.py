@@ -48,12 +48,14 @@ def _build_opener(cookie_file):
 
 
 def _fetch_activities(opener, legacy_person_id, page=1):
-    params = urllib.parse.urlencode({
-        "id": legacy_person_id,
-        "page": page,
-        "range": "All time",
-        "type_id": "",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "id": legacy_person_id,
+            "page": page,
+            "range": "All time",
+            "type_id": "",
+        }
+    )
     url = f"{LEGACY_WEBSITE_URL}/admin/activities/signup.json?{params}"
     req = urllib.request.Request(
         url,
@@ -95,13 +97,15 @@ def fetch_private_notes(opener, legacy_person_id, stdout=None):
         for act in activities:
             if act.get("type") == "profile_private_note":
                 related = act.get("relatedSignups", {})
-                notes.append({
-                    "activity_id": act["id"],
-                    "person_legacy_id": related.get("signup", {}).get("id") or legacy_person_id,
-                    "author_legacy_id": related.get("author", {}).get("id"),
-                    "text": _extract_note_text(act.get("oneliner", "")),
-                    "created_at": act.get("timestamp", ""),
-                })
+                notes.append(
+                    {
+                        "activity_id": act["id"],
+                        "person_legacy_id": related.get("signup", {}).get("id") or legacy_person_id,
+                        "author_legacy_id": related.get("author", {}).get("id"),
+                        "text": _extract_note_text(act.get("oneliner", "")),
+                        "created_at": act.get("timestamp", ""),
+                    }
+                )
         if len(activities) < 20:
             break
         page += 1
@@ -122,7 +126,7 @@ class Command(BaseCommand):
             "--cookie-file",
             default=None,
             help="Path to a Netscape-format cookie file for the legacy CRM. "
-                 "Defaults to LEGACY_ADMIN_COOKIE_FILE env var.",
+            "Defaults to LEGACY_ADMIN_COOKIE_FILE env var.",
         )
         parser.add_argument(
             "--dry-run",
@@ -152,27 +156,27 @@ class Command(BaseCommand):
 
         try:
             person = Person.objects.get(legacy_id=legacy_person_id)
-        except Person.DoesNotExist:
+        except Person.DoesNotExist as exc:
             raise CommandError(
                 f"No Person with legacy_id={legacy_person_id} found. "
                 "Import the person record first."
-            )
+            ) from exc
 
         self.stdout.write(f"  Local person: {person} (pk={person.pk})")
 
         try:
             opener = _build_opener(cookie_file)
-        except FileNotFoundError:
-            raise CommandError(f"Cookie file not found: {cookie_file}")
+        except FileNotFoundError as exc:
+            raise CommandError(f"Cookie file not found: {cookie_file}") from exc
 
         self.stdout.write("  Cookie file loaded. Fetching activities...")
 
         try:
             raw_notes = fetch_private_notes(opener, legacy_person_id, self.stdout)
         except urllib.error.HTTPError as e:
-            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}")
+            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
         except urllib.error.URLError as e:
-            raise CommandError(f"Network error reaching legacy CRM: {e.reason}")
+            raise CommandError(f"Network error reaching legacy CRM: {e.reason}") from e
 
         self.stdout.write(f"  Found {len(raw_notes)} private note(s).")
 
@@ -189,7 +193,8 @@ class Command(BaseCommand):
                     author = Person.objects.get(legacy_id=note["author_legacy_id"])
                 except Person.DoesNotExist:
                     self.stderr.write(
-                        f"  Warning: author legacy_id={note['author_legacy_id']} not found locally; note will have no author."
+                        f"  Warning: author legacy_id={note['author_legacy_id']}"
+                        " not found locally; note will have no author."
                     )
 
             if dry_run:
@@ -218,11 +223,12 @@ class Command(BaseCommand):
                 skipped += 1
 
         if dry_run:
-            self.stdout.write(self.style.WARNING(
-                f"Dry run: {imported} note(s) would be imported for {person}."
-            ))
+            self.stdout.write(
+                self.style.WARNING(f"Dry run: {imported} note(s) would be imported for {person}.")
+            )
         else:
-            self.stdout.write(self.style.SUCCESS(
-                f"Imported {imported} note(s) for {person} "
-                f"({skipped} already existed)."
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Imported {imported} note(s) for {person} " f"({skipped} already existed)."
+                )
+            )

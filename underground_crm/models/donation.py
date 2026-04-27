@@ -19,17 +19,16 @@ class Donation(models.Model):
     )
     amount = MoneyField(max_digits=14, decimal_places=2, default_currency="AUD")
     stripe_payment_id = models.CharField(
-        max_length=200, blank=True, db_index=True,
-        help_text="Stripe PaymentIntent or Charge ID."
+        max_length=200, blank=True, db_index=True, help_text="Stripe PaymentIntent or Charge ID."
     )
     is_recurring = models.BooleanField(
-        default=False,
-        help_text="Whether this is part of a recurring (monthly) donation series."
+        default=False, help_text="Whether this is part of a recurring (monthly) donation series."
     )
     donated_at = models.DateTimeField(db_index=True)
     page_url = models.CharField(
-        max_length=500, blank=True,
-        help_text="URL of the donation page that generated this transaction."
+        max_length=500,
+        blank=True,
+        help_text="URL of the donation page that generated this transaction.",
     )
     metadata = models.JSONField(default=dict, blank=True)
 

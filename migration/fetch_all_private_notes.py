@@ -53,8 +53,8 @@ def get(path, params=None, referer=None):
 
 
 def strip_html(text):
-    text = re.sub(r'<[^>]+>', ' ', text)
-    return html.unescape(re.sub(r'\s+', ' ', text)).strip()
+    text = re.sub(r"<[^>]+>", " ", text)
+    return html.unescape(re.sub(r"\s+", " ", text)).strip()
 
 
 def extract_note_text(oneliner):
@@ -89,16 +89,18 @@ def fetch_private_notes_for_person(person_id):
                 related = act.get("relatedSignups", {})
                 author = related.get("author", {})
                 subject = related.get("signup", {})
-                notes.append({
-                    "activity_id": act.get("id"),
-                    "person_legacy_id": subject.get("id") or person_id,
-                    "person_name": subject.get("name", ""),
-                    "author_legacy_id": author.get("id"),
-                    "author_name": author.get("name", ""),
-                    "text": extract_note_text(act.get("oneliner", "")),
-                    "is_private": act.get("isPrivate", True),
-                    "created_at": act.get("timestamp", ""),
-                })
+                notes.append(
+                    {
+                        "activity_id": act.get("id"),
+                        "person_legacy_id": subject.get("id") or person_id,
+                        "person_name": subject.get("name", ""),
+                        "author_legacy_id": author.get("id"),
+                        "author_name": author.get("name", ""),
+                        "text": extract_note_text(act.get("oneliner", "")),
+                        "is_private": act.get("isPrivate", True),
+                        "created_at": act.get("timestamp", ""),
+                    }
+                )
 
         if len(activities) < 20:
             break
@@ -117,11 +119,14 @@ def fetch_all_person_ids():
         if next_cursor:
             params["next"] = next_cursor
         url = f"{LEGACY_WEBSITE_URL}/api/v2/signups?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {LEGACY_API_TOKEN}",
-            "Accept": "application/json",
-            "User-Agent": LEGACY_USER_AGENT,
-        })
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {LEGACY_API_TOKEN}",
+                "Accept": "application/json",
+                "User-Agent": LEGACY_USER_AGENT,
+            },
+        )
         try:
             with urllib.request.urlopen(req) as resp:
                 data = json.loads(resp.read())
@@ -164,7 +169,10 @@ for i, pid in enumerate(person_ids):
         print(json.dumps(n))
         all_notes.append(n)
     if notes:
-        print(f"  [{i+1}/{len(person_ids)}] Person {pid}: {len(notes)} private note(s)", file=sys.stderr)
+        print(
+            f"  [{i+1}/{len(person_ids)}] Person {pid}: {len(notes)} private note(s)",
+            file=sys.stderr,
+        )
     time.sleep(0.1)
 
 print(f"\nDone. Total private notes: {len(all_notes)}", file=sys.stderr)

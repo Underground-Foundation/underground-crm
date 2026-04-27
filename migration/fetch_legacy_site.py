@@ -24,7 +24,9 @@ import urllib.request
 
 from config import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_TOKEN, LEGACY_WEBSITE_URL
 
-CRAWL_URL = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/browser-rendering/crawl"
+CRAWL_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/browser-rendering/crawl"
+)
 
 HEADERS = {
     "Authorization": f"Bearer {CLOUDFLARE_TOKEN}",
@@ -108,7 +110,9 @@ def poll_until_done(job_id):
 
 # ---- Main ----
 
-parser = argparse.ArgumentParser(description="Crawl the legacy website via Cloudflare Browser Rendering.")
+parser = argparse.ArgumentParser(
+    description="Crawl the legacy website via Cloudflare Browser Rendering."
+)
 parser.add_argument(
     "--depth",
     type=int,

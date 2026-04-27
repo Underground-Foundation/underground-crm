@@ -37,7 +37,9 @@ class SignupForm(forms.ModelForm):
 
 class LoginForm(forms.Form):
     email = forms.EmailField(widget=forms.EmailInput(attrs={"autocomplete": "email"}))
-    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"})
+    )
 
     def __init__(self, request=None, *args, **kwargs):
         self.request = request

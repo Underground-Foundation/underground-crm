@@ -37,7 +37,9 @@ def fix_encoding(text):
 
 def fix_row(row):
     """Apply fix_encoding to every string value in a CSV row dict."""
-    return {key: fix_encoding(value) if isinstance(value, str) else value for key, value in row.items()}
+    return {
+        key: fix_encoding(value) if isinstance(value, str) else value for key, value in row.items()
+    }
 
 
 def parse_csv(path):
@@ -51,7 +53,9 @@ def parse_csv(path):
 
 # ---- Main ----
 
-parser = argparse.ArgumentParser(description="Parse a NationBuilder financial CSV and emit newline-delimited JSON.")
+parser = argparse.ArgumentParser(
+    description="Parse a NationBuilder financial CSV and emit newline-delimited JSON."
+)
 parser.add_argument("csv_file", help="Path to the NationBuilder financial CSV export.")
 args = parser.parse_args()
 

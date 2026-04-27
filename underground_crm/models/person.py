@@ -61,7 +61,10 @@ class Person(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     legacy_id = models.PositiveIntegerField(
-        null=True, blank=True, unique=True, db_index=True,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
         help_text="Person ID from the previous CRM, used for data migration.",
     )
     prefix = models.CharField(max_length=10, blank=True)
@@ -72,24 +75,22 @@ class Person(AbstractBaseUser, PermissionsMixin):
     legal_name = models.CharField(max_length=200, blank=True)
     preferred_name = models.CharField(max_length=100, blank=True)
     mailing_name = models.CharField(
-        max_length=200, blank=True,
-        help_text="Name as it should appear on postal correspondence."
+        max_length=200, blank=True, help_text="Name as it should appear on postal correspondence."
     )
     record_type = models.SmallIntegerField(
-        choices=TYPE_CHOICES, default=TYPE_PERSON,
-        help_text="Whether this record represents an individual or an organisation."
+        choices=TYPE_CHOICES,
+        default=TYPE_PERSON,
+        help_text="Whether this record represents an individual or an organisation.",
     )
 
     # --- Contact ---
     phone_number = models.CharField(max_length=50, blank=True)
     mobile_number = models.CharField(max_length=50, blank=True)
     mobile_opt_in = models.BooleanField(
-        default=False,
-        help_text="Person has opted in to receive SMS updates."
+        default=False, help_text="Person has opted in to receive SMS updates."
     )
     is_mobile_bad = models.BooleanField(
-        default=False,
-        help_text="Mobile number is known to be invalid or unreachable."
+        default=False, help_text="Mobile number is known to be invalid or unreachable."
     )
     work_phone_number = models.CharField(max_length=50, blank=True)
     twitter_login = models.CharField(max_length=100, blank=True)
@@ -97,32 +98,49 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Addresses ---
     submitted_address = models.TextField(
-        blank=True,
-        help_text="Raw address string as submitted by the person, before geocoding."
+        blank=True, help_text="Raw address string as submitted by the person, before geocoding."
     )
     primary_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="primary_for",
     )
     home_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="home_for",
     )
     mailing_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="mailing_for",
     )
     work_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="work_for",
     )
     registered_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="registered_for",
-        help_text="Address as recorded on the electoral roll."
+        help_text="Address as recorded on the electoral roll.",
     )
     billing_address = models.OneToOneField(
-        Address, null=True, blank=True, on_delete=models.SET_NULL,
+        Address,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="billing_for",
     )
 
@@ -140,30 +158,33 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Engagement & consent ---
     email_opt_in = models.BooleanField(
-        default=False,
-        help_text="Person has opted in to receive email updates."
+        default=False, help_text="Person has opted in to receive email updates."
     )
     unsubscribed_at = models.DateTimeField(
-        null=True, blank=True,
-        help_text="When the person unsubscribed from email."
+        null=True, blank=True, help_text="When the person unsubscribed from email."
     )
     is_supporter = models.BooleanField(default=False)
     support_level = models.SmallIntegerField(
-        null=True, blank=True, choices=SUPPORT_LEVEL_CHOICES,
-        help_text="Manually assigned support rating from 1 (weak) to 5 (strong)."
+        null=True,
+        blank=True,
+        choices=SUPPORT_LEVEL_CHOICES,
+        help_text="Manually assigned support rating from 1 (weak) to 5 (strong).",
     )
     inferred_support_level = models.SmallIntegerField(
-        null=True, blank=True, choices=SUPPORT_LEVEL_CHOICES,
-        help_text="Support level derived algorithmically."
+        null=True,
+        blank=True,
+        choices=SUPPORT_LEVEL_CHOICES,
+        help_text="Support level derived algorithmically.",
     )
     priority_level = models.SmallIntegerField(
-        null=True, blank=True, choices=PRIORITY_LEVEL_CHOICES,
-        help_text="Outreach priority from 0 (lowest) to 5 (highest)."
+        null=True,
+        blank=True,
+        choices=PRIORITY_LEVEL_CHOICES,
+        help_text="Outreach priority from 0 (lowest) to 5 (highest).",
     )
     is_volunteer = models.BooleanField(default=False)
     is_prospect = models.BooleanField(
-        default=False,
-        help_text="Being cultivated as a potential supporter but not yet confirmed."
+        default=False, help_text="Being cultivated as a potential supporter but not yet confirmed."
     )
     is_deceased = models.BooleanField(default=False)
 
@@ -172,8 +193,11 @@ class Person(AbstractBaseUser, PermissionsMixin):
     is_fundraiser = models.BooleanField(default=False)
     donations_count = models.PositiveIntegerField(default=0)
     donations_amount = MoneyField(
-        max_digits=14, decimal_places=2, default_currency="AUD", default=0,
-        help_text="Total amount donated across all time."
+        max_digits=14,
+        decimal_places=2,
+        default_currency="AUD",
+        default=0,
+        help_text="Total amount donated across all time.",
     )
     first_donated_at = models.DateTimeField(null=True, blank=True)
     last_donated_at = models.DateTimeField(null=True, blank=True)
@@ -184,24 +208,28 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Profile visibility ---
     is_profile_published = models.BooleanField(
-        default=True,
-        help_text="Whether this person's public profile is visible on the site."
+        default=True, help_text="Whether this person's public profile is visible on the site."
     )
     activity_is_private = models.BooleanField(
-        default=False,
-        help_text="Whether this person's activity is hidden from public streams."
+        default=False, help_text="Whether this person's activity is hidden from public streams."
     )
 
     # --- Relationships ---
     recruiter = models.ForeignKey(
-        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="recruits",
-        help_text="The person who recruited this person to join."
+        help_text="The person who recruited this person to join.",
     )
     point_person = models.ForeignKey(
-        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="assigned_contacts",
-        help_text="Staff member or senior contact responsible for this person."
+        help_text="Staff member or senior contact responsible for this person.",
     )
 
     # --- Electoral districts (Australian federal system) ---
@@ -209,28 +237,25 @@ class Person(AbstractBaseUser, PermissionsMixin):
     state_upper_district = models.CharField(max_length=100, blank=True)
     state_lower_district = models.CharField(max_length=100, blank=True)
     council_district = models.CharField(
-        max_length=100, blank=True,
-        help_text="Local government area (e.g. City of Moreland)."
+        max_length=100, blank=True, help_text="Local government area (e.g. City of Moreland)."
     )
     ward = models.CharField(
-        max_length=100, blank=True,
-        help_text="Ward or suburb-level electoral division within the council area."
+        max_length=100,
+        blank=True,
+        help_text="Ward or suburb-level electoral division within the council area.",
     )
 
     # --- Imported data ---
     membership_number = models.CharField(
-        max_length=100, blank=True,
-        help_text="Membership number from a previous membership system."
+        max_length=100, blank=True, help_text="Membership number from a previous membership system."
     )
 
     # --- Django auth fields ---
     is_staff = models.BooleanField(
-        default=False,
-        help_text="Grants access to the Django admin interface."
+        default=False, help_text="Grants access to the Django admin interface."
     )
     is_admin = models.BooleanField(
-        default=False,
-        help_text="Grants elevated permissions within the CRM."
+        default=False, help_text="Grants elevated permissions within the CRM."
     )
     is_active = models.BooleanField(default=True)
 

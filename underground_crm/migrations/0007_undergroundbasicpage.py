@@ -7,19 +7,36 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('underground_crm', '0006_basicpage_author'),
+        ("underground_crm", "0006_basicpage_author"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='UndergroundBasicPage',
+            name="UndergroundBasicPage",
             fields=[
-                ('basicpage_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='underground_crm.basicpage')),
-                ('show_toc', models.BooleanField(default=False, help_text='Show the table-of-contents sidebar for this page.', verbose_name='Show table of contents')),
+                (
+                    "basicpage_ptr",
+                    models.OneToOneField(
+                        auto_created=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        parent_link=True,
+                        primary_key=True,
+                        serialize=False,
+                        to="underground_crm.basicpage",
+                    ),
+                ),
+                (
+                    "show_toc",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Show the table-of-contents sidebar for this page.",
+                        verbose_name="Show table of contents",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Underground Basic Page',
+                "verbose_name": "Underground Basic Page",
             },
-            bases=('underground_crm.basicpage',),
+            bases=("underground_crm.basicpage",),
         ),
     ]

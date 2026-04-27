@@ -15,24 +15,28 @@ For each <slug>.html found in <domain>/, the command:
 Supported page types:
   "Basic" -> UndergroundBasicPage
 """
+
 import datetime
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from django.db.models import Q
-from django.contrib.auth import get_user_model
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 from bs4 import BeautifulSoup, Tag
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from django.db.models.functions import Coalesce
 from wagtail.models import Page, Site
 
 from underground_crm.models import UndergroundBasicPage
+from underground_crm.models.pages import EventPage
+
 
 @dataclass
 class ImportCounter:
     """Tracks counts of imported, replaced, and skipped pages."""
+
     imported: int = 0
     replaced: int = 0
     skipped: int = 0
@@ -105,43 +109,48 @@ def _extract_importable_html(
     (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
     return document_soup, html_content
 
+
 def extract_author(soup: BeautifulSoup) -> Optional[str]:
-    byline = soup.find('div', class_='byline')
+    byline = soup.find("div", class_="byline")
     if not byline:
         return None
-    author_name = soup.find('span', class_='linked-signup-name')
+    author_name = soup.find("span", class_="linked-signup-name")
     if not author_name:
         return None
     name_parts = author_name.text.split(" ")
     User = get_user_model()
-    authors = User.objects.annotate(
-        search_name=Coalesce('preferred_name', 'first_name')
-    ).filter(
-        # todo: use more than 2 words of a name
-        Q(search_name__startswith=name_parts[0]),
-        last_name__endswith=name_parts[-1]
-    ).order_by(
-        '-is_admin',    # True first
-        '-is_staff',    # True first
-        '-is_active'    # True first
+    authors = (
+        User.objects.annotate(search_name=Coalesce("preferred_name", "first_name"))
+        .filter(
+            # todo: use more than 2 words of a name
+            Q(search_name__startswith=name_parts[0]),
+            last_name__endswith=name_parts[-1],
+        )
+        .order_by("-is_admin", "-is_staff", "-is_active")  # True first  # True first  # True first
     )
     if authors.count() > 1:
         print(f"Author {author_name} is ambiguous")
     if authors.count() == 0:
-        print(f"Author {author_name} could not be found in our database. Please import users before pages")
+        print(
+            f"Author {author_name} could not be found in our database. Please import users before pages"
+        )
     return authors.first()
 
+
 def extract_og_image(head: BeautifulSoup) -> Optional[str]:
-    og_image = head.find('meta', property='og:image')
+    og_image = head.find("meta", property="og:image")
     return og_image.get("content")
 
+
 def extract_og_type(head: BeautifulSoup) -> Optional[str]:
-    og_type = head.find('meta', property='og:type')
+    og_type = head.find("meta", property="og:type")
     return og_type.get("content")
 
+
 def extract_og_description(head: BeautifulSoup) -> Optional[str]:
-    og_description = head.find('meta', property='og:description')
+    og_description = head.find("meta", property="og:description")
     return og_description.get("content")
+
 
 def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.datetime]:
     raw_date = attributes.get("published_at")
@@ -149,16 +158,19 @@ def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.dateti
         return None
     return datetime.datetime.fromisoformat(raw_date)
 
-def extract_event_time(soup: BeautifulSoup) -> Optional(datetime.datetime):
+
+def extract_event_time(soup: BeautifulSoup) -> Optional[datetime.datetime]:
     for event_detail in soup.find("p", class_="event-detail"):
         if not event_detail.children:
             continue
         if len(event_detail.children) != 2:
             continue
-        #raw_date =
+        # raw_date =
 
-def build_underground_basic_page(document_soup, importable_html, attributes, slug,
-                                 return_class=UndergroundBasicPage) -> UndergroundBasicPage:
+
+def build_underground_basic_page(
+    document_soup, importable_html, attributes, slug, return_class=UndergroundBasicPage
+) -> UndergroundBasicPage:
     """
     Build and return an unsaved Wagtail page from imported HTML content.
 
@@ -176,7 +188,7 @@ def build_underground_basic_page(document_soup, importable_html, attributes, slu
         # This cannot be used in the importing script just yet, as the search_image property of PageWithMetadata is a
         # hosted Wagtail image, not a URL.
         pass
-    author=extract_author(document_soup)
+    author = extract_author(document_soup)
     return return_class(
         title=headline,
         slug=slug,
@@ -187,25 +199,32 @@ def build_underground_basic_page(document_soup, importable_html, attributes, slu
         author=author,
         og_type=extract_og_type(head),
         body=json.dumps([{"type": "html", "value": importable_html}]),
-        show_toc=should_show_toc(document_soup)
+        show_toc=should_show_toc(document_soup),
     )
 
-def build_event_page(document_soup, importable_html, attributes, slug, return_class=EventPage) -> EventPage:
-    page = cast(EventPage, build_underground_basic_page(
-        document_soup=document_soup,
-        importable_html=importable_html,
-        attributes=attributes,
-        slug=slug,
-        return_class=EventPage)
-    )
-    start_time =
 
+def build_event_page(
+    document_soup, importable_html, attributes, slug, return_class=EventPage
+) -> EventPage:
+    page = cast(
+        EventPage,
+        build_underground_basic_page(
+            document_soup=document_soup,
+            importable_html=importable_html,
+            attributes=attributes,
+            slug=slug,
+            return_class=EventPage,
+        ),
+    )
+    # TODO: extract start_time / end_time / venue from attributes
+    return page
 
 
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
-    "Event": build_event_page
+    "Event": build_event_page,
 }
+
 
 class Command(BaseCommand):
     help = "Parse and import legacy CMS pages into Wagtail from pre-fetched HTML files."
@@ -238,18 +257,19 @@ class Command(BaseCommand):
             return None
         return attributes
 
-    def _get_page_builder_for_continuation(self, attributes: dict, page_building_map: dict,
-                                           slug: str) -> Optional[Callable]:
+    def _get_page_builder_for_continuation(
+        self, attributes: dict, page_building_map: dict, slug: str
+    ) -> Optional[Callable]:
         type_name = attributes.get("page_type_name")
         if type_name in page_building_map:
             return page_building_map[type_name]
-        self.stderr.write(
-            f"  [skip] unsupported page type '{type_name}' for slug '{slug}'."
-        )
+        self.stderr.write(f"  [skip] unsupported page type '{type_name}' for slug '{slug}'.")
         self.counter.increment_skipped()
         return None
 
-    def create_pages_from_path(self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page]) -> None:
+    def create_pages_from_path(
+        self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page]
+    ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
 
@@ -281,7 +301,9 @@ class Command(BaseCommand):
             if not attributes:
                 continue
 
-            page_builder = self._get_page_builder_for_continuation(attributes, page_building_map, slug)
+            page_builder = self._get_page_builder_for_continuation(
+                attributes, page_building_map, slug
+            )
             if not page_builder:
                 continue
 
@@ -313,8 +335,12 @@ class Command(BaseCommand):
 
             self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
             document_soup, importable_html = extracted
-            new_page: UndergroundBasicPage = page_builder(document_soup=document_soup, importable_html=importable_html,
-                                                          attributes=attributes, slug=slug)
+            new_page: UndergroundBasicPage = page_builder(
+                document_soup=document_soup,
+                importable_html=importable_html,
+                attributes=attributes,
+                slug=slug,
+            )
             parent_page.add_child(instance=new_page)
 
             self.stdout.write(
@@ -327,11 +353,12 @@ class Command(BaseCommand):
             else:
                 self.counter.increment_imported()
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Done. {self.counter.get_summary()}"
-        ))
+        self.stdout.write(self.style.SUCCESS(f"Done. {self.counter.get_summary()}"))
 
     def handle(self, *args, **options) -> None:
         domain_dir = Path(options["domain"])
-        return self.create_pages_from_path(domain_dir=domain_dir, should_replace=options["replace"],
-                                           page_building_map=PAGE_BUILDING_MAP)
+        return self.create_pages_from_path(
+            domain_dir=domain_dir,
+            should_replace=options["replace"],
+            page_building_map=PAGE_BUILDING_MAP,
+        )

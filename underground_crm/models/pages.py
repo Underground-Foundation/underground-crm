@@ -14,7 +14,6 @@ from wagtail.images.blocks import ImageChooserBlock
 from wagtail.admin.panels import FieldPanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
 from .address import Address
-from .engagement import Engagement
 
 
 class PageWithMetadataForm(WagtailAdminPageForm):
@@ -223,6 +222,4 @@ class EventGuest(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    accompanying_population = models.PositiveIntegerField(
-        null=True, blank=True, default=0
-    )
+    accompanying_population = models.PositiveIntegerField(null=True, blank=True, default=0)

@@ -6,13 +6,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('underground_crm', '0004_basicpage_search_image'),
+        ("underground_crm", "0004_basicpage_search_image"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='basicpage',
-            name='og_type',
-            field=models.CharField(default='article', help_text='The Open Graph type for this page. See https://ogp.me/#types for the full list of valid types.', max_length=50),
+            model_name="basicpage",
+            name="og_type",
+            field=models.CharField(
+                default="article",
+                help_text="The Open Graph type for this page. See https://ogp.me/#types for the full list of valid types.",
+                max_length=50,
+            ),
         ),
     ]

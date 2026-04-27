@@ -25,7 +25,10 @@ def _require(name):
     val = os.environ.get(name)
     if not val:
         print(f"ERROR: {name} environment variable is not set.", file=sys.stderr)
-        print(f"       Add it to {_env_path} or export it before running this script.", file=sys.stderr)
+        print(
+            f"       Add it to {_env_path} or export it before running this script.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return val
 

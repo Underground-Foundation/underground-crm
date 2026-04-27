@@ -14,12 +14,16 @@ class PersonNote(models.Model):
     )
     text = models.TextField()
     legacy_activity_id = models.PositiveIntegerField(
-        null=True, blank=True, unique=True, db_index=True,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
         help_text="Activity ID from legacy system, used to deduplicate imports.",
     )
     created_by = models.ForeignKey(
         "underground_crm.Person",
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="authored_notes",
     )

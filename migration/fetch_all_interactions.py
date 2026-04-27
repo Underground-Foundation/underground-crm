@@ -93,7 +93,10 @@ def fetch_all_interactions():
             interactions.append(normalize(contact))
 
         if page % 5 == 0:
-            print(f"  [info] fetched {len(interactions)} interactions so far (page {page})...", file=sys.stderr)
+            print(
+                f"  [info] fetched {len(interactions)} interactions so far (page {page})...",
+                file=sys.stderr,
+            )
 
         if not results or not next_cursor:
             break
@@ -106,7 +109,9 @@ def fetch_all_interactions():
 # ---- Main ----
 
 parser = argparse.ArgumentParser(description="Fetch interactions (contacts) from the legacy API.")
-parser.add_argument("person_id", nargs="?", type=int, help="Fetch only interactions for this person ID.")
+parser.add_argument(
+    "person_id", nargs="?", type=int, help="Fetch only interactions for this person ID."
+)
 args = parser.parse_args()
 
 if args.person_id:
