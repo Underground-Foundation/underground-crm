@@ -30,10 +30,8 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost 127.0.0.1").sp
 INSTALLED_APPS = [
     # Underground CRM library
     "underground_crm",
-
     # Django-money
     "djmoney",
-
     # Wagtail
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
@@ -48,7 +46,8 @@ INSTALLED_APPS = [
     "wagtail",
     "modelcluster",
     "taggit",
-
+    # https://django-q2.readthedocs.io/en/master/install.html
+    "django_q",
     # Django
     "django.contrib.admin",
     "django.contrib.auth",
@@ -90,7 +89,9 @@ TEMPLATES = [
 AUTH_USER_MODEL = "underground_crm.Person"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -103,6 +104,14 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
+
+# https://docs.djangoproject.com/en/6.0/topics/cache/#redis
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379",
+    }
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

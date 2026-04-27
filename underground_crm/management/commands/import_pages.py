@@ -105,7 +105,7 @@ def _extract_importable_html(
     (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
     return document_soup, html_content
 
-def extract_author(soup) -> Optional[str]:
+def extract_author(soup: BeautifulSoup) -> Optional[str]:
     byline = soup.find('div', class_='byline')
     if not byline:
         return None
@@ -131,15 +131,15 @@ def extract_author(soup) -> Optional[str]:
         print(f"Author {author_name} could not be found in our database. Please import users before pages")
     return authors.first()
 
-def extract_og_image(head) -> Optional[str]:
+def extract_og_image(head: BeautifulSoup) -> Optional[str]:
     og_image = head.find('meta', property='og:image')
     return og_image.get("content")
 
-def extract_og_type(head) -> Optional[str]:
+def extract_og_type(head: BeautifulSoup) -> Optional[str]:
     og_type = head.find('meta', property='og:type')
     return og_type.get("content")
 
-def extract_og_description(head) -> Optional[str]:
+def extract_og_description(head: BeautifulSoup) -> Optional[str]:
     og_description = head.find('meta', property='og:description')
     return og_description.get("content")
 
@@ -148,6 +148,14 @@ def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.dateti
     if not raw_date:
         return None
     return datetime.datetime.fromisoformat(raw_date)
+
+def extract_event_time(soup: BeautifulSoup) -> Optional(datetime.datetime):
+    for event_detail in soup.find("p", class_="event-detail"):
+        if not event_detail.children:
+            continue
+        if len(event_detail.children) != 2:
+            continue
+        #raw_date =
 
 def build_underground_basic_page(document_soup, importable_html, attributes, slug,
                                  return_class=UndergroundBasicPage) -> UndergroundBasicPage:
@@ -182,9 +190,21 @@ def build_underground_basic_page(document_soup, importable_html, attributes, slu
         show_toc=should_show_toc(document_soup)
     )
 
+def build_event_page(document_soup, importable_html, attributes, slug, return_class=EventPage) -> EventPage:
+    page = cast(EventPage, build_underground_basic_page(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+        return_class=EventPage)
+    )
+    start_time =
+
+
 
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
+    "Event": build_event_page
 }
 
 class Command(BaseCommand):

@@ -63,6 +63,12 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+In another terminal, run the queue cluster:
+```bash
+python manage.py qcluster
+```
+
+Visit one of these pages:
 - Django admin: `/django-admin/`
 - Wagtail CMS: `/cms/`
 - Login: `/account/login/`

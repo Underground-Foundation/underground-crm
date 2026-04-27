@@ -5,3 +5,6 @@ class UndergroundCrmConfig(AppConfig):
     default_auto_field = "underground_crm.fields.UUIDAutoField"
     name = "underground_crm"
     verbose_name = "Underground CRM"
+
+    def ready(self) -> None:
+        import underground_crm.signals  # noqa: F401

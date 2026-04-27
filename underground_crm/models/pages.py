@@ -21,6 +21,7 @@ class PageWithMetadataForm(WagtailAdminPageForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         self.fields["author"].queryset = User.objects.order_by(
             "-is_admin", "-is_staff", "first_name", "last_name"
@@ -102,10 +103,17 @@ class BasicPage(PageWithMetadata):
                 "rich_text",
                 RichTextBlock(
                     features=[
-                        "h2", "h3", "h4",
-                        "bold", "italic",
-                        "link", "ol", "ul",
-                        "hr", "blockquote", "image",
+                        "h2",
+                        "h3",
+                        "h4",
+                        "bold",
+                        "italic",
+                        "link",
+                        "ol",
+                        "ul",
+                        "hr",
+                        "blockquote",
+                        "image",
                     ],
                     label="Rich Text",
                 ),
@@ -154,11 +162,13 @@ class BasicPage(PageWithMetadata):
         FieldPanel("body"),
     ]
 
-    edit_handler = TabbedInterface([
-        ObjectList(content_panels, heading="Content"),
-        ObjectList(PageWithMetadata.promote_panels, heading="Metadata"),
-        ObjectList(PageWithMetadata.visibility_panels, heading="Visibility"),
-    ])
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading="Content"),
+            ObjectList(PageWithMetadata.promote_panels, heading="Metadata"),
+            ObjectList(PageWithMetadata.visibility_panels, heading="Visibility"),
+        ]
+    )
 
     class Meta:
         verbose_name = "Basic Page"
@@ -175,12 +185,13 @@ class UndergroundBasicPage(BasicPage):
     show_toc = models.BooleanField(
         default=False,
         help_text="Show the table-of-contents sidebar for this page.",
-        verbose_name="Show table of contents"
+        verbose_name="Show table of contents",
     )
-    default=True
+    default = True
 
     class Meta:
         verbose_name = "Underground Basic Page"
+
 
 class EventPage(BasicPage):
     host = models.ForeignKey(
@@ -188,7 +199,7 @@ class EventPage(BasicPage):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="+"
+        related_name="+",
     )
     start_time = models.DateTimeField(null=True)
     end_time = models.DateTimeField(null=True)
@@ -210,7 +221,8 @@ class EventGuest(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="+"
+        related_name="+",
     )
-    # todo: on post-save, propagate this to an Engagement entry
-    accompanying_population = models.PositiveIntegerField(null=True, blank=True, default=0)
+    accompanying_population = models.PositiveIntegerField(
+        null=True, blank=True, default=0
+    )
