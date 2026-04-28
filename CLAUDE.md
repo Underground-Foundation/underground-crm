@@ -47,7 +47,21 @@ migration/                One-off data migration scripts (not Django management 
 
 - **Primary keys:** All models owned by this library use
   `UUIDField(primary_key=True, default=uuid.uuid4, editable=False)`.
-  Never use auto-increment integers for PKs on new models.
+  Never use auto-increment integers for PKs on new models. UUID PKs support
+  federated data merging: independent CRM instances can share and merge records
+  without integer PK collisions.
+- **M2M through tables:** Django auto-generates through tables for `ManyToManyField`
+  without an explicit `through=` argument. Any M2M relationship that belongs to this
+  library must use an explicit through model that declares its own `UUIDField` PK,
+  following the same convention as every other model. `AppConfig.default_auto_field`
+  is set to `UUIDAutoField` as a safety net, but it must never be relied upon as a
+  substitute for an explicit through model — a missing `through=` would not be caught
+  until the mismatch between the migration and the database causes a runtime error.
+- **Page models:** Wagtail's `Page` base class uses integer PKs internally (required by
+  `treebeard`, the tree library Wagtail uses for page trees). The PK type cannot be
+  changed. If federation across CRM instances requires stable page identifiers, add a
+  secondary `UUIDField` (non-PK, `unique=True`) to the relevant page model rather than
+  attempting to change the PK.
 - `Person.legacy_id` — integer ID from the previous CRM, used only during migration for
   lookups and deduplication. Nullable, unique. (The only sequential integers are these
   `legacy_*` fields imported from the previous system.)

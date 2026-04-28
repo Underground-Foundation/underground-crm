@@ -718,13 +718,45 @@ class Migration(migrations.Migration):
                 (
                     "tags",
                     models.ManyToManyField(
-                        blank=True, related_name="people", to="underground_crm.tag"
+                        blank=True,
+                        related_name="people",
+                        through="underground_crm.PersonTag",
+                        to="underground_crm.tag",
                     ),
                 ),
             ],
             options={
                 "verbose_name": "person",
                 "verbose_name_plural": "people",
+            },
+        ),
+        migrations.CreateModel(
+            name="PersonTag",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
+                (
+                    "person",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="underground_crm.person",
+                    ),
+                ),
+                (
+                    "tag",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="underground_crm.tag",
+                    ),
+                ),
+            ],
+            options={
+                "db_table": "underground_crm_person_tags",
+                "unique_together": {("person", "tag")},
             },
         ),
         migrations.CreateModel(

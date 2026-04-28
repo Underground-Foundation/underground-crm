@@ -156,7 +156,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     gender = models.CharField(max_length=50, blank=True)
 
     # --- Tags ---
-    tags = models.ManyToManyField(Tag, blank=True, related_name="people")
+    tags = models.ManyToManyField(Tag, through="PersonTag", blank=True, related_name="people")
 
     # --- Engagement & consent ---
     email_opt_in = models.BooleanField(
@@ -295,3 +295,15 @@ class Person(AbstractBaseUser, PermissionsMixin):
     @property
     def first_name_or_friend(self):
         return self.first_name or "Friend"
+
+
+class PersonTag(models.Model):
+    """Explicit through model for Person.tags, carrying a UUID PK for federation support."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    person = models.ForeignKey(Person, on_delete=models.CASCADE)
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table = "underground_crm_person_tags"
+        unique_together = [("person", "tag")]
