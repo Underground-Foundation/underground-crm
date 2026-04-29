@@ -18,24 +18,29 @@ Supported page types:
 
 import datetime
 import json
+
 import phonenumbers
 from dataclasses import dataclass
 from dateutil import parser
 from email.utils import parseaddr
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from zoneinfo import ZoneInfo
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, PageElement, Tag
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Q
-from django.db.models.functions import Coalesce
 from wagtail.models import Page, Site
 
+from underground_crm.contactability import (
+    get_ambiguous_admin_by_full_name,
+    get_user_by_full_name,
+    get_validated_email_address,
+)
 from underground_crm.models import UndergroundBasicPage
 from underground_crm.models.pages import EventPage
+from underground_crm.numbers import parse_localized_number
 
 
 @dataclass
@@ -97,9 +102,9 @@ def _load_page_attributes(json_path: Path) -> dict | None:
     return attributes or None
 
 
-def _extract_importable_html(
+def extract_importable_html(
     html_file: Path,
-    importable_dir: Path,
+    importable_dir: Optional[Path],
 ) -> tuple[BeautifulSoup, str] | None:
     """Extract the id='content' element, write it to importable_dir, and return
     the full-page soup alongside the extracted HTML string.
@@ -111,35 +116,21 @@ def _extract_importable_html(
     if content is None:
         return None
     html_content = _prettify(content)
-    (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
+    if importable_dir:
+        (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
     return document_soup, html_content
 
 
-def extract_author(soup: BeautifulSoup) -> Optional[User]:
+def extract_author(soup: BeautifulSoup) -> Optional[settings.AUTH_USER_MODEL]:
     byline = soup.find("div", class_="byline")
     if not byline:
         return None
     author_name = soup.find("span", class_="linked-signup-name")
     if not author_name:
         return None
-    name_parts = author_name.text.split(" ")
-    User = get_user_model()
-    authors = (
-        User.objects.annotate(search_name=Coalesce("preferred_name", "first_name"))
-        .filter(
-            # todo: use more than 2 words of a name
-            Q(search_name__startswith=name_parts[0]),
-            last_name__endswith=name_parts[-1],
-        )
-        .order_by("-is_admin", "-is_staff", "-is_active")  # True first  # True first  # True first
+    return get_ambiguous_admin_by_full_name(
+        author_name.text,
     )
-    if authors.count() > 1:
-        print(f"Author {author_name} is ambiguous")
-    if authors.count() == 0:
-        print(
-            f"Author {author_name} could not be found in our database. Please import users before pages"
-        )
-    return authors.first()
 
 
 def extract_og_image(head: BeautifulSoup) -> Optional[str]:
@@ -164,7 +155,7 @@ def get_publication_date(attributes: Dict[str, Any]) -> Optional[datetime.dateti
     return datetime.datetime.fromisoformat(raw_date)
 
 
-# Map the state to an IANA timezone
+# Map the geo-political subdivision to an IANA timezone
 SUBDIVISION_TO_TIMEZONE = {
     "NSW": "Australia/Sydney",
     "ACT": "Australia/Sydney",
@@ -177,7 +168,9 @@ SUBDIVISION_TO_TIMEZONE = {
 }
 
 
-def parse_event_datetime(event_string):
+def parse_event_datetime(
+    event_string,
+) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
     """
     Parse an event string like:
     "        May 16, 2026 at 18:00 - 11pm (NSW/ACT/VIC/TAS timezone)"
@@ -185,27 +178,24 @@ def parse_event_datetime(event_string):
     Returns:
         tuple: (start_datetime, end_datetime)
     """
-    # Clean up the string
     event_string = event_string.strip()
 
-    # Split on " - " to separate start datetime from end time + timezone
     parts = event_string.split(" - ")
     start_part = parts[0]
     remaining = parts[1]
 
-    # Split on " (" to separate the end time from the timezone
     end_parts = remaining.split(" (")
     end_time_string = end_parts[0]
     timezone_label = end_parts[1].replace(")", "").replace(" timezone", "")
 
     # Split on "/" and take the first state/territory
     first_state = timezone_label.split("/")[0]
-    iana_name = SUBDIVISION_TO_TIMEZONE.get(first_state, settings.TIME_ZONE)
+    iana_name = SUBDIVISION_TO_TIMEZONE.get(first_state) or settings.TIME_ZONE
     timezone_obj = ZoneInfo(iana_name)
 
     # Parse the start datetime
-    naive_start = datetime.datetime.strptime(start_part, "%B %d, %Y at %H:%M")
-    start_datetime = naive_start.replace(tzinfo=timezone_obj)
+    naïve_start = datetime.datetime.strptime(start_part, "%B %d, %Y at %H:%M")
+    start_datetime = naïve_start.replace(tzinfo=timezone_obj)
     ending_default = start_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
     end_datetime = parser.parse(end_time_string, default=ending_default)
 
@@ -215,18 +205,31 @@ def parse_event_datetime(event_string):
     return start_datetime, end_datetime
 
 
-def get_event_detail_pairs(soup: BeautifulSoup):
-    return [e for e in soup.find("p", class_="event-detail") if e.children and len(e.children) == 2]
+def get_substantial_child_strings(parent_tag: Tag) -> List[str]:
+    return [stripped for stripped in [tag.text.strip() for tag in parent_tag.contents] if stripped]
+    # return [tag for tag in parent_tag.contents if tag.text.strip()]
+
+
+def get_event_detail_pairs(soup: BeautifulSoup) -> List[Tag]:
+    return [
+        e
+        for e in soup.find_all("div", class_="event-detail")
+        if e.contents and len(get_substantial_child_strings(e)) > 0
+    ]
 
 
 def extract_event_time(
     soup: BeautifulSoup,
 ) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
-    for event_detail in get_event_detail_pairs(soup):
-        # The first event-detail with 2 children is the When
-        raw_date = event_detail.children[1].text
-        return parse_event_datetime(raw_date)
-    return None, None
+    event_pairs = get_event_detail_pairs(soup)
+    if not event_pairs:
+        print(f"Event time element was not found")
+        return None, None
+    time_contents = get_substantial_child_strings(event_pairs[0])
+    if time_contents[0] != "When":
+        print(f"Unable to determine time from wrong event detail")
+        return None, None
+    return parse_event_datetime(time_contents[1])
 
 
 def extract_event_venue(soup: BeautifulSoup) -> Optional[str]:
@@ -235,48 +238,117 @@ def extract_event_venue(soup: BeautifulSoup) -> Optional[str]:
         print("Unable to determine event location")
         return None
     location_pair = pairs[1]
-    if (
-        not location_pair.children
-        or len(location_pair.children) != 2
-        or not location_pair.children[0].text.strip() == "Where"
-    ):
+    location_contents = get_substantial_child_strings(location_pair)
+    if location_contents[0] != "Where":
         print("Unable to determine location from wrong event detail")
         return None
-    return location_pair.children[1].strip()
+    return location_contents[1]
 
 
-def get_host_by_phone(raw_phone: str) -> Optional[User]:
+def get_host_by_email_address(email_address: str):
+    if not email_address:
+        return None
+    validated_address = get_validated_email_address(email_address.strip())
+    if not validated_address:
+        return None
+    User = get_user_model()
     try:
-        phone = phonenumbers.parse(parts[2])
+        return User.objects.get(email=validated_address)
+    except User.DoesNotExist:
+        return None
+
+
+def get_host_by_phone(raw_phone: str) -> Optional[settings.AUTH_USER_MODEL]:
+    try:
+        phone = phonenumbers.parse(raw_phone)
     except phonenumbers.NumberParseException as e:
         print(f"Unable to determine an event host: {e}")
         return None
-    host = User.objects.find(phone_number=phone)
+    User = get_user_model()
+    try:
+        return User.objects.get(phone_number=phone)
+    except User.DoesNotExist:
+        print(f"Unable to find a user with phone number {phone}")
+        return None
 
 
-def extract_event_host(soup: BeautifulSoup) -> Optional[User]:
+def extract_host_attributes(soup: BeautifulSoup) -> Optional[List[str]]:
+    # Returns the text describing the host and their contact details, eg `Owen · owen.miller@fusionparty.org.au`
+    # Notice though, the email address is not visible in the initial HTML − it requires some JavaScript to execute,
+    # revealing the email address on the page. It is therefore not extracted here.
     pairs = get_event_detail_pairs(soup)
     if len(pairs) < 3:
-        print("Unable to determine event host")
+        print(f"Unable to determine event host. Only {len(pairs)} event pairs")
         return None
-    host_pair = pairs[1]
-    if (
-        not host_pair.children
-        or len(host_pair.children) != 2
-        or not host_pair.children[0].text.strip() == "Contact"
-    ):
+    host_pair = pairs[2]
+    host_contents = get_substantial_child_strings(host_pair)
+    if not host_contents or len(host_contents) != 2 or not host_contents[0] == "Contact":
         print("Unable to determine host from wrong event detail")
         return None
-    raw_host = host_pair.children[1].strip()
-    host_parts = raw_host.split("·")
-    if len(parts) > 1:
-        name, email_address = parseaddr(parts[1])
-        if email_address:
-            host = User.objects.find(email=email_address)
+    print(f"Host contents: {host_contents}")
+    host_text = host_contents[1]
+    print(f"Raw host: {host_text}")
+    return host_text.split("·")
+
+
+def extract_event_host(soup: BeautifulSoup) -> Optional[settings.AUTH_USER_MODEL]:
+    host_parts = extract_host_attributes(soup)
+    print(f"Host parts: {host_parts}")
+    if host_parts and len(host_parts) > 1:
+        host = get_host_by_email_address(host_parts[1])
+        if host:
+            return host
+        else:
+            # The 2nd part might be a phone number and not an email address
+            host = get_host_by_phone(host_parts[1])
             if host:
                 return host
-    if len(parts) > 2:
-        return get_host_by_phone(parts[2])
+    if host_parts and len(host_parts) > 2:
+        host = get_host_by_phone(host_parts[2])
+        if host:
+            return host
+    return get_ambiguous_admin_by_full_name(host_parts[0].strip())
+
+
+def extract_event_population(soup: BeautifulSoup):
+    pairs = get_event_detail_pairs(soup)
+    if len(pairs) < 4:
+        print(f"Unable to determine event population. Only {len(pairs)} event pairs")
+        return None
+    for pair in pairs:
+        subhead = pair.find("p", class_="subhead")
+        if subhead:
+            result = parse_localized_number(subhead.text.split(" ")[0])
+            if result is not None:
+                return int(result)
+    print("Unable to determine event population")
+    return None
+
+
+def get_page_args(document_soup, importable_html, attributes, slug) -> dict:
+    head = document_soup.find("head")
+    seo_title = attributes.get("title", "")
+    # The name attribute is an administrative label for the page. The headline is what public viewers see as a
+    # prominent h1.
+    headline = attributes.get("headline") or attributes.get("name") or seo_title
+    seo_image_url = extract_og_image(head)
+    if seo_image_url:
+        # This cannot be used in the importing script just yet, as the search_image property of PageWithMetadata is a
+        # hosted Wagtail image, not a URL.
+        pass
+    author = extract_author(document_soup)
+    return {
+        "title": headline,
+        "slug": slug,
+        "owner": author,
+        "seo_title": seo_title,
+        "search_description": extract_og_description(head),
+        "latest_revision_created_at": get_publication_date(attributes),
+        "author": author,
+        "og_type": extract_og_type(head),
+        "body": json.dumps([{"type": "html", "value": importable_html}]),
+        "show_toc": should_show_toc(document_soup),
+    }
 
 
 def build_underground_basic_page(
@@ -289,47 +361,27 @@ def build_underground_basic_page(
     Subclasses of UndergroundBasicPage are accepted; any fields they add
     beyond the base set must be set on the returned instance before saving.
     """
-    head = document_soup.find("head")
-    seo_title = attributes.get("title", "")
-    # The name attribute is an administrative label for the page. The headline is what public viewers see as a
-    # prominent h1.
-    headline = attributes.get("headline") or attributes.get("name") or seo_title
-    seo_image_url = extract_og_image(head)
-    if seo_image_url:
-        # This cannot be used in the importing script just yet, as the search_image property of PageWithMetadata is a
-        # hosted Wagtail image, not a URL.
-        pass
-    author = extract_author(document_soup)
-    return return_class(
-        title=headline,
-        slug=slug,
-        owner=author,
-        seo_title=seo_title,
-        search_description=extract_og_description(head),
-        latest_revision_created_at=get_publication_date(attributes),
-        author=author,
-        og_type=extract_og_type(head),
-        body=json.dumps([{"type": "html", "value": importable_html}]),
-        show_toc=should_show_toc(document_soup),
-    )
+    return return_class(**get_page_args(document_soup, importable_html, attributes, slug))
 
 
 def build_event_page(
     document_soup, importable_html, attributes, slug, return_class=EventPage
 ) -> EventPage:
+    kwargs = get_page_args(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+    )
+    kwargs.pop("show_toc")
     page = cast(
         EventPage,
-        build_underground_basic_page(
-            document_soup=document_soup,
-            importable_html=importable_html,
-            attributes=attributes,
-            slug=slug,
-            return_class=EventPage,
-        ),
+        return_class(**kwargs),
     )
+    page.host = extract_event_host(document_soup)
     page.start_time, page.end_time = extract_event_time(document_soup)
     page.venue = extract_event_venue(document_soup)
-    page.host = extract_event_host(document_soup)
+    page.population = extract_event_population(document_soup)
     return page
 
 
@@ -438,7 +490,7 @@ class Command(BaseCommand):
                 parent_page.refresh_from_db()
                 is_replacing = True
 
-            extracted = _extract_importable_html(html_file, importable_dir)
+            extracted = extract_importable_html(html_file, importable_dir)
             if extracted is None:
                 self.stderr.write(
                     f"  [skip] no element with id='content' found in '{html_file.name}'."

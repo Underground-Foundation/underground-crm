@@ -4,6 +4,7 @@ import django.db.models.deletion
 import djmoney.models.fields
 import djmoney.money
 import phonenumber_field.modelfields
+import underground_crm.contactability
 import uuid
 from django.conf import settings
 from django.db import migrations, models
@@ -92,7 +93,16 @@ class Migration(migrations.Migration):
                         default=uuid.uuid4, editable=False, primary_key=True, serialize=False
                     ),
                 ),
-                ("email", models.EmailField(max_length=254, unique=True)),
+                (
+                    "email",
+                    models.EmailField(
+                        max_length=254,
+                        unique=True,
+                        validators=[
+                            underground_crm.contactability.validate_email_with_deliverability
+                        ],
+                    ),
+                ),
                 (
                     "legacy_id",
                     models.PositiveIntegerField(
@@ -103,19 +113,20 @@ class Migration(migrations.Migration):
                         unique=True,
                     ),
                 ),
-                ("prefix", models.CharField(blank=True, max_length=10)),
-                ("first_name", models.CharField(blank=True, max_length=100)),
-                ("middle_name", models.CharField(blank=True, max_length=100)),
-                ("last_name", models.CharField(blank=True, max_length=100)),
-                ("suffix", models.CharField(blank=True, max_length=20)),
-                ("legal_name", models.CharField(blank=True, max_length=200)),
-                ("preferred_name", models.CharField(blank=True, max_length=100)),
+                ("prefix", models.CharField(blank=True, max_length=10, null=True)),
+                ("first_name", models.CharField(blank=True, max_length=100, null=True)),
+                ("middle_name", models.CharField(blank=True, max_length=100, null=True)),
+                ("last_name", models.CharField(blank=True, max_length=100, null=True)),
+                ("suffix", models.CharField(blank=True, max_length=20, null=True)),
+                ("legal_name", models.CharField(blank=True, max_length=200, null=True)),
+                ("preferred_name", models.CharField(blank=True, max_length=100, null=True)),
                 (
                     "mailing_name",
                     models.CharField(
                         blank=True,
                         help_text="Name as it should appear on postal correspondence.",
                         max_length=200,
+                        null=True,
                     ),
                 ),
                 (
@@ -129,13 +140,23 @@ class Migration(migrations.Migration):
                 (
                     "phone_number",
                     phonenumber_field.modelfields.PhoneNumberField(
-                        blank=True, max_length=128, null=True, region="AU"
+                        blank=True,
+                        db_index=True,
+                        help_text="This should only be used if the phone number is not a mobile phone",
+                        max_length=128,
+                        null=True,
+                        region="AU",
                     ),
                 ),
                 (
                     "mobile_number",
                     phonenumber_field.modelfields.PhoneNumberField(
-                        blank=True, max_length=128, null=True, region="AU"
+                        blank=True,
+                        db_index=True,
+                        help_text="This field should be used where possible",
+                        max_length=128,
+                        null=True,
+                        region="AU",
                     ),
                 ),
                 (
@@ -154,7 +175,7 @@ class Migration(migrations.Migration):
                 (
                     "work_phone_number",
                     phonenumber_field.modelfields.PhoneNumberField(
-                        blank=True, max_length=128, null=True, region="AU"
+                        blank=True, db_index=True, max_length=128, null=True, region="AU"
                     ),
                 ),
                 ("twitter_login", models.CharField(blank=True, max_length=100)),
@@ -166,11 +187,18 @@ class Migration(migrations.Migration):
                         help_text="Raw address string as submitted by the person, before geocoding.",
                     ),
                 ),
-                ("website", models.URLField(blank=True)),
-                ("bio", models.TextField(blank=True)),
-                ("description", models.TextField(blank=True)),
+                (
+                    "website",
+                    models.URLField(
+                        blank=True,
+                        null=True,
+                        validators=[underground_crm.contactability.validate_domain_name],
+                    ),
+                ),
+                ("bio", models.TextField(blank=True, null=True)),
+                ("description", models.TextField(blank=True, null=True)),
                 ("date_of_birth", models.DateField(blank=True, null=True)),
-                ("gender", models.CharField(blank=True, max_length=50)),
+                ("gender", models.CharField(blank=True, max_length=50, null=True)),
                 (
                     "email_opt_in",
                     models.BooleanField(
@@ -568,15 +596,16 @@ class Migration(migrations.Migration):
                         help_text="Whether this person's activity is hidden from public streams.",
                     ),
                 ),
-                ("federal_district", models.CharField(blank=True, max_length=100)),
-                ("state_upper_district", models.CharField(blank=True, max_length=100)),
-                ("state_lower_district", models.CharField(blank=True, max_length=100)),
+                ("federal_district", models.CharField(blank=True, max_length=100, null=True)),
+                ("state_upper_district", models.CharField(blank=True, max_length=100, null=True)),
+                ("state_lower_district", models.CharField(blank=True, max_length=100, null=True)),
                 (
                     "council_district",
                     models.CharField(
                         blank=True,
                         help_text="Local government area (e.g. City of Moreland).",
                         max_length=100,
+                        null=True,
                     ),
                 ),
                 (
@@ -585,6 +614,7 @@ class Migration(migrations.Migration):
                         blank=True,
                         help_text="Ward or suburb-level electoral division within the council area.",
                         max_length=100,
+                        null=True,
                     ),
                 ),
                 (

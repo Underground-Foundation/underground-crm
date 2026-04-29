@@ -13,11 +13,13 @@ dependencies = [
     "Django>=5.0,<6.0",
     "django-money>=3.0",
     "django-q2",
-    "redis",
     "django-phonenumber-field[phonenumbers]",
+    "dnspython>=2.0",
+    "email-validator",
     "Pillow>=10.0",
     "psycopg[binary]",
     "python-dateutil>=2.9.0.post0,<3.0",
+    "redis",
     "wagtail>=6.0,<7.0",
 ]
 

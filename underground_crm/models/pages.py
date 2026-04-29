@@ -205,6 +205,12 @@ class EventPage(BasicPage):
     start_time = models.DateTimeField(null=True)
     end_time = models.DateTimeField(null=True)
     venue = models.ForeignKey(Address, null=True, blank=True, on_delete=models.SET_NULL)
+    # todo: keep this in sync
+    population = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="This is updated automatically. It is only defined as a field so we can migrate legacy events seamlessly",
+    )
     capacity = models.PositiveIntegerField(null=True, blank=True)
 
     @property

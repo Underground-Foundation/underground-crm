@@ -7,6 +7,10 @@ from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
 
 from .address import Address
+from ..contactability import (
+    validate_domain_name,
+    validate_email_with_deliverability,
+)
 
 
 class Tag(models.Model):
@@ -61,7 +65,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Identity ---
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, validators=[validate_email_with_deliverability])
     legacy_id = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -69,15 +73,18 @@ class Person(AbstractBaseUser, PermissionsMixin):
         db_index=True,
         help_text="Person ID from the previous CRM, used for data migration.",
     )
-    prefix = models.CharField(max_length=10, blank=True)
-    first_name = models.CharField(max_length=100, blank=True)
-    middle_name = models.CharField(max_length=100, blank=True)
-    last_name = models.CharField(max_length=100, blank=True)
-    suffix = models.CharField(max_length=20, blank=True)
-    legal_name = models.CharField(max_length=200, blank=True)
-    preferred_name = models.CharField(max_length=100, blank=True)
+    prefix = models.CharField(max_length=10, null=True, blank=True)
+    first_name = models.CharField(max_length=100, null=True, blank=True)
+    middle_name = models.CharField(max_length=100, null=True, blank=True)
+    last_name = models.CharField(max_length=100, null=True, blank=True)
+    suffix = models.CharField(max_length=20, null=True, blank=True)
+    legal_name = models.CharField(max_length=200, null=True, blank=True)
+    preferred_name = models.CharField(max_length=100, null=True, blank=True)
     mailing_name = models.CharField(
-        max_length=200, blank=True, help_text="Name as it should appear on postal correspondence."
+        max_length=200,
+        null=True,
+        blank=True,
+        help_text="Name as it should appear on postal correspondence.",
     )
     record_type = models.SmallIntegerField(
         choices=TYPE_CHOICES,
@@ -85,16 +92,31 @@ class Person(AbstractBaseUser, PermissionsMixin):
         help_text="Whether this record represents an individual or an organisation.",
     )
 
-    # --- Contact ---
-    phone_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
-    mobile_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
+    # --- Contact --- todo: enforce uniqueness during signup
+    phone_number = PhoneNumberField(
+        null=True,
+        blank=True,
+        region=settings.PHONE_REGION,
+        db_index=True,
+        help_text="This should only be used if the phone number is not a mobile phone",
+    )
+    mobile_number = PhoneNumberField(
+        null=True,
+        blank=True,
+        region=settings.PHONE_REGION,
+        db_index=True,
+        help_text="This field should be used where possible",
+    )
     mobile_opt_in = models.BooleanField(
         default=False, help_text="Person has opted in to receive SMS updates."
     )
     is_mobile_bad = models.BooleanField(
         default=False, help_text="Mobile number is known to be invalid or unreachable."
     )
-    work_phone_number = PhoneNumberField(null=True, blank=True, region=settings.PHONE_REGION)
+    # Work number is only here because it was in legacy systems
+    work_phone_number = PhoneNumberField(
+        null=True, blank=True, region=settings.PHONE_REGION, db_index=True
+    )
     twitter_login = models.CharField(max_length=100, blank=True)
     facebook_username = models.CharField(max_length=100, blank=True)
 
@@ -147,13 +169,13 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Professional ---
-    website = models.URLField(blank=True)
-    bio = models.TextField(blank=True)
-    description = models.TextField(blank=True)
+    website = models.URLField(null=True, blank=True, validators=[validate_domain_name])
+    bio = models.TextField(null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
 
     # --- Biographical ---
     date_of_birth = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=50, blank=True)
+    gender = models.CharField(max_length=50, null=True, blank=True)
 
     # --- Tags ---
     tags = models.ManyToManyField(Tag, through="PersonTag", blank=True, related_name="people")
@@ -235,14 +257,18 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Electoral districts (Australian federal system) ---
-    federal_district = models.CharField(max_length=100, blank=True)
-    state_upper_district = models.CharField(max_length=100, blank=True)
-    state_lower_district = models.CharField(max_length=100, blank=True)
+    federal_district = models.CharField(max_length=100, null=True, blank=True)
+    state_upper_district = models.CharField(max_length=100, null=True, blank=True)
+    state_lower_district = models.CharField(max_length=100, null=True, blank=True)
     council_district = models.CharField(
-        max_length=100, blank=True, help_text="Local government area (e.g. City of Moreland)."
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Local government area (e.g. City of Moreland).",
     )
     ward = models.CharField(
         max_length=100,
+        null=True,
         blank=True,
         help_text="Ward or suburb-level electoral division within the council area.",
     )
@@ -286,7 +312,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}".strip()
+        return f"{self.first_name or ''} {self.last_name or ''}".strip()
 
     @property
     def name_or_email(self):

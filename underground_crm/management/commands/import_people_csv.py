@@ -29,9 +29,8 @@ import html
 import http.cookiejar
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
-import phonenumbers
 import re
 import time
 import urllib.error
@@ -41,13 +40,19 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from phonenumbers import PhoneNumberType, phonenumberutil
 from phonenumbers.phonenumber import PhoneNumber
 
 from underground_crm.models import Interaction, Person, PersonNote, Tag
 from underground_crm.models.address import Address
+from underground_crm.contactability import (
+    get_validated_domain_name,
+    get_validated_email_address,
+    parse_verified_phone_number,
+    parse_phone_number_with_verified_type,
+)
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -158,11 +163,31 @@ def _build_address(row, prefix):
     )
 
 
-def parse_phone_number(raw_number: str) -> Optional[PhoneNumber]:
-    try:
-        return phonenumbers.parse(raw_number, region=settings.PHONE_REGION)
-    except phonenumbers.NumberParseException:
-        return None
+def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
+    mobile_number, mobile_type = parse_phone_number_with_verified_type(
+        row.get("mobile_number", "").strip()
+    )
+    phone_number, phone_type = parse_phone_number_with_verified_type(
+        row.get("phone_number", "").strip()
+    )
+
+    if mobile_number:
+        if mobile_type == PhoneNumberType.MOBILE:
+            return mobile_number, phone_number
+        elif mobile_type not in (PhoneNumberType.FIXED_LINE, PhoneNumberType.TOLL_FREE) and (
+            not phone_number or phone_type in (PhoneNumberType.FIXED_LINE,)
+        ):
+            # The input mobile_number is indeed more likely than the phone_number to really be a mobile.
+            return mobile_number, phone_number
+    elif phone_number:
+        if phone_type in (
+            PhoneNumberType.MOBILE,
+            PhoneNumberType.FIXED_LINE_OR_MOBILE,
+            PhoneNumberType.UNKNOWN,
+        ):
+            # The input phone_number could be a mobile number
+            return phone_number, None
+    return mobile_number, phone_number
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +197,7 @@ def parse_phone_number(raw_number: str) -> Optional[PhoneNumber]:
 
 def _person_fields(row):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
-    mobile_number = parse_phone_number(row.get("mobile_number", "").strip())
+    mobile_number, phone_number = get_mobile_and_phone_numbers(row)
     return {
         "prefix": row.get("prefix", "").strip(),
         "first_name": row.get("first_name", "").strip(),
@@ -182,14 +207,14 @@ def _person_fields(row):
         "legal_name": row.get("legal_name", "").strip(),
         "preferred_name": row.get("preferred_name", "").strip(),
         "mailing_name": row.get("mailing_name", "").strip(),
-        "phone_number": parse_phone_number(row.get("phone_number", "").strip()),
-        "work_phone_number": parse_phone_number(row.get("work_phone_number", "").strip()),
+        "phone_number": phone_number,
+        "work_phone_number": parse_verified_phone_number(row.get("work_phone_number", "").strip()),
         "mobile_number": mobile_number,
         "mobile_opt_in": _bool(row.get("mobile_opt_in", "")),
         "is_mobile_bad": _bool(row.get("is_mobile_bad", "")) or not mobile_number,
         "twitter_login": row.get("twitter_login", "").strip(),
         "facebook_username": row.get("facebook_username", "").strip(),
-        "website": row.get("website", "").strip(),
+        "website": get_validated_domain_name(row.get("website", "").strip()),
         "submitted_address": row.get("primary_submitted_address", "").strip(),
         "gender": row.get("sex", "").strip(),
         "date_of_birth": _parse_date(row.get("born_at", "")),
@@ -494,7 +519,7 @@ class Command(BaseCommand):
                 skipped_count += 1
                 continue
 
-            email = row.get("email", "").strip()
+            email = get_validated_email_address(row.get("email", "").strip())
             if not email:
                 # Generate a stable placeholder so the record can exist without a real email.
                 email = f"no-email-{legacy_id}@import.invalid"

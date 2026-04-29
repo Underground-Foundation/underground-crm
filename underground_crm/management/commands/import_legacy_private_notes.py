@@ -26,9 +26,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
-from underground_crm.models import Person, PersonNote
+from underground_crm.models import PersonNote
 
 LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
 LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
@@ -153,16 +154,17 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  Legacy CRM: {LEGACY_WEBSITE_URL}")
         self.stdout.write(f"  Cookie file: {cookie_file}")
+        User = get_user_model()
 
         try:
-            person = Person.objects.get(legacy_id=legacy_person_id)
-        except Person.DoesNotExist as exc:
+            user = User.objects.get(legacy_id=legacy_person_id)
+        except User.DoesNotExist as exc:
             raise CommandError(
-                f"No Person with legacy_id={legacy_person_id} found. "
+                f"No user with legacy_id={legacy_person_id} found. "
                 "Import the person record first."
             ) from exc
 
-        self.stdout.write(f"  Local person: {person} (pk={person.pk})")
+        self.stdout.write(f"  Local user: {user} (pk={user.pk})")
 
         try:
             opener = _build_opener(cookie_file)
@@ -190,8 +192,8 @@ class Command(BaseCommand):
             author = None
             if note["author_legacy_id"]:
                 try:
-                    author = Person.objects.get(legacy_id=note["author_legacy_id"])
-                except Person.DoesNotExist:
+                    author = User.objects.get(legacy_id=note["author_legacy_id"])
+                except User.DoesNotExist:
                     self.stderr.write(
                         f"  Warning: author legacy_id={note['author_legacy_id']}"
                         " not found locally; note will have no author."
@@ -210,7 +212,7 @@ class Command(BaseCommand):
             _, created = PersonNote.objects.get_or_create(
                 legacy_activity_id=note["activity_id"],
                 defaults={
-                    "person": person,
+                    "person": user,
                     "created_by": author,
                     "text": note["text"],
                 },
@@ -224,11 +226,11 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(f"Dry run: {imported} note(s) would be imported for {person}.")
+                self.style.WARNING(f"Dry run: {imported} note(s) would be imported for {user}.")
             )
         else:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Imported {imported} note(s) for {person} " f"({skipped} already existed)."
+                    f"Imported {imported} note(s) for {user} " f"({skipped} already existed)."
                 )
             )
