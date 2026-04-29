@@ -22,12 +22,11 @@ import json
 import phonenumbers
 from dataclasses import dataclass
 from dateutil import parser
-from email.utils import parseaddr
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from zoneinfo import ZoneInfo
 
-from bs4 import BeautifulSoup, PageElement, Tag
+from bs4 import BeautifulSoup, Tag
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
@@ -35,10 +34,10 @@ from wagtail.models import Page, Site
 
 from underground_crm.contactability import (
     get_ambiguous_admin_by_full_name,
-    get_user_by_full_name,
     get_validated_email_address,
+    parse_address,
 )
-from underground_crm.models import UndergroundBasicPage
+from underground_crm.models import Address, UndergroundBasicPage
 from underground_crm.models.pages import EventPage
 from underground_crm.numbers import parse_localized_number
 
@@ -232,7 +231,7 @@ def extract_event_time(
     return parse_event_datetime(time_contents[1])
 
 
-def extract_event_venue(soup: BeautifulSoup) -> Optional[str]:
+def extract_event_venue(soup: BeautifulSoup, create_if_not_found=True) -> Optional[Address]:
     pairs = get_event_detail_pairs(soup)
     if len(pairs) < 2:
         print("Unable to determine event location")
@@ -242,7 +241,22 @@ def extract_event_venue(soup: BeautifulSoup) -> Optional[str]:
     if location_contents[0] != "Where":
         print("Unable to determine location from wrong event detail")
         return None
-    return location_contents[1]
+    address = parse_address(location_contents[1])
+    try:
+        existing_address = Address.objects.get(
+            line1=address.line1,
+            line2=address.line2,
+            line3=address.line3,
+            city=address.city,
+            state=address.state,
+            postcode=address.postcode,
+            country_code=address.postcode,
+        )
+        return existing_address
+    except Address.DoesNotExist:
+        if create_if_not_found:
+            address.save()
+        return address
 
 
 def get_host_by_email_address(email_address: str):

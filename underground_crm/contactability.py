@@ -1,3 +1,4 @@
+import re
 from typing import Callable, Generator, Optional, Tuple
 
 import dns
@@ -8,6 +9,8 @@ from email_validator import EmailNotValidError, validate_email
 import phonenumbers
 from django.conf import settings
 from phonenumbers import PhoneNumber, PhoneNumberType, phonenumberutil
+
+from underground_crm.models import Address
 
 
 def parse_verified_phone_number(raw_number: str) -> Optional[PhoneNumber]:
@@ -109,4 +112,60 @@ def get_ambiguous_admin_by_full_name(full_name: str):
         # Admins first
         ordering_function=lambda x: x.order_by("-is_admin", "-is_staff", "-is_active"),
         allow_ambiguity=True,
+    )
+
+
+_UNIT_NUMBER_RE = re.compile(r"^(\d+)/(.+)$")
+
+
+def _expand_unit_address(segment: str) -> list[str]:
+    """Expand an Australian unit/street segment into two lines.
+
+    "701/5 Ovens Street" → ["Unit 701", "5 Ovens Street"]
+    A segment without a unit prefix is returned as a single-element list.
+    """
+    m = _UNIT_NUMBER_RE.match(segment)
+    if m:
+        return [f"Unit {m.group(1)}", m.group(2).strip()]
+    return [segment]
+
+
+def parse_address(label: str) -> Optional[Address]:
+    """Parse a venue string into an unsaved Address instance.
+
+    Expects comma-separated parts. The final segment is treated as
+    "City [STATE] Postcode" for Australian addresses (e.g. "Brunswick 3056"
+    or "Brunswick VIC 3056"). Any preceding segments become address lines;
+    a segment in "unit/street_number name" format is expanded into two lines
+    ("Unit N" and "street_number name"). Returns None for an empty label.
+
+    If this proves insufficient, we shall use https://pypi.org/project/deepparse/
+    """
+    if not label:
+        return None
+
+    parts = [part.strip() for part in label.split(",")]
+    last = parts[-1].strip()
+
+    # Try "City STATE Postcode", then fall back to "City Postcode"
+    m = re.match(r"^(.*?)\s+([A-Z]{2,3})\s+(\d{4,5})$", last)
+    if m:
+        city, state, postcode = m.group(1).strip(), m.group(2), m.group(3)
+    else:
+        m = re.match(r"^(.*?)\s+(\d{4,5})$", last)
+        city = m.group(1).strip() if m else last
+        state = ""
+        postcode = m.group(2) if m else ""
+
+    lines: list[str] = []
+    for segment in parts[:-1]:
+        lines.extend(_expand_unit_address(segment))
+
+    return Address(
+        line1=lines[0] if len(lines) > 0 else "",
+        line2=lines[1] if len(lines) > 1 else "",
+        line3=lines[2] if len(lines) > 2 else "",
+        city=city,
+        state=state,
+        postcode=postcode,
     )

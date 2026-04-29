@@ -8,6 +8,7 @@ from underground_crm.contactability import get_validated_email_address
 from underground_crm.management.commands.import_pages import (
     extract_event_population,
     extract_event_time,
+    extract_event_venue,
     extract_host_attributes,
     extract_importable_html,
     get_event_detail_pairs,
@@ -111,3 +112,13 @@ class TestEventDetailExtraction(unittest.TestCase):
         self.assertEqual(
             8, population, msg="The sample event had 8 people who had RSVP'd as coming"
         )
+
+    def test_extract_event_venue(self):
+        venue = extract_event_venue(self.event_soup, create_if_not_found=False)
+        self.assertTrue(venue)
+        self.assertEqual(venue.country_code, "AU")
+        self.assertEqual(venue.city, "Brunswick")
+        self.assertEqual(venue.postcode, "3056")
+        self.assertEqual(venue.line1, "Hanging Gardens of Brunswick")
+        self.assertEqual(venue.line2, "Unit 701")
+        self.assertEqual(venue.line3, "5 Ovens Street")
