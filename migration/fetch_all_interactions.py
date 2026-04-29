@@ -12,7 +12,7 @@ Usage:
 Without a person_id, pages through all interactions across all people.
 Outputs newline-delimited JSON to stdout. Redirect to a file for import.
 
-Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
+Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
 the environment (see ../.env).
 """
 
@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from config import LEGACY_API_TOKEN, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
+from config import LEGACY_API_TOKEN, LEGACY_USER_AGENT, LEGACY_ADMIN_URL
 
 HEADERS = {
     "Authorization": f"Bearer {LEGACY_API_TOKEN}",
@@ -35,7 +35,7 @@ HEADERS = {
 
 
 def get(path, params=None):
-    url = f"{LEGACY_WEBSITE_URL}{path}"
+    url = f"{LEGACY_ADMIN_URL}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers=HEADERS)

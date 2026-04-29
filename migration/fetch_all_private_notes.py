@@ -9,7 +9,7 @@ Usage:
 Without a person_id, pages through all signups and fetches notes for each.
 Outputs newline-delimited JSON to stdout. Redirect to a file for import.
 
-Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
+Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
 LEGACY_ADMIN_COOKIE_FILE from the environment (see ../.env).
 """
 
@@ -23,7 +23,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_WEBSITE_URL
+from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_ADMIN_URL
 
 # --- HTTP setup with cookie jar ---
 cookie_jar = http.cookiejar.MozillaCookieJar(LEGACY_ADMIN_COOKIE_FILE)
@@ -37,12 +37,12 @@ opener.addheaders = [
 
 
 def get(path, params=None, referer=None):
-    url = f"{LEGACY_WEBSITE_URL}{path}"
+    url = f"{LEGACY_ADMIN_URL}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(
         url,
-        headers={"Referer": referer or f"{LEGACY_WEBSITE_URL}/admin/signups"},
+        headers={"Referer": referer or f"{LEGACY_ADMIN_URL}/admin/signups"},
     )
     try:
         with opener.open(req) as resp:
@@ -74,7 +74,7 @@ def fetch_private_notes_for_person(person_id):
         data, status = get(
             "/admin/activities/signup.json",
             params,
-            referer=f"{LEGACY_WEBSITE_URL}/admin/signups/{person_id}",
+            referer=f"{LEGACY_ADMIN_URL}/admin/signups/{person_id}",
         )
         if status != 200:
             print(f"  [warn] person {person_id} page {page}: HTTP {status}", file=sys.stderr)
@@ -118,7 +118,7 @@ def fetch_all_person_ids():
         params = {"limit": 100}
         if next_cursor:
             params["next"] = next_cursor
-        url = f"{LEGACY_WEBSITE_URL}/api/v2/signups?" + urllib.parse.urlencode(params)
+        url = f"{LEGACY_ADMIN_URL}/api/v2/signups?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(
             url,
             headers={

@@ -34,7 +34,7 @@ def _require(name):
 
 
 LEGACY_API_TOKEN = _require("LEGACY_API_TOKEN")
-LEGACY_WEBSITE_URL = _require("LEGACY_WEBSITE_URL").rstrip("/")
+LEGACY_ADMIN_URL = _require("LEGACY_ADMIN_URL").rstrip("/")
 LEGACY_API_URL = _require("LEGACY_API_URL").rstrip("/")
 LEGACY_USER_AGENT = _require("LEGACY_USER_AGENT")
 LEGACY_ADMIN_COOKIE_FILE = _require("LEGACY_ADMIN_COOKIE_FILE")

@@ -7,12 +7,11 @@ Usage:
 Without a person ID, imports interactions for all people in the legacy CRM.
 With a person ID, imports only that person's interactions.
 
-Reads LEGACY_WEBSITE_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
+Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
 the environment (see .env.example).
 """
 
 import json
-import os
 import time
 import urllib.error
 import urllib.parse
@@ -21,11 +20,12 @@ import urllib.request
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.dateparse import parse_datetime
 
+from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import Interaction, Person
 
-LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
-LEGACY_API_TOKEN = os.environ.get("LEGACY_API_TOKEN", "")
-LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
+LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
+LEGACY_API_TOKEN = require_env("LEGACY_API_TOKEN")
+LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
 
 
 def _make_headers():
@@ -38,7 +38,7 @@ def _make_headers():
 
 
 def _get(path, params=None):
-    url = f"{LEGACY_WEBSITE_URL}{path}"
+    url = f"{LEGACY_ADMIN_URL}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers=_make_headers())
@@ -128,14 +128,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Dry run — nothing will be written."))
 
         for var, val in [
-            ("LEGACY_WEBSITE_URL", LEGACY_WEBSITE_URL),
+            ("LEGACY_ADMIN_URL", LEGACY_ADMIN_URL),
             ("LEGACY_API_TOKEN", LEGACY_API_TOKEN),
             ("LEGACY_USER_AGENT", LEGACY_USER_AGENT),
         ]:
             if not val:
                 raise CommandError(f"{var} is not set. Add it to .env.")
 
-        self.stdout.write(f"  Legacy CRM: {LEGACY_WEBSITE_URL}")
+        self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
 
         # --- Fetch raw interactions from legacy CRM ---
         try:

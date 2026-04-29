@@ -37,7 +37,7 @@ from underground_crm.contactability import (
     get_validated_email_address,
     parse_address,
 )
-from underground_crm.models import Address, Blog, UndergroundBasicPage
+from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
 from underground_crm.models.pages import EventPage
 from underground_crm.numbers import parse_localized_number
 
@@ -497,8 +497,8 @@ class Command(BaseCommand):
                 "Run migrations and create a site before importing pages."
             )
 
-        parent_page = site.root_page
-        self.stdout.write(f"Importing pages under '{parent_page.title}' (pk={parent_page.pk}).")
+        root_page = site.root_page
+        self.stdout.write(f"Importing pages under '{root_page.title}' (pk={root_page.pk}).")
 
         html_files = sorted(domain_dir.glob("*.html"))
         if not html_files:
@@ -536,7 +536,7 @@ class Command(BaseCommand):
                     f"  Deleting existing page '{slug}' (pk={existing.pk}) for replacement."
                 )
                 existing.delete()
-                parent_page.refresh_from_db()
+                root_page.refresh_from_db()
                 is_replacing = True
 
             extracted = extract_importable_html(html_file, importable_dir)
@@ -555,11 +555,16 @@ class Command(BaseCommand):
                 attributes=attributes,
                 slug=slug,
             )
-            parent_page.add_child(instance=new_page)
+            parent_page_id = attributes.get("parent_id")
+            if parent_page_id:
+                parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
+                parent_page.add_child(instance=new_page)
+            else:
+                root_page.add_child(instance=new_page)
 
             self.stdout.write(
                 f"  Created {new_page.__class__.__name__} '{new_page.slug}'"
-                f" (slug='{slug}') under '{parent_page.title}'."
+                f" (slug='{slug}') under '{root_page.title}'."
             )
 
             if is_replacing:

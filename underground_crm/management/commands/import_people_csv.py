@@ -20,7 +20,7 @@ Optional flags:
                         database.
 
 The legacy CRM connection is configured via environment variables (see .env.example):
-  LEGACY_WEBSITE_URL, LEGACY_API_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT,
+  LEGACY_ADMIN_URL, LEGACY_API_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT,
   LEGACY_ADMIN_COOKIE_FILE
 """
 
@@ -28,7 +28,6 @@ import csv
 import html
 import http.cookiejar
 import json
-import os
 from typing import Optional, Tuple
 
 import re
@@ -42,9 +41,10 @@ from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from phonenumbers import PhoneNumberType, phonenumberutil
+from phonenumbers import PhoneNumberType
 from phonenumbers.phonenumber import PhoneNumber
 
+from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import Interaction, Person, PersonNote, Tag
 from underground_crm.models.address import Address
 from underground_crm.contactability import (
@@ -58,10 +58,10 @@ from underground_crm.contactability import (
 # Environment
 # ---------------------------------------------------------------------------
 
-_LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
-_LEGACY_API_TOKEN = os.environ.get("LEGACY_API_TOKEN", "")
-_LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
-_LEGACY_ADMIN_COOKIE_FILE = os.environ.get("LEGACY_ADMIN_COOKIE_FILE", "")
+_LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
+_LEGACY_API_TOKEN = require_env("LEGACY_API_TOKEN")
+_LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
+_LEGACY_ADMIN_COOKIE_FILE = require_env("LEGACY_ADMIN_COOKIE_FILE")
 
 _LOCAL_TZ = ZoneInfo("Australia/Melbourne")
 
@@ -270,7 +270,7 @@ _METHOD_MAP = {
 
 
 def _api_get(path, params=None):
-    url = f"{_LEGACY_WEBSITE_URL}{path}"
+    url = f"{_LEGACY_ADMIN_URL}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers=_LEGACY_API_HEADERS)
@@ -370,10 +370,10 @@ def _fetch_private_notes(opener, legacy_person_id):
                 "type_id": "",
             }
         )
-        url = f"{_LEGACY_WEBSITE_URL}/admin/activities/signup.json?{params}"
+        url = f"{_LEGACY_ADMIN_URL}/admin/activities/signup.json?{params}"
         req = urllib.request.Request(
             url,
-            headers={"Referer": f"{_LEGACY_WEBSITE_URL}/admin/signups/{legacy_person_id}"},
+            headers={"Referer": f"{_LEGACY_ADMIN_URL}/admin/signups/{legacy_person_id}"},
         )
         with opener.open(req) as resp:
             data = json.loads(resp.read())
@@ -477,9 +477,9 @@ class Command(BaseCommand):
             raise CommandError("LEGACY_API_TOKEN is required for --with-interactions.")
         if with_notes and not _LEGACY_ADMIN_COOKIE_FILE:
             raise CommandError("LEGACY_ADMIN_COOKIE_FILE is required for --with-notes.")
-        if (with_interactions or with_notes) and not _LEGACY_WEBSITE_URL:
+        if (with_interactions or with_notes) and not _LEGACY_ADMIN_URL:
             raise CommandError(
-                "LEGACY_WEBSITE_URL is required for --with-interactions / --with-notes."
+                "LEGACY_ADMIN_URL is required for --with-interactions / --with-notes."
             )
 
         try:

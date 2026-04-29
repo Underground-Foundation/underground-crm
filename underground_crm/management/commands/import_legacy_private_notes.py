@@ -8,7 +8,7 @@ Requires an admin session cookie file (Netscape format) for the legacy CRM.
 Export your cookies from the browser using a cookie export extension,
 then point --cookie-file at the file.
 
-Reads LEGACY_WEBSITE_URL, LEGACY_USER_AGENT, and LEGACY_ADMIN_COOKIE_FILE from
+Reads LEGACY_ADMIN_URL, LEGACY_USER_AGENT, and LEGACY_ADMIN_COOKIE_FILE from
 the environment (see .env.example). The cookie file path can be overridden
 with --cookie-file.
 
@@ -19,7 +19,6 @@ with --cookie-file.
 import html
 import http.cookiejar
 import json
-import os
 import re
 import time
 import urllib.error
@@ -29,11 +28,12 @@ import urllib.request
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
+from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import PersonNote
 
-LEGACY_WEBSITE_URL = os.environ.get("LEGACY_WEBSITE_URL", "").rstrip("/")
-LEGACY_USER_AGENT = os.environ.get("LEGACY_USER_AGENT", "")
-LEGACY_ADMIN_COOKIE_FILE = os.environ.get("LEGACY_ADMIN_COOKIE_FILE", "")
+LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
+LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
+LEGACY_ADMIN_COOKIE_FILE = require_env("LEGACY_ADMIN_COOKIE_FILE")
 
 
 def _build_opener(cookie_file):
@@ -57,10 +57,10 @@ def _fetch_activities(opener, legacy_person_id, page=1):
             "type_id": "",
         }
     )
-    url = f"{LEGACY_WEBSITE_URL}/admin/activities/signup.json?{params}"
+    url = f"{LEGACY_ADMIN_URL}/admin/activities/signup.json?{params}"
     req = urllib.request.Request(
         url,
-        headers={"Referer": f"{LEGACY_WEBSITE_URL}/admin/signups/{legacy_person_id}"},
+        headers={"Referer": f"{LEGACY_ADMIN_URL}/admin/signups/{legacy_person_id}"},
     )
     with opener.open(req) as resp:
         return json.loads(resp.read())
@@ -145,14 +145,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Dry run — nothing will be written."))
 
         for var, val in [
-            ("LEGACY_WEBSITE_URL", LEGACY_WEBSITE_URL),
+            ("LEGACY_ADMIN_URL", LEGACY_ADMIN_URL),
             ("LEGACY_USER_AGENT", LEGACY_USER_AGENT),
             ("LEGACY_ADMIN_COOKIE_FILE", cookie_file),
         ]:
             if not val:
                 raise CommandError(f"{var} is not set. Add it to .env or pass --cookie-file.")
 
-        self.stdout.write(f"  Legacy CRM: {LEGACY_WEBSITE_URL}")
+        self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
         self.stdout.write(f"  Cookie file: {cookie_file}")
         User = get_user_model()
 

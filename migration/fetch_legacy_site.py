@@ -2,7 +2,7 @@
 """
 Crawl the legacy party website using the Cloudflare Browser Rendering API.
 
-Initiates a crawl job for LEGACY_WEBSITE_URL, polls until it completes,
+Initiates a crawl job for LEGACY_ADMIN_URL, polls until it completes,
 then outputs each crawled page as a newline-delimited JSON record to stdout.
 
 Usage:
@@ -10,7 +10,7 @@ Usage:
   python fetch_legacy_site.py --depth 3
   python fetch_legacy_site.py --formats markdown html
 
-Reads LEGACY_WEBSITE_URL, CLOUDFLARE_TOKEN, and CLOUDFLARE_ACCOUNT_ID
+Reads LEGACY_ADMIN_URL, CLOUDFLARE_TOKEN, and CLOUDFLARE_ACCOUNT_ID
 from the environment (see ../.env).
 """
 
@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from config import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_TOKEN, LEGACY_WEBSITE_URL
+from config import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_TOKEN, LEGACY_ADMIN_URL
 
 CRAWL_URL = (
     f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/browser-rendering/crawl"
@@ -128,7 +128,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-job_id = start_crawl(LEGACY_WEBSITE_URL, args.depth, args.formats)
+job_id = start_crawl(LEGACY_ADMIN_URL, args.depth, args.formats)
 result = poll_until_done(job_id)
 
 records = result.get("records", [])

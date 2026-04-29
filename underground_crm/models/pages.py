@@ -98,6 +98,7 @@ class BasicPage(PageWithMetadata):
 
     is_creatable = False
 
+    legacy_id = models.PositiveIntegerField(blank=True, null=True)
     body = StreamField(
         [
             (
