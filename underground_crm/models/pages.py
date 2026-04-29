@@ -188,6 +188,18 @@ class UndergroundBasicPage(BasicPage):
     )
     default = True
 
+    content_panels = BasicPage.content_panels + [
+        FieldPanel("show_toc"),
+    ]
+
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading="Content"),
+            ObjectList(PageWithMetadata.promote_panels, heading="Metadata"),
+            ObjectList(PageWithMetadata.visibility_panels, heading="Visibility"),
+        ]
+    )
+
     class Meta:
         verbose_name = "Basic Page"
 
