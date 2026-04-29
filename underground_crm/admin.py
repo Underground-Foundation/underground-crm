@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
+from .forms.person_filter import PersonFilterAdminForm
 from .models import (
     Address,
     Donation,
@@ -9,9 +10,32 @@ from .models import (
     Membership,
     MembershipType,
     Person,
+    PersonFilter,
     PersonNote,
     Tag,
 )
+
+
+class SavedFilterListFilter(admin.SimpleListFilter):
+    """
+    Populates the Person changelist sidebar with all saved PersonFilters.
+    Selecting one applies its stored criteria to the queryset.
+    """
+
+    title = "Saved filter"
+    parameter_name = "saved_filter"
+
+    def lookups(self, request, model_admin):
+        return PersonFilter.objects.values_list("id", "name")
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        try:
+            pf = PersonFilter.objects.get(pk=self.value())
+        except PersonFilter.DoesNotExist:
+            return queryset
+        return pf.apply(queryset)
 
 
 class PersonNoteInline(admin.TabularInline):
@@ -43,6 +67,7 @@ class PersonAdmin(UserAdmin):
         "created_at",
     ]
     list_filter = [
+        SavedFilterListFilter,
         "is_supporter",
         "is_volunteer",
         "is_donor",
@@ -229,3 +254,11 @@ class InteractionAdmin(admin.ModelAdmin):
     list_filter = ["method", "status"]
     search_fields = ["person__email", "person__first_name", "person__last_name", "note"]
     readonly_fields = ["created_at"]
+
+
+@admin.register(PersonFilter)
+class PersonFilterAdmin(admin.ModelAdmin):
+    form = PersonFilterAdminForm
+    list_display = ["name", "description"]
+    search_fields = ["name", "description"]
+    fieldsets = ((None, {"fields": ("name", "description", "criteria")}),)

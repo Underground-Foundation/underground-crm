@@ -46,7 +46,7 @@ def fetch_pages_json(
     admin_url: str, api_headers: dict, site_id: int, page_number: int = 1, page_size=MAX_PAGE_SIZE
 ) -> Tuple[Optional[List[dict]], Optional[str]]:
     url = f"{admin_url}/api/v2/pages?" + urllib.parse.urlencode(
-        {"page[size": page_number, "page[size]": page_size, "filter[site_id]": site_id}
+        {"page[number]": page_number, "page[size]": page_size, "filter[site_id]": site_id}
     )
     req = urllib.request.Request(url, headers=api_headers)
     try:

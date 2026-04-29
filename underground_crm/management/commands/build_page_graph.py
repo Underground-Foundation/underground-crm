@@ -38,14 +38,16 @@ class Command(BaseCommand):
         api_headers = get_api_headers()
         all_pages = []
         last_page: Optional[list] = None
+        page_number = 1
         while last_page is None or len(last_page) >= MAX_PAGE_SIZE:
+            self.stdout.write(f"Fetching page {page_number}")
             last_page, error_msg = fetch_pages_json(
-                admin_url, api_headers, site_id=site_id, page_number=1
+                admin_url, api_headers, site_id=site_id, page_number=page_number
             )
             if error_msg or not last_page:
                 break
             all_pages.extend(last_page)
-            break
+            page_number += 1
         with io.open(pages_file_path, "w") as output_io:
             json.dump(all_pages, output_io, indent=2)
         self.stdout.write(f"Wrote {len(all_pages)} pages to {pages_file_path}")
