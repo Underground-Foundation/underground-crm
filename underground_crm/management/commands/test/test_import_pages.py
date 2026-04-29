@@ -11,6 +11,7 @@ from underground_crm.management.commands.import_pages import (
     extract_event_venue,
     extract_host_attributes,
     extract_importable_html,
+    extract_page_size,
     get_event_detail_pairs,
     get_host_by_email_address,
     parse_event_datetime,
@@ -122,3 +123,16 @@ class TestEventDetailExtraction(unittest.TestCase):
         self.assertEqual(venue.line1, "Hanging Gardens of Brunswick")
         self.assertEqual(venue.line2, "Unit 701")
         self.assertEqual(venue.line3, "5 Ovens Street")
+
+
+class TestBlogExtraction(unittest.TestCase):
+    blog_html_file = Path(__file__).parent / "blog_sample.html"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.blog_soup, _ = extract_importable_html(cls.blog_html_file, importable_dir=None)
+        cls.assertTrue(cls, cls.blog_soup)
+
+    def test_extract_page_size(self):
+        page_size = extract_page_size(self.blog_soup)
+        self.assertEqual(10, page_size)

@@ -37,7 +37,7 @@ from underground_crm.contactability import (
     get_validated_email_address,
     parse_address,
 )
-from underground_crm.models import Address, UndergroundBasicPage
+from underground_crm.models import Address, Blog, UndergroundBasicPage
 from underground_crm.models.pages import EventPage
 from underground_crm.numbers import parse_localized_number
 
@@ -399,9 +399,44 @@ def build_event_page(
     return page
 
 
+def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
+    content_div = soup.find("div", id="content")
+    if not content_div:
+        print(f"No content div could be found for this blog")
+        return None
+    ul = content_div.find(
+        "ul"
+    )  # The highest list in the content soup will be the list of blog posts
+    if not ul:
+        print(f"No ul could be found for this blog")
+        return None
+    list_items = ul.find_all("li", recursive=False)
+    if not list_items:
+        print(f"No list items for this blog")
+        return None
+    return len(list_items)
+
+
+def build_blog_page(document_soup, importable_html, attributes, slug, return_class=Blog) -> Blog:
+    kwargs = get_page_args(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+    )
+    kwargs.pop("show_toc")
+    page = cast(
+        Blog,
+        return_class(**kwargs),
+    )
+    page.page_size = extract_page_size(document_soup)
+    return page
+
+
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
     "Event": build_event_page,
+    "Blog": build_blog_page,
 }
 
 

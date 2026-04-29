@@ -177,11 +177,8 @@ class BasicPage(PageWithMetadata):
 
 class UndergroundBasicPage(BasicPage):
     """
-    Extends BasicPage with a table-of-contents control. Intended as a base
-    class for theme-specific page types; not directly creatable.
+    Extends BasicPage with a table-of-contents control.
     """
-
-    is_creatable = False
 
     show_toc = models.BooleanField(
         default=False,
@@ -191,10 +188,41 @@ class UndergroundBasicPage(BasicPage):
     default = True
 
     class Meta:
-        verbose_name = "Underground Basic Page"
+        verbose_name = "Basic Page"
+
+
+class Blog(BasicPage):
+    """
+    A paginated blog index page. Inherits the StreamField body from BasicPage
+    and adds a configurable page size for child post listings.
+    """
+
+    is_creatable = True
+
+    page_size = models.PositiveIntegerField(
+        default=10,
+        help_text="Number of posts to display per page.",
+    )
+
+    content_panels = BasicPage.content_panels + [
+        FieldPanel("page_size"),
+    ]
+
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading="Content"),
+            ObjectList(PageWithMetadata.promote_panels, heading="Metadata"),
+            ObjectList(PageWithMetadata.visibility_panels, heading="Visibility"),
+        ]
+    )
+
+    class Meta:
+        verbose_name = "Blog"
 
 
 class EventPage(BasicPage):
+    is_creatable = True
+
     host = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
