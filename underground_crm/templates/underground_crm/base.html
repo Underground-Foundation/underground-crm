@@ -1,12 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
+{% load static wagtailcore_tags %}<!DOCTYPE html>
+<html lang="en-AU" id="bg-canvas" class="bg-gray-mist h-100">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{% endblock %}</title>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ page.title }}{% endblock %}</title>
+  {% block styles %}
+  {% endblock %}
+
+  {% block extra_styles %}
+  {% endblock %}
+
   {% block extra_head %}{% endblock %}
 </head>
-<body>
-  {% block content %}{% endblock %}
+<body class="{% block body_class %}{% endblock %}{% block extra_body_class %}{% endblock %}">
+  {% block nav %}
+  <nav id="header-nav" class="navbar">
+    <div class="container-fluid px-3">
+      <a class="navbar-brand" href="/">Home</a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarToggler"
+              aria-controls="navbarToggler" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+  </nav>
+
+  {% endblock %}
+
+  <div class="w-100 pb-4">
+    {% block page_header %}{% endblock %}
+    {% block page_body %}{% endblock %}
+  </div>
+
+  {% block footer %}
+  {% endblock %}
+
+  {% block javascript %}
+  {% endblock %}
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

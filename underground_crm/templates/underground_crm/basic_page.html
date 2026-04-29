@@ -1,11 +1,24 @@
 {% extends "underground_crm/base.html" %}
-{% load wagtailcore_tags %}
+{% load wagtailcore_tags wagtailimages_tags static %}
 
-{% block title %}{{ page.title }}{% endblock %}
-
-{% block content %}
-<main>
-  <h1>{{ page.title }}</h1>
-  {% include_block page.body %}
-</main>
+{% block page_body %}
+  <div class="row">
+    <div class="col-12">
+      <main id="content" role="main" data-spy="scroll" data-target="#toc">
+        <div class="container content-pages-show-basic-wide">
+          <div class="row">
+            <div class="col-12 mx-auto">
+              <div class="content-wrapper">
+                <div id="page-content" class="my-2 mx-1 p-3">
+                  {% for block in page.body %}
+                    {% include_block block %}
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
 {% endblock %}
