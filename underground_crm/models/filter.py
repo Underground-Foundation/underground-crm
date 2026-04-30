@@ -94,6 +94,7 @@ class PeopleFilter(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200, unique=True)
+    updated_at = models.DateTimeField(auto_now=True)
     description = models.TextField(
         blank=True,
         help_text="Optional human-readable description of who this filter selects.",

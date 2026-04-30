@@ -43,7 +43,7 @@ class PeopleFilterAdminForm(forms.ModelForm):
         from underground_crm.models.filter import PeopleFilter
 
         current_pk = self.instance.pk if self.instance and self.instance.pk else None
-        qs = PeopleFilter.objects.all()
+        qs = PeopleFilter.objects.order_by("-updated_at")
         if current_pk:
             qs = qs.exclude(pk=current_pk)
         people_filters = [{"id": str(f.pk), "label": f.name} for f in qs]
