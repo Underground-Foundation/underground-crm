@@ -65,13 +65,16 @@
 {% endblock %}
 
 {% block sidebar %}
-<div id="content-related" style="padding-left: 1rem;">
-    <button type="button" id="evaluation-sidebar-toggle" title="Toggle display options" style="
-        background: none; border: none; cursor: pointer;
-        font-size: 1.2rem; font-weight: bold; color: var(--link-fg);
-        padding: 0.5rem 0; display: block; width: 100%; text-align: left;
-    ">&laquo;</button>
-    <div id="evaluation-sidebar-content">
+<style>
+#content-related { padding: 0; width: 23px; }
+#content-main { width: calc(100% - 23px); }
+#content-related.expanded { max-width: 260px; width:100%; }
+#content-main.sidebar-expanded { width: calc(100% - 260px); }
+#evaluation-sidebar-toggle { margin-left: auto; border-right: 0; border-left: 1px solid var(--hairline-color); min-height: 200px; align-self: stretch; }
+#evaluation-sidebar-toggle::before { content: '\00BB'; }
+</style>
+<div id="content-related" style="display: flex; align-items: stretch;">
+    <div id="evaluation-sidebar-content" style="display: none; padding: 0.5rem;">
         <div class="module" id="evaluation-filters">
             <h2>{% trans "Display options" %}</h2>
             <form method="get">
@@ -90,16 +93,20 @@
             </form>
         </div>
     </div>
+    <button type="button" id="evaluation-sidebar-toggle" class="sticky toggle-nav-sidebar" title="Toggle display options"></button>
 </div>
 <script>
 (function () {
     var STORAGE_KEY = 'evaluation-sidebar-collapsed';
     var btn = document.getElementById('evaluation-sidebar-toggle');
     var content = document.getElementById('evaluation-sidebar-content');
+    var related = document.getElementById('content-related');
+    var main = document.getElementById('content-main');
 
     function setCollapsed(collapsed) {
         content.style.display = collapsed ? 'none' : '';
-        btn.innerHTML = collapsed ? '&raquo;' : '&laquo;';
+        related.classList.toggle('expanded', !collapsed);
+        main.classList.toggle('sidebar-expanded', !collapsed);
         localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '');
     }
 
