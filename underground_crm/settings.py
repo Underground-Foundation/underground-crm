@@ -49,6 +49,9 @@ INSTALLED_APPS = [
     "phonenumber_field",
     # https://django-q2.readthedocs.io/en/master/install.html
     "django_q",
+    # Django REST framework
+    "rest_framework",
+    "rest_framework_simplejwt",
     # Django
     "django.contrib.admin",
     "django.contrib.auth",
@@ -130,6 +133,16 @@ DATABASES = {
 # Wagtail
 WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
 WAGTAIL_SITE_NAME = "Underground CRM"
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
 
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"

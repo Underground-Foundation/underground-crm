@@ -12,6 +12,7 @@ from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
 urlpatterns = [
+    path("api/", include("underground_crm.api.urls")),
     path("django-admin/", admin.site.urls),
     path("cms/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
