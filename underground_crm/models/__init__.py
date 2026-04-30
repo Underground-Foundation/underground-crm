@@ -7,7 +7,6 @@ from .membership import Membership, MembershipType
 from .note import PersonNote
 from .pages import BasicPage, Blog, UndergroundBasicPage
 from .person import Person, Tag
-from .redirection import UrlRedirection
 
 __all__ = [
     "Address",
@@ -23,5 +22,4 @@ __all__ = [
     "UndergroundBasicPage",
     "Person",
     "Tag",
-    "UrlRedirection",
 ]

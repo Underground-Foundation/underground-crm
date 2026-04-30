@@ -7,7 +7,7 @@ from django.db.models import Q
 
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
-# field_type must be one of: "text", "boolean", "integer".
+# field_type must be one of: "text", "boolean", "integer", "filter".
 PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("first_name", "First name", "text"),
     ("last_name", "Last name", "text"),
@@ -35,6 +35,7 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("inferred_support_level", "Inferred support level", "integer"),
     ("priority_level", "Priority level", "integer"),
     ("donations_count", "Donations count", "integer"),
+    ("__filter__", "People filter", "filter"),
 ]
 
 # Operators available for each field type.
@@ -60,6 +61,9 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
         ("gt", "greater than", True),
         ("lt", "less than", True),
         ("isnull", "is not set", False),
+    ],
+    "filter": [
+        ("matches", "matches", True),
     ],
 }
 
@@ -111,22 +115,38 @@ class PeopleFilter(models.Model):
     # Public API
     # ------------------------------------------------------------------
 
-    def apply(self, queryset):
+    def apply(self, queryset, _seen: frozenset = frozenset()):
         """Return the queryset narrowed by this filter's criteria tree."""
-        return queryset.filter(self._build_q(self.criteria))
+        seen = _seen | {self.pk}
+        return queryset.filter(self._build_q(self.criteria, seen))
+
+    @property
+    def sql(self) -> str:
+        """Return the SQL that this filter would generate against the Person table."""
+        from .person import Person
+
+        return str(self.apply(Person.objects.all()).query)
+
+    @property
+    def evaluation_link(self) -> str:
+        from django.urls import reverse
+        from django.utils.html import format_html
+
+        url = reverse("admin:underground_crm_peoplefilter_evaluate", args=[self.pk])
+        return format_html('<a href="{}">Evaluate</a>', url)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_q(self, node: dict) -> Q:
+    def _build_q(self, node: dict, seen: frozenset) -> Q:
         logic = node.get("logic", "AND")
         q_list: list[Q] = []
         for rule in node.get("rules", []):
             if "field" in rule:
-                q_list.append(self._rule_to_q(rule))
+                q_list.append(self._rule_to_q(rule, seen))
             elif "rules" in rule:
-                q_list.append(self._build_q(rule))
+                q_list.append(self._build_q(rule, seen))
         if not q_list:
             return Q()
         result = q_list[0]
@@ -134,10 +154,22 @@ class PeopleFilter(models.Model):
             result = (result & q) if logic == "AND" else (result | q)
         return result
 
-    def _rule_to_q(self, rule: dict) -> Q:
+    def _rule_to_q(self, rule: dict, seen: frozenset) -> Q:
         field: str = rule["field"]
         op: str = rule["operator"]
         value: Any = rule.get("value")
+
+        if field == "__filter__":
+            try:
+                sub_filter = PeopleFilter.objects.get(pk=value)
+            except PeopleFilter.DoesNotExist:
+                return Q(pk__in=[])
+            if sub_filter.pk in seen:
+                return Q(pk__in=[])
+            from .person import Person
+
+            sub_qs = sub_filter.apply(Person.objects.all(), _seen=seen)
+            return Q(pk__in=sub_qs)
 
         if op == "isnull":
             return Q(**{f"{field}__isnull": True})

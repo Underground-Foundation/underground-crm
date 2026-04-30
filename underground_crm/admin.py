@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.template.response import TemplateResponse
+from django.urls import path
 
 from .forms.person_filter import PeopleFilterAdminForm
 from .models import (
@@ -14,6 +16,7 @@ from .models import (
     PersonNote,
     Tag,
 )
+from .models.person import PersonTag
 
 
 class SavedFilterListFilter(admin.SimpleListFilter):
@@ -36,6 +39,12 @@ class SavedFilterListFilter(admin.SimpleListFilter):
         except PeopleFilter.DoesNotExist:
             return queryset
         return pf.apply(queryset)
+
+
+class PersonTagInline(admin.TabularInline):
+    model = PersonTag
+    extra = 1
+    fields = ["tag"]
 
 
 class PersonNoteInline(admin.TabularInline):
@@ -79,7 +88,7 @@ class PersonAdmin(UserAdmin):
     ]
     search_fields = ["email", "first_name", "last_name"]
     readonly_fields = ["created_at", "updated_at"]
-    inlines = [PersonNoteInline, InteractionInline]
+    inlines = [PersonTagInline, PersonNoteInline, InteractionInline]
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -259,6 +268,47 @@ class InteractionAdmin(admin.ModelAdmin):
 @admin.register(PeopleFilter)
 class PeopleFilterAdmin(admin.ModelAdmin):
     form = PeopleFilterAdminForm
-    list_display = ["name", "description"]
+    list_display = ["name", "description", "evaluation_link"]
     search_fields = ["name", "description"]
-    fieldsets = ((None, {"fields": ("name", "description", "criteria")}),)
+    readonly_fields = ["sql", "evaluation_link"]
+
+    def get_fieldsets(self, request, obj=None):
+        base = [(None, {"fields": ("name", "description", "criteria")})]
+        if obj is not None:
+            base.append((None, {"fields": ("evaluation_link",)}))
+            base.append(("Generated SQL", {"fields": ("sql",)}))
+        return base
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "people-filter-evaluation/<uuid:pk>/",
+                self.admin_site.admin_view(self.evaluation_view),
+                name="underground_crm_peoplefilter_evaluate",
+            ),
+        ]
+        return custom + urls
+
+    def evaluation_view(self, request, pk):
+        from django.shortcuts import get_object_or_404
+
+        people_filter = get_object_or_404(PeopleFilter, pk=pk)
+        people = people_filter.apply(Person.objects.prefetch_related("tags")).order_by(
+            "last_name", "first_name"
+        )
+        show_donations = "show-donations" in request.GET
+        show_engagement = "show-engagement" in request.GET
+        context = {
+            **self.admin_site.each_context(request),
+            "people_filter": people_filter,
+            "people": people,
+            "show_donations": show_donations,
+            "show_engagement": show_engagement,
+            "title": f"Evaluate: {people_filter.name}",
+        }
+        return TemplateResponse(
+            request,
+            "admin/underground_crm/peoplefilter/evaluate.html",
+            context,
+        )

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -322,6 +323,21 @@ class Person(AbstractBaseUser, PermissionsMixin):
     def first_name_or_friend(self):
         return self.first_name or "Friend"
 
+    @property
+    def age(self) -> int | None:
+        if self.date_of_birth is None:
+            return None
+        today = date.today()
+        return (
+            today.year
+            - self.date_of_birth.year
+            - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+        )
+
+    @property
+    def latest_engagement(self):
+        return self.engagements.first()
+
 
 class PersonTag(models.Model):
     """Explicit through model for Person.tags, carrying a UUID PK for federation support."""
@@ -331,5 +347,7 @@ class PersonTag(models.Model):
     tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
 
     class Meta:
+        verbose_name = "tag"
+        verbose_name_plural = "tags"
         db_table = "underground_crm_person_tags"
         unique_together = [("person", "tag")]

@@ -1,0 +1,113 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static humanize %}
+
+{% block title %}Evaluate: {{ people_filter.name }} | {{ site_title|default:_("Django administration") }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_changelist' %}">People filters</a>
+    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">{{ people_filter.name }}</a>
+    &rsaquo; Evaluate
+</div>
+{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    {% if people_filter.description %}
+    <p>{{ people_filter.description }}</p>
+    {% endif %}
+    <p><a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">Edit filter</a></p>
+
+    <p>{{ people|length }} people match this filter.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Age</th>
+                {% if show_donations %}<th>Donations</th>{% endif %}
+                {% if show_engagement %}<th>Latest engagement</th>{% endif %}
+                <th>Tags</th>
+                <th>Staff</th>
+                <th>Admin</th>
+                <th>Active</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for person in people %}
+            <tr>
+                <td>
+                    <a href="{% url 'admin:underground_crm_person_change' person.pk %}">
+                        {{ person.full_name|default:"—" }}
+                    </a>
+                </td>
+                <td>{{ person.email }}</td>
+                <td>{{ person.age|default:"—" }}</td>
+                {% if show_donations %}<td>{{ person.donations_amount }}</td>{% endif %}
+                {% if show_engagement %}<td>{% if person.latest_engagement %}{{ person.latest_engagement.created_at|naturaltime }}{% else %}—{% endif %}</td>{% endif %}
+                <td>{% for tag in person.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                <td>{% if person.is_staff %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
+                <td>{% if person.is_admin %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
+                <td>{% if person.is_active %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{% if show_donations and show_engagement %}9{% elif show_donations or show_engagement %}8{% else %}7{% endif %}">No people match this filter.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<div id="content-related" style="padding-left: 1rem;">
+    <button type="button" id="evaluation-sidebar-toggle" title="Toggle display options" style="
+        background: none; border: none; cursor: pointer;
+        font-size: 1.2rem; font-weight: bold; color: var(--link-fg);
+        padding: 0.5rem 0; display: block; width: 100%; text-align: left;
+    ">&laquo;</button>
+    <div id="evaluation-sidebar-content">
+        <div class="module" id="evaluation-filters">
+            <h2>{% trans "Display options" %}</h2>
+            <form method="get">
+                <div>
+                    <label>
+                        <input type="checkbox" name="show-donations" {% if show_donations %}checked{% endif %} onchange="this.form.submit()">
+                        {% trans "Donations" %}
+                    </label>
+                </div>
+                <div>
+                    <label>
+                        <input type="checkbox" name="show-engagement" {% if show_engagement %}checked{% endif %} onchange="this.form.submit()">
+                        {% trans "Latest engagement" %}
+                    </label>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var STORAGE_KEY = 'evaluation-sidebar-collapsed';
+    var btn = document.getElementById('evaluation-sidebar-toggle');
+    var content = document.getElementById('evaluation-sidebar-content');
+
+    function setCollapsed(collapsed) {
+        content.style.display = collapsed ? 'none' : '';
+        btn.innerHTML = collapsed ? '&raquo;' : '&laquo;';
+        localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '');
+    }
+
+    btn.addEventListener('click', function () {
+        setCollapsed(content.style.display !== 'none');
+    });
+
+    setCollapsed(!!localStorage.getItem(STORAGE_KEY));
+}());
+</script>
+{% endblock %}

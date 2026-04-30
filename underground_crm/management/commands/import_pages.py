@@ -30,6 +30,7 @@ from bs4 import BeautifulSoup, Tag
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
+from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, Site
 
 from underground_crm.contactability import (
@@ -339,7 +340,7 @@ def extract_event_population(soup: BeautifulSoup):
     return None
 
 
-def get_page_args(document_soup, importable_html, attributes, slug) -> dict:
+def get_page_args(document_soup, importable_html, attributes, slug: str) -> dict:
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
     # The name attribute is an administrative label for the page. The headline is what public viewers see as a
@@ -366,7 +367,12 @@ def get_page_args(document_soup, importable_html, attributes, slug) -> dict:
 
 
 def build_underground_basic_page(
-    document_soup, importable_html, attributes, slug, return_class=UndergroundBasicPage
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=UndergroundBasicPage,
 ) -> UndergroundBasicPage:
     """
     Build and return an unsaved Wagtail page from imported HTML content.
@@ -375,11 +381,16 @@ def build_underground_basic_page(
     Subclasses of UndergroundBasicPage are accepted; any fields they add
     beyond the base set must be set on the returned instance before saving.
     """
-    return return_class(**get_page_args(document_soup, importable_html, attributes, slug))
+    return return_class(**get_page_args(document_soup, importable_html, attributes, slug, site))
 
 
 def build_event_page(
-    document_soup, importable_html, attributes, slug, return_class=EventPage
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=EventPage,
 ) -> EventPage:
     kwargs = get_page_args(
         document_soup=document_soup,
@@ -417,7 +428,14 @@ def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
     return len(list_items)
 
 
-def build_blog_page(document_soup, importable_html, attributes, slug, return_class=Blog) -> Blog:
+def build_blog_page(
+    document_soup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=Blog,
+) -> Blog:
     kwargs = get_page_args(
         document_soup=document_soup,
         importable_html=importable_html,
@@ -433,11 +451,41 @@ def build_blog_page(document_soup, importable_html, attributes, slug, return_cla
     return page
 
 
+def build_redirection(
+    soup, importable_html, attributes: Dict[str, Any], slug: str, site: Site, return_class
+) -> Redirect:
+    destination = attributes.get("parent_slug")
+    return cast(
+        Redirect,
+        return_class(
+            old_path=slug,
+            site=site,
+            is_permanent=True,
+            destination_page=None,  # Avoid needing the destination to already exist
+            redirect_page_route_path=destination,
+            redirect_link=None,
+        ),
+    )
+
+
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
     "Event": build_event_page,
     "Blog": build_blog_page,
+    "Redirect": build_redirection,
 }
+
+
+def get_site_from_options(options):
+    if options.get("site_id"):
+        return Site.objects.get(id=options["site_id"])
+    else:
+        sites = Site.objects.all()
+        if sites.count() > 1:
+            raise ValueError(
+                f"It is not clear which of the {sites.count()} sites to use − please specify a site_id"
+            )
+        return sites.first()
 
 
 class Command(BaseCommand):
@@ -454,6 +502,11 @@ class Command(BaseCommand):
             "--replace",
             action="store_true",
             help="Replace any existing Wagtail page that has the same slug.",
+        )
+        parser.add_argument(
+            "--site-id",
+            required=False,
+            help="The Wagtail site ID where the pages should be imported.",
         )
 
     def _should_continue_with_json_path(self, json_path: Path, slug: str):
@@ -472,7 +525,7 @@ class Command(BaseCommand):
         return attributes
 
     def _get_page_builder_for_continuation(
-        self, attributes: dict, page_building_map: dict, slug: str
+        self, attributes: dict, page_building_map: dict, slug: str, site: Site
     ) -> Optional[Callable]:
         type_name = attributes.get("page_type_name")
         if type_name in page_building_map:
@@ -482,7 +535,7 @@ class Command(BaseCommand):
         return None
 
     def create_pages_from_path(
-        self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page]
+        self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page], site: Site
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
@@ -490,7 +543,6 @@ class Command(BaseCommand):
         importable_dir = domain_dir / "importable"
         importable_dir.mkdir(exist_ok=True)
 
-        site = Site.objects.filter(is_default_site=True).first() or Site.objects.first()
         if site is None:
             raise CommandError(
                 "No Wagtail Site found in the database. "
@@ -500,6 +552,7 @@ class Command(BaseCommand):
         root_page = site.root_page
         self.stdout.write(f"Importing pages under '{root_page.title}' (pk={root_page.pk}).")
 
+        # Note that even redirections will need the HTML here (for the resultant page in the redirection)
         html_files = sorted(domain_dir.glob("*.html"))
         if not html_files:
             self.stderr.write(self.style.WARNING(f"No .html files found in '{domain_dir}'."))
@@ -516,7 +569,7 @@ class Command(BaseCommand):
                 continue
 
             page_builder = self._get_page_builder_for_continuation(
-                attributes, page_building_map, slug
+                attributes, page_building_map, slug=slug, site=site
             )
             if not page_builder:
                 continue
@@ -554,13 +607,15 @@ class Command(BaseCommand):
                 importable_html=importable_html,
                 attributes=attributes,
                 slug=slug,
+                site=site,
             )
-            parent_page_id = attributes.get("parent_id")
-            if parent_page_id:
-                parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
-                parent_page.add_child(instance=new_page)
-            else:
-                root_page.add_child(instance=new_page)
+            if isinstance(new_page, Page):
+                parent_page_id = attributes.get("parent_id")
+                if parent_page_id:
+                    parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
+                    parent_page.add_child(instance=new_page)
+                else:
+                    root_page.add_child(instance=new_page)
 
             self.stdout.write(
                 f"  Created {new_page.__class__.__name__} '{new_page.slug}'"
@@ -580,4 +635,5 @@ class Command(BaseCommand):
             domain_dir=domain_dir,
             should_replace=options["replace"],
             page_building_map=PAGE_BUILDING_MAP,
+            site=get_site_from_options(options),
         )

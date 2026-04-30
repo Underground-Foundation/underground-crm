@@ -1,5 +1,6 @@
 import re
 from typing import Callable, Generator, Optional, Tuple
+from urllib.parse import urlparse
 
 import dns
 from django.contrib.auth import get_user_model
@@ -54,9 +55,9 @@ def get_validated_email_address(email_address: str) -> Optional[str]:
     return email_address
 
 
-def validate_domain_name(domain_name: str) -> None:
-    # This might throw a dns.resolver.NXDOMAIN
-    dns.resolver.resolve(domain_name, "A")
+def validate_domain_name(url: str) -> None:
+    hostname = urlparse(url).hostname or url
+    dns.resolver.resolve(hostname, "A")
 
 
 def get_validated_domain_name(domain_name: str) -> Optional[str]:

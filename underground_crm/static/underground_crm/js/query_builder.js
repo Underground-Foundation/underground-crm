@@ -6,6 +6,7 @@
  *
  * Field definitions and their operators are read from the textarea's
  * data-fields and data-operators attributes (JSON strings).
+ * Available nested filters are read from data-people-filters.
  *
  * On form submit the DOM tree is serialised back to JSON and written
  * into the textarea so Django's normal form handling saves it.
@@ -36,7 +37,7 @@
    * a fresh default; it is NOT mutated — state is read entirely from the DOM
    * when serialising.
    */
-  function buildRuleEl(fields, operators, rule) {
+  function buildRuleEl(fields, operators, peopleFilters, rule) {
     rule = rule || {};
     const row = el("div", "qb-rule");
 
@@ -50,17 +51,27 @@
     // Operator selector — rebuilt whenever the field changes
     const opSel = el("select", "qb-operator");
 
-    // Value input
+    // Value input (text/integer/boolean fields)
     const valueInput = el("input", "qb-value");
     valueInput.type = "text";
     if (rule.value !== undefined && rule.value !== null) {
       valueInput.value = String(rule.value);
     }
 
+    // Filter select (for "People filter" field type)
+    const filterSelect = el("select", "qb-filter-value");
+    filterSelect.style.display = "none";
+    peopleFilters.forEach(function (pf) {
+      filterSelect.appendChild(opt(pf.id, pf.label, pf.id === rule.value));
+    });
+
+    function getFieldType() {
+      const fieldDef = fields.find(function (f) { return f.id === fieldSel.value; });
+      return fieldDef ? fieldDef.type : "text";
+    }
+
     function refreshOperators() {
-      const fieldId = fieldSel.value;
-      const fieldDef = fields.find(function (f) { return f.id === fieldId; });
-      const fieldType = fieldDef ? fieldDef.type : "text";
+      const fieldType = getFieldType();
       const ops = operators[fieldType] || operators["text"] || [];
 
       opSel.innerHTML = "";
@@ -72,12 +83,16 @@
     }
 
     function refreshValueVisibility() {
-      const fieldId = fieldSel.value;
-      const fieldDef = fields.find(function (f) { return f.id === fieldId; });
-      const fieldType = fieldDef ? fieldDef.type : "text";
-      const ops = operators[fieldType] || operators["text"] || [];
-      const selOp = ops.find(function (op) { return op.id === opSel.value; });
-      valueInput.style.display = (selOp && !selOp.has_value) ? "none" : "";
+      const fieldType = getFieldType();
+      if (fieldType === "filter") {
+        valueInput.style.display = "none";
+        filterSelect.style.display = "";
+      } else {
+        const ops = operators[fieldType] || operators["text"] || [];
+        const selOp = ops.find(function (op) { return op.id === opSel.value; });
+        valueInput.style.display = (selOp && !selOp.has_value) ? "none" : "";
+        filterSelect.style.display = "none";
+      }
     }
 
     refreshOperators();
@@ -95,13 +110,14 @@
     row.appendChild(fieldSel);
     row.appendChild(opSel);
     row.appendChild(valueInput);
+    row.appendChild(filterSelect);
     row.appendChild(removeBtn);
     return row;
   }
 
   // ── Group ──────────────────────────────────────────────────────────────────
 
-  function buildGroupEl(fields, operators, node, isRoot) {
+  function buildGroupEl(fields, operators, peopleFilters, node, isRoot) {
     node = node || {};
     const group = el("div", isRoot ? "qb-group qb-root" : "qb-group qb-nested");
 
@@ -120,9 +136,9 @@
     const rulesContainer = el("div", "qb-rules");
     (node.rules || []).forEach(function (rule) {
       if ("field" in rule) {
-        rulesContainer.appendChild(buildRuleEl(fields, operators, rule));
+        rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, rule));
       } else {
-        rulesContainer.appendChild(buildGroupEl(fields, operators, rule, false));
+        rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, rule, false));
       }
     });
     group.appendChild(rulesContainer);
@@ -134,7 +150,7 @@
     addRuleBtn.type = "button";
     addRuleBtn.textContent = "+ Add condition";
     addRuleBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildRuleEl(fields, operators, {}));
+      rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, {}));
     });
     footer.appendChild(addRuleBtn);
 
@@ -142,7 +158,7 @@
     addGroupBtn.type = "button";
     addGroupBtn.textContent = "+ Add group";
     addGroupBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildGroupEl(fields, operators, {logic: "AND", rules: []}, false));
+      rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, {logic: "AND", rules: []}, false));
     });
     footer.appendChild(addGroupBtn);
 
@@ -174,9 +190,12 @@
         const fieldSel = child.querySelector(".qb-field");
         const opSel = child.querySelector(".qb-operator");
         const valueInput = child.querySelector(".qb-value");
+        const filterSelect = child.querySelector(".qb-filter-value");
         if (!fieldSel || !opSel) return;
         const rule = {field: fieldSel.value, operator: opSel.value};
-        if (valueInput && valueInput.style.display !== "none") {
+        if (filterSelect && filterSelect.style.display !== "none") {
+          rule.value = filterSelect.value;
+        } else if (valueInput && valueInput.style.display !== "none") {
           rule.value = valueInput.value;
         }
         node.rules.push(rule);
@@ -200,16 +219,18 @@
       if (!criteria.logic) criteria.logic = "AND";
       if (!criteria.rules) criteria.rules = [];
 
-      let fields, operators;
+      let fields, operators, peopleFilters;
       try {
         fields = JSON.parse(textarea.dataset.fields || "[]");
         operators = JSON.parse(textarea.dataset.operators || "{}");
+        peopleFilters = JSON.parse(textarea.dataset.peopleFilters || "[]");
       } catch (_) {
         fields = [];
         operators = {};
+        peopleFilters = [];
       }
 
-      const rootEl = buildGroupEl(fields, operators, criteria, true);
+      const rootEl = buildGroupEl(fields, operators, peopleFilters, criteria, true);
       textarea.parentNode.insertBefore(rootEl, textarea);
 
       const form = textarea.closest("form");

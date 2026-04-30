@@ -40,4 +40,13 @@ class QueryBuilderWidget(forms.Textarea):
 class PeopleFilterAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["criteria"].widget = QueryBuilderWidget(attrs={"rows": 6})
+        from underground_crm.models.filter import PeopleFilter
+
+        current_pk = self.instance.pk if self.instance and self.instance.pk else None
+        qs = PeopleFilter.objects.all()
+        if current_pk:
+            qs = qs.exclude(pk=current_pk)
+        people_filters = [{"id": str(f.pk), "label": f.name} for f in qs]
+        widget = QueryBuilderWidget(attrs={"rows": 6})
+        widget.attrs["data-people-filters"] = json.dumps(people_filters)
+        self.fields["criteria"].widget = widget

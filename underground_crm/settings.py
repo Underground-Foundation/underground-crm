@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "djmoney",
     # Wagtail
     "wagtail.contrib.forms",
+    "wagtail.contrib.redirects",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -55,11 +56,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "underground_crm.middleware.UrlRedirectionMiddleware",
+    "wagtail.contrib.redirects.middleware.RedirectMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

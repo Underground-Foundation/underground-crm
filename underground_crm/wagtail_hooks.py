@@ -1,8 +1,31 @@
+from django.urls import reverse
+
+from wagtail import hooks
+from wagtail.admin.menu import MenuItem
+from wagtail.contrib.redirects.permissions import permission_policy as redirects_permission_policy
 from wagtail.images.formats import Format, register_image_format
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 
-from .models import Engagement, Tag, UrlRedirection
+from .models import Engagement, Tag
+
+
+@hooks.register("register_admin_menu_item")
+def register_redirects_menu_item():
+    class RedirectsMenuItem(MenuItem):
+        def is_shown(self, request):
+            return redirects_permission_policy.user_has_any_permission(
+                request.user, ["add", "change", "delete"]
+            )
+
+    return RedirectsMenuItem(
+        "Redirects",
+        reverse("wagtailredirects:index"),
+        name="redirects",
+        icon_name="redirect",
+        order=150,
+    )
+
 
 # Register a half-width image format for use in RichTextBlock image insertions.
 # The CSS class "richtext-image w-50" can be styled in the site's stylesheet.
@@ -38,16 +61,3 @@ class BuzzViewSet(SnippetViewSet):
 
 
 register_snippet(BuzzViewSet)
-
-
-class UrlRedirectionViewSet(SnippetViewSet):
-    model = UrlRedirection
-    icon = "redirect"
-    menu_label = "Redirections"
-    menu_order = 150
-    add_to_admin_menu = True
-    list_display = ["old_path", "destination_page", "destination_url", "is_permanent"]
-    search_fields = ["old_path", "destination_url"]
-
-
-register_snippet(UrlRedirectionViewSet)
