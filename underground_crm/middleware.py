@@ -8,21 +8,21 @@ from django.http import (
 )
 
 
-class UrlRedirectMiddleware:
+class UrlRedirectionMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        from underground_crm.models import UrlRedirect
+        from underground_crm.models import UrlRedirection
 
         try:
-            redirect = UrlRedirect.objects.select_related("redirect_page").get(
+            redirection = UrlRedirection.objects.select_related("destination_page").get(
                 old_path=request.path_info
             )
-        except UrlRedirect.DoesNotExist:
+        except UrlRedirection.DoesNotExist:
             return self.get_response(request)
 
-        url = redirect.get_redirect_url()
-        if redirect.is_permanent:
+        url = redirection.get_destination_url()
+        if redirection.is_permanent:
             return HttpResponsePermanentRedirect(url)
         return HttpResponseRedirect(url)

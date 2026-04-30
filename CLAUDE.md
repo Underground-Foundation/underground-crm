@@ -142,7 +142,8 @@ arguments added to existing commands.
 
 ## Final instructions
 For consistency with global coding conventions (not because I prefer it), all
-code should be in US English.
+code should be in US English for spelling. Please stick to UK English for grammar though − 
+do not shorten words into the wrong conjugation, like "invite" as a noun, instead of 'invitation'.
 
 Please use US English spelling for the documentation too, but maintain clearer grammar than
 mainstream US parlance. Comments (and your own speech) should always be clear prose, never

@@ -2,7 +2,7 @@ from wagtail.images.formats import Format, register_image_format
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 
-from .models import Engagement, Tag, UrlRedirect
+from .models import Engagement, Tag, UrlRedirection
 
 # Register a half-width image format for use in RichTextBlock image insertions.
 # The CSS class "richtext-image w-50" can be styled in the site's stylesheet.
@@ -40,14 +40,14 @@ class BuzzViewSet(SnippetViewSet):
 register_snippet(BuzzViewSet)
 
 
-class UrlRedirectViewSet(SnippetViewSet):
-    model = UrlRedirect
+class UrlRedirectionViewSet(SnippetViewSet):
+    model = UrlRedirection
     icon = "redirect"
-    menu_label = "Redirects"
+    menu_label = "Redirections"
     menu_order = 150
     add_to_admin_menu = True
-    list_display = ["old_path", "redirect_page", "redirect_url", "is_permanent"]
-    search_fields = ["old_path", "redirect_url"]
+    list_display = ["old_path", "destination_page", "destination_url", "is_permanent"]
+    search_fields = ["old_path", "destination_url"]
 
 
-register_snippet(UrlRedirectViewSet)
+register_snippet(UrlRedirectionViewSet)

@@ -37,7 +37,7 @@ class QueryBuilderWidget(forms.Textarea):
         return attrs
 
 
-class PersonFilterAdminForm(forms.ModelForm):
+class PeopleFilterAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["criteria"].widget = QueryBuilderWidget(attrs={"rows": 6})

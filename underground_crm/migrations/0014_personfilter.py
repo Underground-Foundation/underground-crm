@@ -39,8 +39,8 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "verbose_name": "Person filter",
-                "verbose_name_plural": "Person filters",
+                "verbose_name": "People filter",
+                "verbose_name_plural": "People filters",
                 "ordering": ["name"],
             },
         ),

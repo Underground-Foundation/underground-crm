@@ -64,7 +64,7 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
 }
 
 
-class PersonFilter(models.Model):
+class PeopleFilter(models.Model):
     """
     A saved Person query, stored as a nested AND/OR tree.
 
@@ -100,8 +100,8 @@ class PersonFilter(models.Model):
     )
 
     class Meta:
-        verbose_name = "Person filter"
-        verbose_name_plural = "Person filters"
+        verbose_name = "People filter"
+        verbose_name_plural = "People filters"
         ordering = ["name"]
 
     def __str__(self) -> str:
