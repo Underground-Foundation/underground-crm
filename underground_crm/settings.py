@@ -144,6 +144,8 @@ REST_FRAMEWORK = {
     ],
 }
 
+ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
+
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"

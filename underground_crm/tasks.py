@@ -1,10 +1,34 @@
 import logging
 import uuid
 
+from .models.address import Address
 from .models.engagement import Engagement
 from .models.pages import EventGuest
 
 logger = logging.getLogger(__name__)
+
+
+def geocode_address(address_id: str) -> None:
+    """Call Addressr to geocode an Address and store the result."""
+    from . import addressr as addressr_client
+
+    try:
+        address = Address.objects.get(pk=uuid.UUID(address_id))
+    except Address.DoesNotExist:
+        logger.warning("geocode_address: Address %s not found", address_id)
+        return
+
+    result = addressr_client.geocode(str(address))
+    if result is None:
+        logger.info("geocode_address: no result from Addressr for Address %s", address_id)
+        return
+
+    # Use .update() to avoid re-triggering the post_save signal.
+    Address.objects.filter(pk=address.pk).update(
+        latitude=result.latitude,
+        longitude=result.longitude,
+        geocode_reliability=result.reliability,
+    )
 
 
 def record_rsvp_engagement(event_guest_id: str) -> None:

@@ -187,6 +187,7 @@ class PersonAdmin(UserAdmin):
                     "is_admin",
                     "is_active",
                     "is_superuser",
+                    "has_html_permission",
                     "groups",
                     "user_permissions",
                 )
@@ -204,6 +205,21 @@ class PersonAdmin(UserAdmin):
             },
         ),
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_admin:
+            readonly.append("has_html_permission")
+        return readonly
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_admin:
+            if change:
+                original = Person.objects.get(pk=obj.pk)
+                obj.has_html_permission = original.has_html_permission
+            else:
+                obj.has_html_permission = False
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Tag)

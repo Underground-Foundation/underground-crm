@@ -287,6 +287,10 @@ class Person(AbstractBaseUser, PermissionsMixin):
         default=False, help_text="Grants elevated permissions within the CRM."
     )
     is_active = models.BooleanField(default=True)
+    has_html_permission = models.BooleanField(
+        default=False,
+        help_text="Does this user have permission to create raw HTML for web pages?",
+    )
 
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True)

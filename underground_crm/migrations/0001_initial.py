@@ -745,15 +745,6 @@ class Migration(migrations.Migration):
                         to="underground_crm.address",
                     ),
                 ),
-                (
-                    "tags",
-                    models.ManyToManyField(
-                        blank=True,
-                        related_name="people",
-                        through="underground_crm.PersonTag",
-                        to="underground_crm.tag",
-                    ),
-                ),
             ],
             options={
                 "verbose_name": "person",
@@ -788,6 +779,16 @@ class Migration(migrations.Migration):
                 "db_table": "underground_crm_person_tags",
                 "unique_together": {("person", "tag")},
             },
+        ),
+        migrations.AddField(
+            model_name="person",
+            name="tags",
+            field=models.ManyToManyField(
+                blank=True,
+                related_name="people",
+                through="underground_crm.PersonTag",
+                to="underground_crm.tag",
+            ),
         ),
         migrations.CreateModel(
             name="Donation",

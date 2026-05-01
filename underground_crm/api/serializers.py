@@ -80,5 +80,22 @@ class DonationSerializer(serializers.ModelSerializer):
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address
-        fields = ["id", "line1", "line2", "line3", "city", "state", "postcode", "country_code"]
-        read_only_fields = ["id"]
+        fields = [
+            "id",
+            "line1",
+            "line2",
+            "line3",
+            "city",
+            "state",
+            "postcode",
+            "country_code",
+            "latitude",
+            "longitude",
+            "geocode_reliability",
+        ]
+        read_only_fields = [
+            "id",
+            "latitude",
+            "longitude",
+            "geocode_reliability",
+        ]

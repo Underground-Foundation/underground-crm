@@ -110,6 +110,24 @@ Current commands:
   Requires `LEGACY_WEBSITE_URL`, `LEGACY_USER_AGENT`, and `LEGACY_ADMIN_COOKIE_FILE` env vars
   (or `--cookie-file` override). Idempotent via `legacy_activity_id` deduplication.
 
+## Addressr (Australian address search)
+
+`docker-compose.yml` runs Addressr backed by OpenSearch. The G-NAF dataset
+(~1.7 GB) must be loaded into OpenSearch before address search will work.
+Run `update-gnaf.sh` for the initial load and for each quarterly update —
+it fetches the latest release URL from data.gov.au, updates
+`docker/gnaf-package.json`, and runs the loader in the background. Indexing
+~15 million addresses takes 1–2 hours in total.
+
+**Background:** Addressr's loader normally fetches the G-NAF download URL from
+data.gov.au's CKAN API (`/api/3/action/package_show`), but that API has been
+removed. The `gnaf-api` nginx service in `docker-compose.yml` serves a static
+mock of that API response from `docker/gnaf-package.json`, and the addressr
+service is pointed at it via `GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json`.
+
+`NODE_OPTIONS=--max-old-space-size=8192` is set on the addressr service because
+the loader OOMs with Node.js's default heap on large states (NSW has 5M addresses).
+
 ## Running locally
 
 The theme project is `../fusion-underground`. From that directory:

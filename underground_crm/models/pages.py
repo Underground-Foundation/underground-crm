@@ -1,6 +1,7 @@
 import datetime
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from wagtail.models import Page
 from wagtail.fields import StreamField
@@ -27,6 +28,17 @@ class PageWithMetadataForm(WagtailAdminPageForm):
         self.fields["author"].queryset = User.objects.order_by(
             "-is_admin", "-is_staff", "first_name", "last_name"
         )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if "body" in cleaned_data and not getattr(self.for_user, "has_html_permission", False):
+            if any(b.block_type == "html" for b in cleaned_data["body"]):
+                raise ValidationError(
+                    "This page contains Raw HTML blocks. "
+                    "You need HTML permission to save it. "
+                    "Ask an admin to remove the Raw HTML blocks or grant you permission."
+                )
+        return cleaned_data
 
 
 class PageWithMetadata(Page):

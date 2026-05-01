@@ -19,6 +19,16 @@ a site name, branding templates, and any organisation-specific page models.
 The sibling repo `fusion-underground` is the reference theme for the Fusion
 Party and is the easiest way to see a working deployment.
 
+## Infrastructure requirements
+
+The `docker-compose.yml` in this repo runs Redis, OpenSearch, and
+[Addressr](https://addressr.io) for address autocomplete. Addressr's data
+loader holds each state's geocoding data in memory while indexing; New South
+Wales alone has 5 million addresses. The loader crashes with Node.js's default
+heap limit, so `docker-compose.yml` sets `NODE_OPTIONS=--max-old-space-size=8192`
+to give it an 8 GB heap. Allow additional RAM for OpenSearch and the OS on top
+of that.
+
 ## Setting up a theme project
 
 ```bash

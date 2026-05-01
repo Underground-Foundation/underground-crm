@@ -152,7 +152,7 @@ def _build_address(row, prefix):
     if not any([line1, line2, city, postcode]):
         return None
 
-    return Address(
+    address = Address(
         line1=line1,
         line2=line2,
         line3=line3,
@@ -161,6 +161,8 @@ def _build_address(row, prefix):
         postcode=postcode,
         country_code=country_code[:2] if country_code else "AU",
     )
+    address._skip_geocoding = True
+    return address
 
 
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:

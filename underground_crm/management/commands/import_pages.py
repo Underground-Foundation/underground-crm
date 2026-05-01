@@ -256,6 +256,7 @@ def extract_event_venue(soup: BeautifulSoup, create_if_not_found=True) -> Option
         return existing_address
     except Address.DoesNotExist:
         if create_if_not_found:
+            address._skip_geocoding = True
             address.save()
         return address
 
@@ -452,18 +453,28 @@ def build_blog_page(
 
 
 def build_redirection(
-    soup, importable_html, attributes: Dict[str, Any], slug: str, site: Site, return_class
+    document_soup,
+    importable_html,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=Redirect,
 ) -> Redirect:
     destination = attributes.get("parent_slug")
+    try:
+        destination_page = Page.objects.get(slug=destination)
+    except Page.DoesNotExist:
+        print(f"Cannot create redirection at {slug}: page {destination} does not exist")
+        return None
     return cast(
         Redirect,
         return_class(
             old_path=slug,
             site=site,
             is_permanent=True,
-            destination_page=None,  # Avoid needing the destination to already exist
-            redirect_page_route_path=destination,
-            redirect_link=None,
+            redirect_page=destination_page,
+            redirect_page_route_path="",
+            redirect_link="",
         ),
     )
 
@@ -474,6 +485,14 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
     "Blog": build_blog_page,
     "Redirect": build_redirection,
 }
+
+
+def get_page_type_attribute(attributes: Dict[str, Any]):
+    return attributes.get("page_type_name")
+
+
+def is_redirection(attributes: Dict[str, Any]):
+    return get_page_type_attribute(attributes) == "Redirect"
 
 
 def get_site_from_options(options):
@@ -508,6 +527,11 @@ class Command(BaseCommand):
             required=False,
             help="The Wagtail site ID where the pages should be imported.",
         )
+        parser.add_argument(
+            "--slug",
+            required=False,
+            help="The slug of the page to be imported",
+        )
 
     def _should_continue_with_json_path(self, json_path: Path, slug: str):
         if json_path.exists():
@@ -527,7 +551,7 @@ class Command(BaseCommand):
     def _get_page_builder_for_continuation(
         self, attributes: dict, page_building_map: dict, slug: str, site: Site
     ) -> Optional[Callable]:
-        type_name = attributes.get("page_type_name")
+        type_name = get_page_type_attribute(attributes)
         if type_name in page_building_map:
             return page_building_map[type_name]
         self.stderr.write(f"  [skip] unsupported page type '{type_name}' for slug '{slug}'.")
@@ -535,7 +559,12 @@ class Command(BaseCommand):
         return None
 
     def create_pages_from_path(
-        self, domain_dir: Path, should_replace: bool, page_building_map: Dict[str, Page], site: Site
+        self,
+        domain_dir: Path,
+        should_replace: bool,
+        page_building_map: Dict[str, Page],
+        site: Site,
+        slug: Optional[str],
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
@@ -559,9 +588,11 @@ class Command(BaseCommand):
             return
 
         for html_file in html_files:
-            slug = html_file.stem
-            json_path = domain_dir / f"{slug}.json"
-            if not self._should_continue_with_json_path(json_path, slug):
+            current_slug = html_file.stem
+            if slug and current_slug != slug:
+                continue
+            json_path = domain_dir / f"{current_slug}.json"
+            if not self._should_continue_with_json_path(json_path, current_slug):
                 continue
 
             attributes = self._get_attributes_for_continuation(json_path)
@@ -569,24 +600,27 @@ class Command(BaseCommand):
                 continue
 
             page_builder = self._get_page_builder_for_continuation(
-                attributes, page_building_map, slug=slug, site=site
+                attributes, page_building_map, slug=current_slug, site=site
             )
             if not page_builder:
                 continue
 
-            existing = Page.objects.filter(slug=slug).first()
+            if is_redirection(attributes):
+                existing = Redirect.objects.filter(old_path=current_slug).first()
+            else:
+                existing = Page.objects.filter(slug=current_slug).first()
             is_replacing = False
 
             if existing is not None:
                 if not should_replace:
                     self.stderr.write(
-                        f"  [skip] page with slug '{slug}' already exists (pk={existing.pk}). "
+                        f"  [skip] page with slug '{current_slug}' already exists. "
                         "Pass --replace to overwrite it."
                     )
                     self.counter.increment_skipped()
                     continue
                 self.stdout.write(
-                    f"  Deleting existing page '{slug}' (pk={existing.pk}) for replacement."
+                    f"  Deleting existing page '{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
                 )
                 existing.delete()
                 root_page.refresh_from_db()
@@ -606,7 +640,7 @@ class Command(BaseCommand):
                 document_soup=document_soup,
                 importable_html=importable_html,
                 attributes=attributes,
-                slug=slug,
+                slug=current_slug,
                 site=site,
             )
             if isinstance(new_page, Page):
@@ -616,10 +650,12 @@ class Command(BaseCommand):
                     parent_page.add_child(instance=new_page)
                 else:
                     root_page.add_child(instance=new_page)
+            elif isinstance(new_page, Redirect):
+                new_page.save()
 
             self.stdout.write(
-                f"  Created {new_page.__class__.__name__} '{new_page.slug}'"
-                f" (slug='{slug}') under '{root_page.title}'."
+                f"  Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
+                f" (slug='{current_slug}') under '{root_page.title}'."
             )
 
             if is_replacing:
@@ -636,4 +672,5 @@ class Command(BaseCommand):
             should_replace=options["replace"],
             page_building_map=PAGE_BUILDING_MAP,
             site=get_site_from_options(options),
+            slug=options.get("slug"),
         )
