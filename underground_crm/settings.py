@@ -109,12 +109,20 @@ USE_TZ = True
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
 
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")
+
 # https://docs.djangoproject.com/en/6.0/topics/cache/#redis
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379",
+        "LOCATION": _REDIS_URL,
     }
+}
+
+# https://django-q2.readthedocs.io/en/master/brokers.html#redis
+Q_CLUSTER = {
+    "name": "underground_crm",
+    "redis": _REDIS_URL,
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
