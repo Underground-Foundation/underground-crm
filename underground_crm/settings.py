@@ -32,6 +32,8 @@ INSTALLED_APPS = [
     "underground_crm",
     # Django-money
     "djmoney",
+    # Color picker widget
+    "colorfield",
     # Wagtail
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
@@ -60,6 +62,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    "underground_email",
 ]
 
 MIDDLEWARE = [
@@ -140,6 +143,7 @@ DATABASES = {
 
 # Wagtail
 WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
+
 WAGTAIL_SITE_NAME = "Underground CRM"
 
 REST_FRAMEWORK = {
@@ -153,6 +157,26 @@ REST_FRAMEWORK = {
 }
 
 ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "underground_crm": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "underground_email": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}
 
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"

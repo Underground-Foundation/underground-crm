@@ -1,0 +1,26 @@
+{% extends 'wagtailadmin/bulk_actions/confirmation/base.html' %}
+{% load i18n wagtailadmin_tags %}
+
+{% block header %}
+    {% include "wagtailadmin/shared/header.html" with title=model_opts.verbose_name_plural|capfirst icon=header_icon only %}
+{% endblock header %}
+
+{% block items_with_access %}
+    {% block bulk_action_message %}{% endblock %}
+{% endblock items_with_access %}
+
+{% block items_with_no_access %}
+    {% if items_with_no_access %}
+        {% include 'wagtailsnippets/bulk_actions/list_items_with_no_access.html' with items=items_with_no_access %}
+    {% endif %}
+{% endblock items_with_no_access %}
+
+{% block form_section %}
+    {% if items %}
+        {% trans 'Confirm' as action_button_text %}
+        {% trans 'Go back' as no_action_button_text %}
+        {% include 'wagtailadmin/bulk_actions/confirmation/form.html' %}
+    {% else %}
+        {% include 'wagtailadmin/bulk_actions/confirmation/go_back.html' %}
+    {% endif %}
+{% endblock form_section %}

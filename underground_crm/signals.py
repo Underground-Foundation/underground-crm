@@ -9,7 +9,7 @@ _ADDRESS_CONTENT_FIELDS = ("line1", "line2", "line3", "city", "state", "postcode
 
 
 @receiver(pre_save, sender=Address)
-def on_address_pre_save(_sender: type[Address], instance: Address, **kwargs) -> None:
+def on_address_pre_save(sender: type[Address], instance: Address, **kwargs) -> None:
     """Clear coordinates when address content changes so re-geocoding is triggered."""
     if not instance.pk:
         return
@@ -23,7 +23,7 @@ def on_address_pre_save(_sender: type[Address], instance: Address, **kwargs) -> 
 
 
 @receiver(post_save, sender=Address)
-def on_address_post_save(_sender: type[Address], instance: Address, **kwargs) -> None:
+def on_address_post_save(sender: type[Address], instance: Address, **kwargs) -> None:
     """Queue geocoding whenever an address has content but no coordinates."""
     if getattr(instance, "_skip_geocoding", False):
         return
@@ -35,7 +35,7 @@ def on_address_post_save(_sender: type[Address], instance: Address, **kwargs) ->
 
 @receiver(post_save, sender=EventGuest)
 def on_event_guest_saved(
-    _sender: type[EventGuest], instance: EventGuest, created: bool, **kwargs
+    sender: type[EventGuest], instance: EventGuest, created: bool, **kwargs
 ) -> None:
     if created:
         async_task("underground_crm.tasks.record_rsvp_engagement", str(instance.pk))

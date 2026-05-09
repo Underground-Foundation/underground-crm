@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unsubscribed</title>
+</head>
+<body>
+  <h1>You have been unsubscribed</h1>
+  {% if campaign_title %}
+    <p>You will no longer receive <strong>{{ campaign_title }}</strong> emails.</p>
+  {% else %}
+    <p>Your unsubscription has been recorded.</p>
+  {% endif %}
+</body>
+</html>

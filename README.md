@@ -6,18 +6,21 @@ three core capabilities:
 - **CRM** — a database of people and a full record of your ongoing relationship
   with each of them
 - **CMS** — Wagtail-powered page editing for your organisers
-- **Bulk email** — SendGrid integration for member communications
+- **Bulk email** — SMPT2Go integration for member communications
 
 Migration tooling is included to help you move from a previous CRM.
 
 ## Architecture
 
-Underground CRM is a pip-installable Django library, not a standalone project.
-You run it by creating a **theme project** that installs the library and provides
+Underground CRM is not quite a standalone project − it is intended to be extended (by you)
+with the creation of a **theme project** that installs the library and provides
 a site name, branding templates, and any organisation-specific page models.
 
 The sibling repo `fusion-underground` is the reference theme for the Fusion
 Party and is the easiest way to see a working deployment.
+
+Once your theme is implemented, notice here the file [start-containers.sh](./start_containers.sh)
+which starts the accompanying services for running this application.
 
 ## Infrastructure requirements
 

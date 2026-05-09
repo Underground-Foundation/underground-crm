@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from .person import Person
 
@@ -25,21 +26,23 @@ class Engagement(models.Model):
     SURVEY_RESPONDED = "survey_responded"
     MEMBERSHIP_JOINED = "membership_joined"
     MEMBERSHIP_RENEWED = "membership_renewed"
+    UNSUBSCRIBED = "unsubscribed"
 
     ACTION_CHOICES = [
-        (SIGNUP, "Signed up"),
-        (DONATED, "Donated"),
-        (PETITIONED, "Signed petition"),
-        (RSVP, "RSVP'd to event"),
-        (ATTENDED_EVENT, "Attended event"),
-        (VOLUNTEERED, "Volunteered"),
-        (CONTACTED, "Contacted by staff"),
-        (EMAIL_OPENED, "Opened email"),
-        (EMAIL_CLICKED, "Clicked link in email"),
-        (FOLLOWED_PAGE, "Followed page"),
-        (SURVEY_RESPONDED, "Responded to survey"),
-        (MEMBERSHIP_JOINED, "Joined as member"),
-        (MEMBERSHIP_RENEWED, "Renewed membership"),
+        (SIGNUP, _("Signed up")),
+        (DONATED, _("Donated")),
+        (PETITIONED, _("Signed petition")),
+        (RSVP, _("RSVP'd to event")),
+        (ATTENDED_EVENT, _("Attended event")),
+        (VOLUNTEERED, _("Volunteered")),
+        (CONTACTED, _("Contacted by staff")),
+        (EMAIL_OPENED, _("Opened email")),
+        (EMAIL_CLICKED, _("Clicked link in email")),
+        (FOLLOWED_PAGE, _("Followed page")),
+        (SURVEY_RESPONDED, _("Responded to survey")),
+        (MEMBERSHIP_JOINED, _("Joined as member")),
+        (MEMBERSHIP_RENEWED, _("Renewed membership")),
+        (UNSUBSCRIBED, _("Unsubscribed")),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -140,14 +140,14 @@ def _build_address(row, prefix):
     Create and return an Address from CSV columns like {prefix}_address1, {prefix}_city, etc.
     Returns None if all address fields are blank.
     """
-    line1 = row.get(f"{prefix}_address1", "").strip()
-    line2 = row.get(f"{prefix}_address2", "").strip()
-    line3 = row.get(f"{prefix}_address3", "").strip()
-    city = row.get(f"{prefix}_city", "").strip()
-    state = row.get(f"{prefix}_state", "").strip()
-    postcode = row.get(f"{prefix}_zip", "").strip()
-    country_code = (row.get(f"{prefix}_country_code", "") or "AU").strip()
-    _submitted = row.get(f"{prefix}_submitted_address", "").strip()
+    line1 = row.get(f"{prefix}_address1", "").strip() or None
+    line2 = row.get(f"{prefix}_address2", "").strip() or None
+    line3 = row.get(f"{prefix}_address3", "").strip() or None
+    city = row.get(f"{prefix}_city", "").strip() or None
+    state = row.get(f"{prefix}_state", "").strip() or None
+    postcode = row.get(f"{prefix}_zip", "").strip() or None
+    country_code = (row.get(f"{prefix}_country_code", "") or "AU").strip() or None
+    _submitted = row.get(f"{prefix}_submitted_address", "").strip() or None
 
     if not any([line1, line2, city, postcode]):
         return None
@@ -167,10 +167,10 @@ def _build_address(row, prefix):
 
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
     mobile_number, mobile_type = parse_phone_number_with_verified_type(
-        row.get("mobile_number", "").strip()
+        row.get("mobile_number", "").strip() or None
     )
     phone_number, phone_type = parse_phone_number_with_verified_type(
-        row.get("phone_number", "").strip()
+        row.get("phone_number", "").strip() or None
     )
 
     if mobile_number:
@@ -201,24 +201,24 @@ def _person_fields(row):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
     return {
-        "prefix": row.get("prefix", "").strip(),
-        "first_name": row.get("first_name", "").strip(),
-        "middle_name": row.get("middle_name", "").strip(),
-        "last_name": row.get("last_name", "").strip(),
-        "suffix": row.get("suffix", "").strip(),
-        "legal_name": row.get("legal_name", "").strip(),
-        "preferred_name": row.get("preferred_name", "").strip(),
-        "mailing_name": row.get("mailing_name", "").strip(),
+        "prefix": row.get("prefix", "").strip() or None,
+        "first_name": row.get("first_name", "").strip() or None,
+        "middle_name": row.get("middle_name", "").strip() or None,
+        "last_name": row.get("last_name", "").strip() or None,
+        "suffix": row.get("suffix", "").strip() or None,
+        "legal_name": row.get("legal_name", "").strip() or None,
+        "preferred_name": row.get("preferred_name", "").strip() or None,
+        "mailing_name": row.get("mailing_name", "").strip() or None,
         "phone_number": phone_number,
         "work_phone_number": parse_verified_phone_number(row.get("work_phone_number", "").strip()),
         "mobile_number": mobile_number,
         "mobile_opt_in": _bool(row.get("mobile_opt_in", "")),
         "is_mobile_bad": _bool(row.get("is_mobile_bad", "")) or not mobile_number,
-        "twitter_login": row.get("twitter_login", "").strip(),
-        "facebook_username": row.get("facebook_username", "").strip(),
+        "twitter_login": row.get("twitter_login", "").strip() or None,
+        "facebook_username": row.get("facebook_username", "").strip() or None,
         "website": get_validated_domain_name(row.get("website", "").strip()),
-        "submitted_address": row.get("primary_submitted_address", "").strip(),
-        "gender": row.get("sex", "").strip(),
+        "submitted_address": row.get("primary_submitted_address", "").strip() or None,
+        "gender": row.get("sex", "").strip() or None,
         "date_of_birth": _parse_date(row.get("born_at", "")),
         "email_opt_in": _bool(row.get("email_opt_in", "")),
         "unsubscribed_at": _parse_datetime(row.get("unsubscribed_at", "")),
@@ -237,12 +237,12 @@ def _person_fields(row):
         "last_donated_at": _parse_datetime(row.get("last_donated_at", "")),
         "do_not_call": _bool(row.get("do_not_call", "")),
         "do_not_contact": _bool(row.get("do_not_contact", "")),
-        "federal_district": row.get("federal_district", "").strip(),
-        "state_upper_district": row.get("state_upper_district", "").strip(),
-        "state_lower_district": row.get("state_lower_district", "").strip(),
-        "council_district": row.get("county_district", "").strip(),
-        "ward": row.get("ward", "").strip(),
-        "membership_number": row.get("legacy_membership_number", "").strip(),
+        "federal_district": row.get("federal_district", "").strip() or None,
+        "state_upper_district": row.get("state_upper_district", "").strip() or None,
+        "state_lower_district": row.get("state_lower_district", "").strip() or None,
+        "council_district": row.get("county_district", "").strip() or None,
+        "ward": row.get("ward", "").strip() or None,
+        "membership_number": row.get("legacy_membership_number", "").strip() or None,
     }
 
 
@@ -530,7 +530,7 @@ class Command(BaseCommand):
 
             if dry_run:
                 self.stdout.write(
-                    f"  [dry-run] {legacy_id}: {row.get('first_name', '')} {row.get('last_name', '')} <{email}>"
+                    f"  [dry-run] {legacy_id}: {row.get('first_name', None)} {row.get('last_name', None)} <{email}>"
                 )
                 legacy_id_to_person[legacy_id] = None
                 created_count += 1
@@ -615,8 +615,10 @@ class Command(BaseCommand):
                     continue
                 tag_names = [t.strip() for t in raw_tags.split(",") if t.strip()]
                 for name in tag_names:
-                    tag, _ = Tag.objects.get_or_create(name=name)
-                    self.stdout.write(f"Found tag {tag.id} for person")
+                    tag, created = Tag.objects.get_or_create(name=name)
+                    self.stdout.write(
+                        f"{'Created' if created else 'Found'} tag {tag.name} for person"
+                    )
                     person.tags.add(tag)
 
         # ---- Pass 4: interactions and notes (optional) ----

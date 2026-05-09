@@ -16,7 +16,7 @@ from .models import (
     PersonNote,
     Tag,
 )
-from .models.person import PersonTag
+from .models.person import PersonGroup, PersonPermission, PersonTag
 
 
 class SavedFilterListFilter(admin.SimpleListFilter):
@@ -45,6 +45,18 @@ class PersonTagInline(admin.TabularInline):
     model = PersonTag
     extra = 1
     fields = ["tag"]
+
+
+class PersonGroupInline(admin.TabularInline):
+    model = PersonGroup
+    extra = 1
+    fields = ["group"]
+
+
+class PersonPermissionInline(admin.TabularInline):
+    model = PersonPermission
+    extra = 1
+    fields = ["permission"]
 
 
 class PersonNoteInline(admin.TabularInline):
@@ -88,7 +100,14 @@ class PersonAdmin(UserAdmin):
     ]
     search_fields = ["email", "first_name", "last_name"]
     readonly_fields = ["created_at", "updated_at"]
-    inlines = [PersonTagInline, PersonNoteInline, InteractionInline]
+    filter_horizontal = ()
+    inlines = [
+        PersonTagInline,
+        PersonGroupInline,
+        PersonPermissionInline,
+        PersonNoteInline,
+        InteractionInline,
+    ]
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -188,8 +207,6 @@ class PersonAdmin(UserAdmin):
                     "is_active",
                     "is_superuser",
                     "has_html_permission",
-                    "groups",
-                    "user_permissions",
                 )
             },
         ),

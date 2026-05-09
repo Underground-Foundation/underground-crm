@@ -6,6 +6,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
+from django.utils.translation import gettext_lazy as _
 
 from .address import Address
 from ..contactability import (
@@ -181,6 +182,29 @@ class Person(AbstractBaseUser, PermissionsMixin):
     # --- Tags ---
     tags = models.ManyToManyField(Tag, through="PersonTag", blank=True, related_name="people")
 
+    # --- Auth M2M (explicit through models so the PK is UUID, not bigint) ---
+    groups = models.ManyToManyField(
+        "auth.Group",
+        through="PersonGroup",
+        verbose_name="groups",
+        blank=True,
+        help_text=(
+            "The groups this user belongs to. A user will get all permissions "
+            "granted to each of their groups."
+        ),
+        related_name="user_set",
+        related_query_name="user",
+    )
+    user_permissions = models.ManyToManyField(
+        "auth.Permission",
+        through="PersonPermission",
+        verbose_name="user permissions",
+        blank=True,
+        help_text="Specific permissions for this user.",
+        related_name="user_set",
+        related_query_name="user",
+    )
+
     # --- Engagement & consent ---
     email_opt_in = models.BooleanField(
         default=False, help_text="Person has opted in to receive email updates."
@@ -286,7 +310,11 @@ class Person(AbstractBaseUser, PermissionsMixin):
     is_admin = models.BooleanField(
         default=False, help_text="Grants elevated permissions within the CRM."
     )
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name=_("Is active"),
+        help_text=_("Inactive users are treated as tombstones"),
+    )
     has_html_permission = models.BooleanField(
         default=False,
         help_text="Does this user have permission to create raw HTML for web pages?",
@@ -313,7 +341,11 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         name = self.full_name
-        return name if name else self.email
+        if name and self.email:
+            return f"{name} ({self.email})"
+        else:
+            # Email address is required
+            return self.email
 
     @property
     def full_name(self):
@@ -355,3 +387,27 @@ class PersonTag(models.Model):
         verbose_name_plural = "tags"
         db_table = "underground_crm_person_tags"
         unique_together = [("person", "tag")]
+
+
+class PersonGroup(models.Model):
+    """Explicit through model for Person.groups, carrying a UUID PK for federation support."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    person = models.ForeignKey(Person, on_delete=models.CASCADE)
+    group = models.ForeignKey("auth.Group", on_delete=models.CASCADE)
+
+    class Meta:
+        db_table = "underground_crm_person_groups"
+        unique_together = [("person", "group")]
+
+
+class PersonPermission(models.Model):
+    """Explicit through model for Person.user_permissions, carrying a UUID PK for federation support."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    person = models.ForeignKey(Person, on_delete=models.CASCADE)
+    permission = models.ForeignKey("auth.Permission", on_delete=models.CASCADE)
+
+    class Meta:
+        db_table = "underground_crm_person_user_permissions"
+        unique_together = [("person", "permission")]

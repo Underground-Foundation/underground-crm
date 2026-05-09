@@ -1,0 +1,12 @@
+{% load wagtailcore_tags %}
+<table cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 16px auto;">
+  <tr>
+    <td align="center" bgcolor="{{ value.background_color }}" style="border-radius: 4px;">
+      <a href="{{ value.url }}"
+         style="display: block; padding: 12px 24px; color: {{ value.color }}; font-weight: bold;
+                text-decoration: none;">
+        {{ value.text }}
+      </a>
+    </td>
+  </tr>
+</table>

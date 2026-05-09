@@ -1,6 +1,7 @@
 import uuid
 from typing import Any
 
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
 
@@ -124,9 +125,9 @@ class PeopleFilter(models.Model):
     @property
     def sql(self) -> str:
         """Return the SQL that this filter would generate against the Person table."""
-        from .person import Person
+        User = get_user_model()
 
-        return str(self.apply(Person.objects.all()).query)
+        return str(self.apply(User.objects.all()).query)
 
     @property
     def evaluation_link(self) -> str:

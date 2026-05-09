@@ -10,9 +10,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "AGPL-3.0-only"}
 dependencies = [
+    "cachetools",
     "Django>=5.0,<6.0",
     "djangorestframework>=3.15",
     "djangorestframework-simplejwt>=5.3",
+    "django-colorfield",
     "django-money>=3.0",
     "django-q2",
     "django-phonenumber-field[phonenumbers]",
@@ -22,6 +24,7 @@ dependencies = [
     "psycopg[binary]",
     "python-dateutil>=2.9.0.post0,<3.0",
     "redis",
+    "smtp2go",
     "wagtail>=6.0,<7.0",
 ]
 
@@ -38,7 +41,7 @@ migration = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["underground_crm*"]
+include = ["underground_crm*", "underground_email*"]
 
 [tool.black]
 line-length = 100

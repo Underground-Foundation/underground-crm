@@ -1,0 +1,281 @@
+{% load wagtailcore_tags %}<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ subject }}</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
+  <style type="text/css">
+    /* CLIENT-SPECIFIC RESETS */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    table { border-collapse: collapse !important; }
+    body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    div[style*="margin: 16px 0;"] { margin: 0 !important; }
+
+    /* iOS BLUE LINKS */
+    a[x-apple-data-detectors] {
+      color: inherit !important;
+      text-decoration: none !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+    }
+
+    /* BASE */
+    body,
+    .email-body {
+      margin: 0;
+      padding: 0;
+      background-color: #f5f1ff;
+      font-family: 'Open Sans', Helvetica, Arial, sans-serif;
+      width: 100%;
+    }
+
+    /* TYPOGRAPHY */
+    p { margin-top: 0.5em; margin-bottom: 0.5em; }
+
+    h1, h2, h3 {
+      color: #373a3c;
+      font-weight: 700;
+    }
+
+    h2 {
+      line-height: 1.5em;
+      margin-top: 15px;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #C926F2;
+    }
+
+    h3 { margin-bottom: 0.5em; }
+
+    blockquote {
+      background: #f9f9f9;
+      border-left: 10px solid #9A94E7;
+      margin: 1em;
+      padding: 0.5em 10px;
+    }
+
+    blockquote p {
+      color: #535456;
+      font-size: 1.2em;
+      font-weight: 500;
+      font-style: italic;
+      line-height: 1.5em;
+      display: inline;
+    }
+
+    hr { border-color: #D7D7D7; }
+
+    /* MOBILE */
+    @media only screen and (max-width: 480px) {
+      .emailImage {
+        height: auto !important;
+        max-width: 600px !important;
+        width: 100% !important;
+      }
+    }
+
+    @media screen and (max-width: 600px) {
+      .img-max {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+      }
+      .max-width { max-width: 100% !important; }
+      .mobile-wrapper {
+        width: 85% !important;
+        max-width: 85% !important;
+      }
+      .mobile-padding {
+        padding-left: 5% !important;
+        padding-right: 5% !important;
+      }
+      .email-content-container {
+        width: 100% !important;
+      }
+    }
+  </style>
+  <!--[if mso]>
+  <style type="text/css">
+    body, table, td, h1, h2, h3, p, a { font-family: Arial, Helvetica, sans-serif !important; }
+  </style>
+  <![endif]-->
+</head>
+
+<body style="margin: 0 !important; padding: 0 !important; background-color: #f5f1ff;" bgcolor="#f5f1ff">
+
+  <!-- Preview text (hidden) -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">{{ preview_text }}</div>
+  <!-- Prevent preview text bleeding -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" class="email-body">
+
+    <!-- ═══════════════════════════════════ HEADER / LOGO ═══════════════════════════════════ -->
+    <tr>
+      <td align="center" valign="top" width="100%"
+          style="padding: 25px 15px; background: linear-gradient(90deg, #c8dcf6, #efd1ff, #a9c6ec, #85e3ee, #bfddff);"
+          class="mobile-padding">
+        <!--[if (gte mso 9)|(IE)]>
+        <table align="center" border="0" cellspacing="0" cellpadding="0" width="600"><tr><td align="center" valign="top" width="600">
+        <![endif]-->
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
+          <tr>
+            <td align="center" valign="top" style="padding: 0;">
+              <a href="https://www.fusionparty.org.au">
+                <img src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/landscape-white-border.png" width="300" alt="Fusion Party logo" border="0"
+                     style="display: block;" />
+              </a>
+            </td>
+          </tr>
+        </table>
+        <!--[if (gte mso 9)|(IE)]>
+        </td></tr></table>
+        <![endif]-->
+      </td>
+    </tr>
+
+    <!-- ═══════════════════════════════════ BODY CONTENT ═══════════════════════════════════ -->
+    <tr>
+      <td align="center" height="100%" valign="top" width="100%"
+          bgcolor="#f5f1ff" style="padding: 0 15px;" class="mobile-padding">
+        <!--[if (gte mso 9)|(IE)]>
+        <table align="center" border="0" cellspacing="0" cellpadding="0" width="600"><tr><td align="center" valign="top" width="600">
+        <![endif]-->
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%"
+               style="max-width: 600px; border-color: #f5f1ff;" class="email-content-container">
+          <tr>
+            <td align="center" valign="top"
+                style="padding: 0; font-family: 'Open Sans', Helvetica, Arial, sans-serif;">
+              <table cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td align="center" bgcolor="#ffffff"
+                      style="border-radius: 0 0 3px 3px; padding: 25px;">
+                    <table cellspacing="0" cellpadding="0" border="0" width="100%">
+
+                      <!-- Email body content -->
+                      <tr>
+                        <td align="left"
+                            style="font-size: 16px; line-height: 25px; font-family: 'Open Sans', Helvetica, Arial, sans-serif; color: #333333;">
+                          <!--[if mso]><span style="font-family: Arial, Helvetica, sans-serif;"><![endif]-->
+                          <p>
+                            {{ greeting }}
+                          </p>
+                          {% include_block body %}
+                          {% if signature %}
+                            {{ signature|richtext }}
+                          {% endif %}
+                          <!--[if mso]></span><![endif]-->
+                        </td>
+                      </tr>
+
+                      <!-- Social icons -->
+                      <tr>
+                        <td align="center" style="padding-top: 10px;">
+                          <table cellspacing="15" cellpadding="0" border="0" width="200" align="center">
+                            <tr>
+                              <td align="center">
+                                <a href="https://www.facebook.com/FusionPartyAus">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/Facebook-logo2.png"
+                                       alt="Facebook" title="Facebook logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                <a href="https://www.twitter.com/FusionPartyAus">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/x-logo.png"
+                                       alt="Twitter / X" title="Twitter / X logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                <a href="https://www.youtube.com/channel/UCTn5Sxlau1RpT8eA-fEmfig/videos">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/youtube-logo2.png"
+                                       alt="YouTube" title="YouTube logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                <a href="https://instagram.com/FusionPartyAus">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/instagram-logo.png"
+                                       alt="Instagram" title="Instagram logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                <a href="https://www.tiktok.com/@fusionpartyaus">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/tiktok-logo2.png"
+                                       alt="TikTok" title="TikTok logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                <a href="https://mastodon.au/@FusionPartyAus">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/mastodon-logo.png"
+                                       alt="Mastodon" title="Mastodon logo" border="0" />
+                                </a>
+                              </td>
+                              <td align="center">
+                                {% comment %}https://discord.com/branding{% endcomment %}
+                                <a href="https://www.fusionparty.org.au/discord">
+                                  <img width="25" height="25" src="https://pub-de991a561226458eab513185704c3968.r2.dev/images/email/discord-mark-blue.png"
+                                       alt="Discord" title="Discord logo" border="0" />
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+        <!--[if (gte mso 9)|(IE)]>
+        </td></tr></table>
+        <![endif]-->
+      </td>
+    </tr>
+
+    <!-- ═══════════════════════════════════ FOOTER ═══════════════════════════════════ -->
+    <tr>
+      <td align="center" height="100%" valign="top" width="100%"
+          bgcolor="#f5f1ff" style="padding: 0 15px 40px 15px;">
+        <!--[if (gte mso 9)|(IE)]>
+        <table align="center" border="0" cellspacing="0" cellpadding="0" width="600"><tr><td align="center" valign="top" width="600">
+        <![endif]-->
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
+          <tr>
+            <td align="center" valign="top"
+                style="padding: 20px 0 0; font-size: 12px; line-height: 18px;
+                       font-family: 'Open Sans', Helvetica, Arial, sans-serif; color: #999999;">
+              <!--[if mso]><span style="font-family: Arial, Helvetica, sans-serif;"><![endif]-->
+              <p style="margin: 4px 0;">
+                This email was sent to <a style="color: #1488b9;" href="mailto:{{ recipient_email }}">{{ recipient_email }}</a>.
+              </p>
+              <p style="margin: 4px 0;">
+                <a style="color: #1488b9;" href="{{ unsubscription_url }}">Unsubscribe</a> from this list.
+              </p>
+              <p style="margin: 4px 0;">
+                Update or cancel party membership
+                <a style="color: #1488b9;" href="{{ site_url }}/supporter_portal/memberships">here</a>.
+              </p>
+              <p style="margin: 4px 0;">
+                Authorised by O. Miller, FUSION, Brunswick VIC.
+              </p>
+              <!--[if mso]></span><![endif]-->
+            </td>
+          </tr>
+        </table>
+        <!--[if (gte mso 9)|(IE)]>
+        </td></tr></table>
+        <![endif]-->
+      </td>
+    </tr>
+
+  </table>
+</body>
+</html>

@@ -4,7 +4,7 @@ from django.db import models
 
 
 class MembershipType(models.Model):
-    """A category of membership offered by the organisation (e.g. "Fusion Party", "Pirate Party")."""
+    """A category of membership offered by the organization (e.g. "Fusion Party", "Pirate Party")."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)

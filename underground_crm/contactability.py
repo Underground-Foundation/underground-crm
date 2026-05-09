@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Callable, Generator, Optional, Tuple
 from urllib.parse import urlparse
@@ -12,6 +13,8 @@ from django.conf import settings
 from phonenumbers import PhoneNumber, PhoneNumberType, phonenumberutil
 
 from underground_crm.models import Address
+
+logger = logging.getLogger(__name__)
 
 
 def parse_verified_phone_number(raw_number: str) -> Optional[PhoneNumber]:
@@ -35,7 +38,7 @@ def parse_phone_number_with_verified_type(
         PhoneNumberType.SHARED_COST,
         PhoneNumberType.PAGER,
     ):
-        print(f"Phone number {raw_number} has forbidden type {phone_type}")
+        logger.warning("Phone number %s has forbidden type %s", raw_number, phone_type)
         return None, None
     return phone_number, phone_type
 
@@ -70,7 +73,7 @@ def get_validated_domain_name(domain_name: str) -> Optional[str]:
     return domain_name
 
 
-def get_full_name_options(full_name: str) -> Generator[Tuple[str, Optional[str]]]:
+def get_full_name_options(full_name: str) -> Generator[Tuple[str, Optional[str]], None, None]:
     name_parts = full_name.split(" ")
     end = max(len(name_parts), 2)  # Ensure the loop runs at least once
     for i in range(1, end):
@@ -86,6 +89,7 @@ def get_user_by_full_name(
     User = get_user_model()
     for pair in get_full_name_options(full_name):
         first, last = pair
+        logger.debug("Trying name %s … %s", first, last)
         users = User.objects.annotate(search_name=Coalesce("preferred_name", "first_name")).filter(
             # todo: use more than 2 words of a name
             Q(search_name__startswith=first)
@@ -97,12 +101,12 @@ def get_user_by_full_name(
         if users.count() == 0:
             continue
         if users.count() > 1:
-            print(f"Name «{full_name}» is ambiguous")
+            logger.warning("Name «%s» is ambiguous", full_name)
             if not allow_ambiguity:
                 return None
         return users.first()
-    print(
-        f"User «{full_name}» could not be found in our database. Please import users before pages"
+    logger.error(
+        "User «%s» could not be found in our database. Please import users before pages", full_name
     )
     return None
 

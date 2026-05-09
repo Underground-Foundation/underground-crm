@@ -1,0 +1,20 @@
+{% extends "wagtailsnippets/bulk_actions/confirm_bulk_action.html" %}
+{% load i18n %}
+
+{% block bulk_action_message %}
+  {% with object_count=items|length %}
+  <p>
+    {% blocktrans trimmed count count=object_count %}
+      Cancel sending for {{ count }} email campaign?
+      {% plural %}
+      Cancel sending for {{ count }} email campaigns?
+    {% endblocktrans %}
+  </p>
+  {% endwith %}
+  <p>
+    {% trans "The task will be removed from the queue and the campaign state will revert to Draft." %}
+  </p>
+  <p class="help-block help-critical">
+    {% trans "Only Scheduled campaigns can be cancelled. Campaigns already in the Sent state cannot be recalled." %}
+  </p>
+{% endblock %}

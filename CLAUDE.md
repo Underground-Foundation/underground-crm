@@ -161,7 +161,11 @@ arguments added to existing commands.
 ## Final instructions
 For consistency with global coding conventions (not because I prefer it), all
 code should be in US English for spelling. Please stick to UK English for grammar though − 
-do not shorten words into the wrong conjugation, like "invite" as a noun, instead of 'invitation'.
+do not shorten words into the wrong conjugation, like "invite" as a noun instead of "invitation", or
+"unsubscribe" as a modifier instead of "unsubscription" (e.g. `unsubscription_url`, `unsubscription_view`,
+`make_unsubscription_url` — not `unsubscribe_url`, `unsubscribe_view`, `make_unsubscribe_url`). The
+verb form is only correct when the identifier literally names the action of unsubscribing (e.g.
+`unsubscribe_via_email_campaign`). Apply this principle to all similar verb/noun pairs.
 
 Please use US English spelling for the documentation too, but maintain clearer grammar than
 mainstream US parlance. Comments (and your own speech) should always be clear prose, never

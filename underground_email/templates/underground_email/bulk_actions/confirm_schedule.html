@@ -1,0 +1,20 @@
+{% extends "wagtailsnippets/bulk_actions/confirm_bulk_action.html" %}
+{% load i18n %}
+
+{% block bulk_action_message %}
+  {% with object_count=items|length %}
+  <p>
+    {% blocktrans trimmed count count=object_count %}
+      Schedule {{ count }} email campaign for sending?
+      {% plural %}
+      Schedule {{ count }} email campaigns for sending?
+    {% endblocktrans %}
+  </p>
+  {% endwith %}
+  <p>
+    {% trans "Each campaign will be queued for sending at its configured sending date, or immediately if no date is set. The campaign state will change to Scheduled." %}
+  </p>
+  <p class="help-block help-critical">
+    {% trans "Only Draft campaigns with a people filter assigned will be scheduled. Others will be skipped." %}
+  </p>
+{% endblock %}

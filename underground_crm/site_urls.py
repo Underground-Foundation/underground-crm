@@ -5,6 +5,8 @@ Theme projects may override ROOT_URLCONF if they need to add their own URL
 patterns, or they can include this module from their own urls.py.
 """
 
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from wagtail import urls as wagtail_urls
@@ -17,5 +19,6 @@ urlpatterns = [
     path("cms/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
     path("account/", include("underground_crm.urls")),
+    path("", include("underground_email.urls")),
     path("", include(wagtail_urls)),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
