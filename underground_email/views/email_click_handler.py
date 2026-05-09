@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @require_GET
 def unsubscription_view(request: HttpRequest) -> HttpResponse:
-    """Handle a recipient clicking their personalised unsubscribe link.
+    """Handle a recipient clicking their personalised unsubscription link.
 
     The 'address' query parameter is a signed token produced by
     make_unsubscribe_token. Verifying the signature proves the request came

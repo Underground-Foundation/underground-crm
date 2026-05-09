@@ -13,3 +13,5 @@ American [Twilio](https://en.wikipedia.org/wiki/Twilio)).
 SMTP2Go offers [1,000 free emails per month](https://www.smtp2go.com/pricing/), which is a useful allowance for the 
 Fusion Party, since we send emails every ~2 months. SendGrid offers a 
 [60-day trial](https://www.twilio.com/en-us/products/email-api/pricing) of 100 emails / day.
+
+Read through their API documentation at https://developers.smtp2go.com/docs/introduction-guide.
