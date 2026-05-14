@@ -68,6 +68,9 @@ class Person(AbstractBaseUser, PermissionsMixin):
     # --- Identity ---
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True, validators=[validate_email_with_deliverability])
+    email_is_bad = models.BooleanField(
+        null=True, blank=True, help_text="Can the user actually be emailed?"
+    )
     legacy_id = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -210,7 +213,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         default=False, help_text="Person has opted in to receive email updates."
     )
     unsubscribed_at = models.DateTimeField(
-        null=True, blank=True, help_text="When the person unsubscribed from email."
+        null=True, blank=True, help_text="When the person unsubscribed from all emails."
     )
     is_supporter = models.BooleanField(default=False)
     support_level = models.SmallIntegerField(
