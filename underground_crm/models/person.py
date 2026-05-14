@@ -122,12 +122,14 @@ class Person(AbstractBaseUser, PermissionsMixin):
     work_phone_number = PhoneNumberField(
         null=True, blank=True, region=settings.PHONE_REGION, db_index=True
     )
-    twitter_login = models.CharField(max_length=100, blank=True)
-    facebook_username = models.CharField(max_length=100, blank=True)
+    twitter_login = models.CharField(max_length=100, blank=True, null=True)
+    facebook_username = models.CharField(max_length=100, null=True, blank=True)
 
     # --- Addresses ---
     submitted_address = models.TextField(
-        blank=True, help_text="Raw address string as submitted by the person, before geocoding."
+        null=True,
+        blank=True,
+        help_text="Raw address string as submitted by the person, before geocoding.",
     )
     primary_address = models.OneToOneField(
         Address,
@@ -303,7 +305,10 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Imported data ---
     membership_number = models.CharField(
-        max_length=100, blank=True, help_text="Membership number from a previous membership system."
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Membership number from a previous membership system.",
     )
 
     # --- Django auth fields ---

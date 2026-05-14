@@ -165,6 +165,27 @@ def _build_address(row, prefix):
     return address
 
 
+def _get_email_with_is_bad(row: dict) -> Tuple[Optional[str], Optional[bool]]:
+    """Return the first valid email address with an is_bad=False flag.
+
+    Tries email1 through email4 in order. The legacy system may export the primary
+    email as the bare "email" column rather than "email1"; both are checked for
+    slot 1 so either CSV format is handled.
+    """
+    fallback = (None, None)
+    for n in range(1, 5):
+        raw = row.get(f"email{n}", "") or (row.get("email", "") if n == 1 else "")
+        email = get_validated_email_address(raw.strip())
+        if email:
+            is_bad_raw = row.get(f"email{n}_is_bad", "").strip()
+            is_bad = _bool(is_bad_raw)
+            if is_bad:
+                fallback = (email, is_bad)
+                continue
+            return email, is_bad
+    return fallback
+
+
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
     mobile_number, mobile_type = parse_phone_number_with_verified_type(
         row.get("mobile_number", "").strip() or None
@@ -197,7 +218,7 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
 # ---------------------------------------------------------------------------
 
 
-def _person_fields(row):
+def _person_fields(row, is_email_bad: bool):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
     return {
@@ -220,6 +241,7 @@ def _person_fields(row):
         "submitted_address": row.get("primary_submitted_address", "").strip() or None,
         "gender": row.get("sex", "").strip() or None,
         "date_of_birth": _parse_date(row.get("born_at", "")),
+        "email_is_bad": is_email_bad,
         "email_opt_in": _bool(row.get("email_opt_in", "")),
         "unsubscribed_at": _parse_datetime(row.get("unsubscribed_at", "")),
         "is_supporter": _bool(row.get("is_supporter", "")),
@@ -521,12 +543,12 @@ class Command(BaseCommand):
                 skipped_count += 1
                 continue
 
-            email = get_validated_email_address(row.get("email", "").strip())
+            email, is_email_bad = _get_email_with_is_bad(row)
             if not email:
                 # Generate a stable placeholder so the record can exist without a real email.
                 email = f"no-email-{legacy_id}@import.invalid"
 
-            fields = _person_fields(row)
+            fields = _person_fields(row, is_email_bad=is_email_bad)
 
             if dry_run:
                 self.stdout.write(
