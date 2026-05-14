@@ -1,7 +1,7 @@
 import logging
 import os
-from datetime import timedelta
-from typing import Any, Dict
+import datetime
+from typing import Any, Dict, cast, List, Union
 
 import requests
 from cachetools import cached
@@ -10,10 +10,16 @@ from django.contrib.auth import get_user_model
 from django.template import Context, Template as DjangoTemplate
 from django.template.loader import render_to_string
 from django.utils import timezone
-from openpyxl.pivot import record
 from smtp2go.core import Smtp2goClient
+
 from underground_email import app_settings
-from underground_email.api import SMTP2GoEventType
+from underground_email.api import (
+    SMTP2GoEventType,
+    BAD_OUTCOMES,
+    SMTPActivityResponse,
+    SMTPEvent,
+    WebhookEmailDict,
+)
 from underground_email.models import EmailCampaign
 from underground_email.unsubscription import make_unsubscription_url
 
@@ -141,33 +147,15 @@ def send_emails(campaign_utm_id: str) -> None:
         campaign_utm_id,
         task_name=f"email_results_{campaign_utm_id}",
         schedule_type=Schedule.ONCE,
-        next_run=timezone.now() + timedelta(hours=24),
+        next_run=timezone.now() + datetime.timedelta(hours=24),
     )
 
 
-def _handle_spam(recipient: str, payload: dict[str, Any]) -> None:
-    # TODO: mark the person as having reported spam (e.g. set a flag or add a tag).
-    logger.info("Spam report from %s.", recipient)
-
-
-def _handle_bounce(recipient: str, payload: dict[str, Any]) -> None:
-    # TODO: mark the email address as bounced so it is excluded from future sends.
-    logger.info("Bounce for %s.", recipient)
-
-
-def _handle_reject(recipient: str, payload: dict[str, Any]) -> None:
-    # TODO: handle a rejection (e.g. log for review; may indicate a suppression-list hit).
-    logger.info("Rejection for %s.", recipient)
-
-
-def _handle_unsubscription(recipient: str, payload: dict[str, Any]) -> None:
-    # TODO: record the unsubscription via unsubscribe_from_tag_via_email_campaign or
-    # by setting person.unsubscribed_at directly if no campaign context is available.
-    logger.info("Unsubscription for %s.", recipient)
-
-
 def process_email_engagement(
-    campaign: EmailCampaign, recipients: Dict[str, settings.USER_AUTH_MODEL], events
+    campaign: EmailCampaign,
+    recipients: Dict[str, settings.AUTH_USER_MODEL],
+    events: List[SMTPEvent],
+    persist=True,
 ) -> int:
     from underground_crm.models import Engagement
 
@@ -199,7 +187,8 @@ def process_email_engagement(
         ]
 
         if new_engagements:
-            Engagement.objects.bulk_create(new_engagements)
+            if persist:
+                Engagement.objects.bulk_create(new_engagements)
             logger.info(
                 "Recorded %d %s engagements for campaign %s.",
                 len(new_engagements),
@@ -211,10 +200,71 @@ def process_email_engagement(
             campaign.opened_count = (campaign.opened_count or 0) + len(new_engagements)
         else:
             campaign.clicked_count = (campaign.clicked_count or 0) + len(new_engagements)
-    return
+    # todo: I want to send a signal that we've already seen some events. Dropping some from processing might be
+    # because the person could not be found.
+    return len(new_engagements)
 
 
-def get_email_results_and_save_engagements(campaign_utm_id: str, event_type="opened") -> None:
+def handle_spam_or_unsubscription(
+    event: Union[WebhookEmailDict, SMTPEvent], recipient, persist=True
+):
+    updated_fields = ["unsubscribed_at"]
+    if event.get("event") == SMTP2GoEventType.SPAM:
+        # This act will make emails harder to deliver to everyone else.
+        logger.warning("User %s 🗡 marked this email as spam: %s", recipient, event["subject"])
+        # todo: add a person note explaining that they marked this as spam
+        recipient.is_supporter = False
+        updated_fields.append("is_supporter")
+    else:
+        logger.info("User %s unsubscribed from this email: %s", recipient, event["subject"])
+    recipient.unsubscribed_at = datetime.datetime.now(tz=datetime.timezone.utc)
+    if persist:
+        recipient.save(update_fields=updated_fields)
+    return True
+
+
+def process_email_rejection(
+    campaign: EmailCampaign,
+    recipients: Dict[str, settings.AUTH_USER_MODEL],
+    events: List[SMTPEvent],
+    persist=True,
+) -> int:
+    processed_count = 0
+    for event in events:
+        recipient = recipients.get(event["recipient"])
+        if not recipient:
+            logger.warning(
+                "Unable to process this %s event: user %s was not found in our database",
+                event.get("event"),
+                event["recipient"],
+            )
+            continue
+        if event.get("event") in (
+            SMTP2GoEventType.SOFT_BOUNCED,
+            SMTP2GoEventType.HARD_BOUNCED,
+            SMTP2GoEventType.REJECTED,
+        ):
+            logger.warning(
+                "User %s could not receive an email (%s)", event["recipient"], event["event"]
+            )
+            # todo: add a person note to them about when this happened
+            recipient.email_is_bad = True
+            if persist:
+                recipient.save(update_fields=["email_is_bad"])
+        elif event.get("event") in (SMTP2GoEventType.SPAM, SMTP2GoEventType.UNSUBSCRIBED):
+            if not handle_spam_or_unsubscription(event, recipient=recipient, persist=persist):
+                continue
+        else:
+            logger.error("No handler is defined for %s events", event["event"])
+            continue
+        processed_count += 1
+    logger.info("Processed %s / %s email events", processed_count, len(events))
+    return processed_count
+
+
+def get_email_results_and_save_engagements(
+    campaign_utm_id: str, event_type: SMTP2GoEventType, persist=True
+) -> None:
     """
     Poll the SMTP2Go activity search endpoint for opens on this campaign,
     then record an Engagement.EMAIL_OPENED entry for each person found to have
@@ -227,6 +277,7 @@ def get_email_results_and_save_engagements(campaign_utm_id: str, event_type="ope
     campaign = EmailCampaign.objects.get(utm_id=campaign_utm_id)
     api_key = _api_key()
 
+    # https://developers.smtp2go.com/reference/search-activity
     resp = requests.post(
         app_settings.SMTP2GO_API_URL + "activity/search",
         json={
@@ -238,9 +289,8 @@ def get_email_results_and_save_engagements(campaign_utm_id: str, event_type="ope
         timeout=30,
     )
     resp.raise_for_status()
-    data = resp.json()
-
-    events = data.get("data", {}).get("emails", [])
+    data = cast(SMTPActivityResponse, resp.json())
+    events: List[SMTPEvent] = data.get("data", {}).get("events", [])
     if not events:
         logger.info("No events of type %s found for campaign %s.", event_type, campaign_utm_id)
         return
@@ -251,8 +301,18 @@ def get_email_results_and_save_engagements(campaign_utm_id: str, event_type="ope
         p.email: p for p in User.objects.filter(email__in=email_addresses)
     }
     if event_type in (SMTP2GoEventType.OPENED, SMTP2GoEventType.CLICKED):
-        process_email_engagement(campaign, recipients=people_by_email, events=events)
-    campaign.save(update_fields=["opened_count"])
+        processed = process_email_engagement(
+            campaign, recipients=people_by_email, events=events, persist=persist
+        )
+        # todo: avoid calling again if we already saw some of the processed events
+        campaign.save(update_fields=["opened_count"])
+        pass
+    elif event_type in BAD_OUTCOMES:
+        processed = process_email_rejection(
+            campaign, recipients=people_by_email, events=events, persist=persist
+        )
+    else:
+        logger.error("No handler is defined for %s events", event_type)
 
 
 def register_email_failure_webhooks() -> None:
