@@ -117,15 +117,16 @@ class EmailCampaign(PreviewableMixin, models.Model):
         max_length=10,
         primary_key=True,
     )
-    title = models.CharField(
-        verbose_name=_("title"),
+    subject = models.CharField(
+        verbose_name=_("subject"),
         max_length=255,
-        help_text=_("The campaign title as you'd like it to be seen by the public"),
+        help_text=_("The campaign's subject line, as you'd like it to be seen by the public"),
     )
     preview_text = models.CharField(
         verbose_name=_("preview text"),
         max_length=255,
         blank=True,
+        null=True,
         help_text=_("Short summary shown by email clients after the subject line"),
     )
     sender = models.ForeignKey(EmailSender, verbose_name=_("sender"), on_delete=models.PROTECT)
@@ -181,7 +182,12 @@ class EmailCampaign(PreviewableMixin, models.Model):
         blank=True,
     )
     opened_count = models.PositiveIntegerField(
-        verbose_name=_("opened count"), null=True, blank=True
+        verbose_name=_("opened count"),
+        null=True,
+        blank=True,
+        help_text=_(
+            "Google and Apple have measures preventing us from measuring this, so it should not be trusted"
+        ),
     )
     spam_count = models.PositiveIntegerField(
         verbose_name=_("spam count"),
@@ -203,7 +209,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
             [
                 ObjectList(
                     [
-                        FieldPanel("title"),
+                        FieldPanel("subject"),
                         FieldPanel("preview_text"),
                         FieldPanel("greeting"),
                         FieldPanel("template"),
@@ -244,7 +250,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
         verbose_name_plural = "email campaigns"
 
     def __str__(self) -> str:
-        return self.title
+        return self.subject
 
     def get_potential_recipients(self):
         if not self.people_filter:
@@ -290,7 +296,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
         context = super().get_preview_context(request, mode_name)
         context.update(
             {
-                "subject": self.title,
+                "subject": self.subject,
                 "greeting": self.greeting,
                 "body": self.body,
                 "signature": None if not self.sender else self.sender.signature,

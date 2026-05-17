@@ -128,6 +128,10 @@ Q_CLUSTER = {
     "redis": _REDIS_URL,
 }
 
+
+# todo: configure Sentry to notify us of queued email failures:
+#  https://django-q.readthedocs.io/en/latest/configure.html#error-reporter
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 DATABASES = {
@@ -158,22 +162,65 @@ REST_FRAMEWORK = {
 
 ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
 
+# VERBOSE controls log verbosity (matches the convention used across services):
+#   0 = INFO  (default)
+#   1 = DEBUG
+#   2 = WARNING  (out of order, preserved for historical consistency)
+try:
+    _verbose = int(os.environ.get("VERBOSE", "0"))
+except (ValueError, TypeError):
+    _verbose = 0
+
+if _verbose == 2:
+    _LOG_LEVEL = "WARNING"
+elif _verbose == 1:
+    _LOG_LEVEL = "DEBUG"
+else:
+    _LOG_LEVEL = "INFO"
+
+# Frameworks and transport libraries that are too chatty at DEBUG; always kept at WARNING.
+_NOISY_LOGGERS = [
+    "django",
+    "django_q",
+    "urllib3",
+    "wagtail",
+]
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        "colored": {
+            "()": "underground_crm.logging_config.ColoredFormatter",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "colored",
         },
     },
     "loggers": {
         "underground_crm": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": _LOG_LEVEL,
+            "propagate": False,
         },
         "underground_email": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        # requests is logged at the same verbosity as application code so that
+        # outbound HTTP calls to SMTP2Go and similar services appear in traces.
+        "requests": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        **{
+            name: {"handlers": ["console"], "level": "WARNING", "propagate": False}
+            for name in _NOISY_LOGGERS
         },
     },
 }
@@ -181,3 +228,8 @@ LOGGING = {
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
+
+UNDERGROUND_EMAIL_BUTTON_TEXT_COLORS = [
+    ("#ffffff", "White"),
+    ("#000000", "Black"),
+]

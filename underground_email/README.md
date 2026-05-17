@@ -15,3 +15,10 @@ Fusion Party, since we send emails every ~2 months. SendGrid offers a
 [60-day trial](https://www.twilio.com/en-us/products/email-api/pricing) of 100 emails / day.
 
 Read through their API documentation at https://developers.smtp2go.com/docs/introduction-guide.
+
+## Scheduling Emails
+Our scheduling of emails relies on [Django Q](https://django-q.readthedocs.io/). To see the status of the queue,
+run this command, as per https://django-q.readthedocs.io/en/latest/monitor.html:
+```shell
+python manage.py qinfo
+```

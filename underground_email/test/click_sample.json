@@ -1,0 +1,34 @@
+{
+  "request_id": "b29a7cc3-a5af-481f-bcfa-c6b55b9be43b",
+  "data": {
+    "events": [
+      {
+        "email_id": "1wOTXO-AIkwcC8nmcI-K11U",
+        "date": "2026-05-17T04:56:34Z",
+        "event": "clicked",
+        "recipient": "owen.miller@fusionparty.org.au",
+        "subject": "Welcome to Underground CRM 3",
+        "from": "hello@votefusion.org",
+        "username": "api-FC7F1FD98A08 (Admin API Key)",
+        "sender": "hello@votefusion.org",
+        "sender_full": "Vote Fusion <hello@votefusion.org>",
+        "to": "owen.miller@fusionparty.org.au",
+        "reason": "http://localhost:8000/home",
+        "transport": "olt-us-2.smtphost.com",
+        "host": "203.18.242.25",
+        "byte_size": 19881,
+        "subaccount_name": "Master account",
+        "outbound_ip": "unavailable",
+        "email_client": {
+          "fullname": "Chrome 148.0.0",
+          "name_without_version": "Chrome"
+        },
+        "metadata": {
+          "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+          "url": "http://localhost:8000/home"
+        }
+      }
+    ],
+    "total_events": 1
+  }
+}

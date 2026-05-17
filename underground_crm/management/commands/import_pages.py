@@ -341,7 +341,7 @@ def extract_event_population(soup: BeautifulSoup):
     return None
 
 
-def get_page_args(document_soup, importable_html, attributes, slug: str) -> dict:
+def get_page_args(document_soup, importable_html, attributes, slug: str, site) -> dict:
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
     # The name attribute is an administrative label for the page. The headline is what public viewers see as a
@@ -364,6 +364,7 @@ def get_page_args(document_soup, importable_html, attributes, slug: str) -> dict
         "og_type": extract_og_type(head),
         "body": json.dumps([{"type": "html", "value": importable_html}]),
         "show_toc": should_show_toc(document_soup),
+        "site": site,
     }
 
 
@@ -398,6 +399,7 @@ def build_event_page(
         importable_html=importable_html,
         attributes=attributes,
         slug=slug,
+        site=site,
     )
     kwargs.pop("show_toc")
     page = cast(
@@ -442,6 +444,7 @@ def build_blog_page(
         importable_html=importable_html,
         attributes=attributes,
         slug=slug,
+        site=site,
     )
     kwargs.pop("show_toc")
     page = cast(

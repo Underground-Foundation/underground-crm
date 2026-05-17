@@ -85,11 +85,11 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "title",
+                    "subject",
                     models.CharField(
-                        help_text="The campaign title as you'd like it to be seen by the public",
+                        help_text="The campaign's subject line, as you'd like it to be seen by the public",
                         max_length=255,
-                        verbose_name="title",
+                        verbose_name="subject",
                     ),
                 ),
                 (

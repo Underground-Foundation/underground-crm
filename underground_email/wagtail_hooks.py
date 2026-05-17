@@ -1,5 +1,7 @@
 import logging
 
+from django.templatetags.static import static
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _, ngettext
 from wagtail import hooks
 from wagtail.admin.ui.tables import Column
@@ -8,6 +10,14 @@ from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 
 from .models import EmailCampaign, EmailSender, TemplatedGreeting
+
+
+@hooks.register("insert_global_admin_js")
+def colorfield_wagtail_js():
+    return format_html(
+        '<script src="{}"></script>', static("underground_email/js/colorfield_wagtail.js")
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +47,13 @@ class EmailCampaignViewSet(SnippetViewSet):
     menu_order = 200
     add_to_admin_menu = True
     list_display = [
-        "title",
+        "subject",
         "sender",
         Column("state", label=_("State"), accessor="get_state_display"),
         "sending_date",
     ]
     list_filter = ["state"]
-    search_fields = ["title"]
+    search_fields = ["subject"]
     preview_modes = [("", "Email preview")]
 
 
@@ -83,10 +93,11 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
                     logger.info(
                         "Scheduling campaign %s (%r) as task %r to run at %s.",
                         campaign.utm_id,
-                        campaign.title,
+                        campaign.subject,
                         task_name,
                         campaign.sending_date,
                     )
+                    # Monitor the queue: https://django-q.readthedocs.io/en/latest/monitor.html
                     q_schedule(
                         "underground_email.tasks.send_emails",
                         campaign.utm_id,
@@ -98,7 +109,7 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
                     logger.info(
                         "Enqueuing campaign %s (%r) as task %r for immediate sending.",
                         campaign.utm_id,
-                        campaign.title,
+                        campaign.subject,
                         task_name,
                     )
                     async_task(
@@ -110,14 +121,16 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
                 logger.exception(
                     "Failed to enqueue campaign %s (%r) — is the Q broker (Redis) reachable?",
                     campaign.utm_id,
-                    campaign.title,
+                    campaign.subject,
                 )
                 continue
 
             campaign.state = 1  # Scheduled
             campaign.save(update_fields=["state"])
             count += 1
-            logger.info("Campaign %s (%r) state set to Scheduled.", campaign.utm_id, campaign.title)
+            logger.info(
+                "Campaign %s (%r) state set to Scheduled.", campaign.utm_id, campaign.subject
+            )
 
         return count, 0
 

@@ -79,7 +79,7 @@ def unsubscribe_from_tag_via_email_campaign(
     Engagement(
         person=person,
         action_type=Engagement.UNSUBSCRIBED,
-        page_title=campaign.title,
+        page_title=campaign.subject,
         metadata={"campaign_utm_id": utm_campaign_id},
     ).save()
     campaign.unsubscription_count = (campaign.unsubscription_count or 0) + 1
@@ -102,7 +102,7 @@ def unsubscribe_from_tag_via_email_campaign(
             "%s is unsubscribing from all future emails after receiving campaign %s (%s).",
             person,
             utm_campaign_id,
-            campaign.title,
+            campaign.subject,
         )
         person.unsubscribed_at = timezone.now()
         person.is_supporter = False

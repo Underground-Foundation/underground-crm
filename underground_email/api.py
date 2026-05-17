@@ -5,7 +5,7 @@ from typing import TypedDict, Dict, Union, List, Optional
 
 
 class SMTP2GoEventType(enum.StrEnum):
-    PROCESSED = "processed"
+    PROCESSED = "processed"  # SMTP2Go is ready to send this message.
     SOFT_BOUNCED = "soft-bounced"
     HARD_BOUNCED = "hard-bounced"
     REJECTED = "rejected"
@@ -13,17 +13,20 @@ class SMTP2GoEventType(enum.StrEnum):
     DELIVERED = "delivered"
     UNSUBSCRIBED = "unsubscribed"
     RESUBSCRIBED = "resubscribed"
-    OPENED = "opened"
+    OPENED = "opened"  # Mailbox providers actively suppress this ability, so don't trust it: https://support.smtp2go.com/hc/en-gb/articles/360003124714-Open-Tracking
     CLICKED = "clicked"
 
 
-BAD_OUTCOMES = (
+# These events cause corresponding Engagement instances to be created.
+POSITIVE_ENGAGEMENT_OUTCOMES = {SMTP2GoEventType.OPENED, SMTP2GoEventType.CLICKED}
+
+BAD_OUTCOMES = {
     SMTP2GoEventType.SOFT_BOUNCED,
     SMTP2GoEventType.HARD_BOUNCED,
     SMTP2GoEventType.REJECTED,
     SMTP2GoEventType.SPAM,
     SMTP2GoEventType.UNSUBSCRIBED,
-)
+}
 
 
 class DeliveryAttempt:

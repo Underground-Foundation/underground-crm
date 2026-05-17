@@ -48,7 +48,7 @@ def record_rsvp_engagement(event_guest_id: str) -> None:
         person=event_guest.guest,
         action_type=Engagement.RSVP,
         page_url=event_guest.event_page.slug,
-        page_title=event_guest.event_page.title,
+        page_title=event_guest.event_page.subject,
     )
 
 

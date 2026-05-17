@@ -1,7 +1,7 @@
 """
-Integration tests for address geocoding.
+Integration test for address geocoding.
 
-These tests call the real Addressr API and require the service to be running
+These test call the real Addressr API and require the service to be running
 and seeded with GNAF data. They are skipped automatically when Addressr is not
 reachable, e.g. in CI without the Docker stack.
 

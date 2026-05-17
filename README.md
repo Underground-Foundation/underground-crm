@@ -76,7 +76,7 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-In another terminal, run the queue cluster:
+In a second terminal, run the queue cluster:
 ```bash
 python manage.py qcluster
 ```

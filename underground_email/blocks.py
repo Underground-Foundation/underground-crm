@@ -25,7 +25,7 @@ class ColorBlock(FieldBlock):
         self,
         default: str = "#000000",
         required: bool = True,
-        palette_only: bool = True,
+        palette_only: bool = False,
         palette_setting: str = "UNDERGROUND_COLOR_PALETTE",
         **kwargs,
     ):
@@ -68,7 +68,15 @@ class ButtonBlock(StructBlock):
                     "background_color",
                     ColorBlock(label="Background color", default=bg_default, palette_only=False),
                 ),
-                ("color", ColorBlock(label="Text color", default="#ffffff", palette_only=False)),
+                (
+                    "color",
+                    ColorBlock(
+                        label="Text color",
+                        default="#ffffff",
+                        palette_only=False,
+                        palette_setting="UNDERGROUND_EMAIL_BUTTON_TEXT_COLORS",
+                    ),
+                ),
             ],
             **kwargs,
         )
