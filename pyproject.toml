@@ -26,6 +26,7 @@ dependencies = [
     "python-dateutil>=2.9.0.post0,<3.0",
     "redis",
     "smtp2go",
+    "stripe>=8.0",
     "wagtail>=6.0,<7.0",
 ]
 
@@ -42,7 +43,7 @@ migration = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["underground_crm*", "underground_email*"]
+include = ["underground_crm*", "underground_email*", "underground_payments*"]
 
 [tool.black]
 line-length = 100

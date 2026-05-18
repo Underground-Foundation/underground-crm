@@ -2,7 +2,7 @@
 Base Django settings for any site that uses underground_crm.
 
 Downstream sites should import these with ``from underground_crm.settings import *``
-and then override or extend as needed.  At minimum they must supply:
+and then override or extend as needed.  At minimum, they must supply:
 
   - WSGI_APPLICATION
   - STATIC_ROOT / MEDIA_ROOT  (paths depend on the deployment's BASE_DIR)
@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "underground_email",
+    "underground_payments",
 ]
 
 MIDDLEWARE = [
@@ -134,6 +135,12 @@ Q_CLUSTER = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Stripe — set all three in environment. STRIPE_PUBLISHABLE_KEY is forwarded to
+# the browser; STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET stay server-side only.
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
 _pg_name = os.environ.get("PGDATABASE", "")
 if _pg_name:
     DATABASES = {
@@ -150,9 +157,9 @@ else:
     # By running in memory, this database is handy for our CI/CD pipeline.
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": ":memory:",
-        }
+                       "ENGINE": "django.db.backends.sqlite3",
+                       "NAME": ":memory:",
+                   }
     }
 
 # Wagtail
