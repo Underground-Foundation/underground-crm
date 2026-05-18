@@ -81,6 +81,44 @@
                  autocomplete="email" required>
         </div>
 
+        {# Name + mailing address — always rendered; JS hides them if the user is logged in #}
+        <div id="guest-fields">
+          <div class="form-row mb-3">
+            <div class="col-6 pr-2">
+              <label for="donor-first-name" class="form-label fw-semibold">First name</label>
+              <input type="text" id="donor-first-name" class="form-control"
+                     autocomplete="given-name" required>
+            </div>
+            <div class="col-6 pl-2">
+              <label for="donor-last-name" class="form-label fw-semibold">Last name</label>
+              <input type="text" id="donor-last-name" class="form-control"
+                     autocomplete="family-name" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="donor-address-line1" class="form-label fw-semibold">Street address</label>
+            <input type="text" id="donor-address-line1" class="form-control"
+                   autocomplete="address-line1" required>
+          </div>
+          <div class="form-row mb-3">
+            <div class="col-12 col-md-5 mb-2 mb-md-0">
+              <label for="donor-city" class="form-label fw-semibold">Suburb / City</label>
+              <input type="text" id="donor-city" class="form-control"
+                     autocomplete="address-level2" required>
+            </div>
+            <div class="col-6 col-md-3 px-md-2">
+              <label for="donor-state" class="form-label fw-semibold">State</label>
+              <input type="text" id="donor-state" class="form-control"
+                     autocomplete="address-level1" maxlength="10" required>
+            </div>
+            <div class="col-6 col-md-4">
+              <label for="donor-postcode" class="form-label fw-semibold">Postcode</label>
+              <input type="text" id="donor-postcode" class="form-control"
+                     autocomplete="postal-code" maxlength="10" required>
+            </div>
+          </div>
+        </div>
+
         {# Step 1 button — collects amount/frequency/email then mounts Stripe Element #}
         <button type="button" id="continue-btn" class="btn btn-primary w-100 mb-3">
           Continue to payment
@@ -103,6 +141,44 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+// Auth island: hide guest fields when the user is already logged in.
+// Reads the same sessionStorage cache written by the profile dropdown island.
+(function () {
+  "use strict";
+  const ME_URL = "{% url 'me' %}";
+  const CACHE_KEY = "fusion_auth_v1";
+  const CACHE_TTL = 2 * 60 * 1000;
+  const continueBtn = document.getElementById("continue-btn");
+  const guestFields = document.getElementById("guest-fields");
+
+  continueBtn.disabled = true;
+
+  function applyAuth(authenticated) {
+    if (authenticated) {
+      guestFields.style.display = "none";
+      guestFields.querySelectorAll("[required]").forEach(el => el.removeAttribute("required"));
+    }
+    continueBtn.disabled = false;
+  }
+
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const { data, expires } = JSON.parse(raw);
+      if (Date.now() < expires) { applyAuth(data.authenticated); return; }
+    }
+  } catch {}
+
+  fetch(ME_URL, { credentials: "same-origin" })
+    .then(r => r.json())
+    .then(d => {
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: d, expires: Date.now() + CACHE_TTL })); } catch {}
+      applyAuth(d.authenticated);
+    })
+    .catch(() => applyAuth(false));
+})();
+</script>
 <script>
 (function () {
   "use strict";
@@ -166,6 +242,15 @@
     const email = document.getElementById("donor-email").value.trim();
     const frequency = document.querySelector("input[name=frequency]:checked")?.value ?? "once";
 
+    // Guest-only fields (absent from DOM when logged in).
+    const guestSection = document.getElementById("guest-fields");
+    const firstName   = document.getElementById("donor-first-name")?.value.trim() ?? "";
+    const lastName    = document.getElementById("donor-last-name")?.value.trim() ?? "";
+    const addressLine1 = document.getElementById("donor-address-line1")?.value.trim() ?? "";
+    const city        = document.getElementById("donor-city")?.value.trim() ?? "";
+    const stateVal    = document.getElementById("donor-state")?.value.trim() ?? "";
+    const postcode    = document.getElementById("donor-postcode")?.value.trim() ?? "";
+
     if (!selectedCents || selectedCents < 100) {
       alert("Please select a donation amount of at least $1.");
       return;
@@ -173,6 +258,16 @@
     if (!email) {
       alert("Please enter your email address.");
       return;
+    }
+    if (guestSection) {
+      if (!firstName || !lastName) {
+        alert("Please enter your name.");
+        return;
+      }
+      if (!addressLine1 || !city || !stateVal || !postcode) {
+        alert("Please enter your mailing address.");
+        return;
+      }
     }
 
     const csrfToken = document.cookie
@@ -192,8 +287,14 @@
         },
         body: JSON.stringify({
           amount_cents: selectedCents,
-          frequency: frequency,
-          email: email,
+          frequency,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          address_line1: addressLine1,
+          city,
+          state: stateVal,
+          postcode,
         }),
       });
       data = await resp.json();

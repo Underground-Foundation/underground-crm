@@ -43,6 +43,12 @@ def create_payment_intent(request, page_pk: int):
         amount_cents = int(data["amount_cents"])
         frequency = data.get("frequency", "once")
         email = data.get("email", "").strip()
+        first_name = data.get("first_name", "").strip()[:100]
+        last_name = data.get("last_name", "").strip()[:100]
+        address_line1 = data.get("address_line1", "").strip()[:200]
+        city = data.get("city", "").strip()[:100]
+        state = data.get("state", "").strip()[:100]
+        postcode = data.get("postcode", "").strip()[:20]
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
@@ -65,6 +71,12 @@ def create_payment_intent(request, page_pk: int):
         "page_url": request.build_absolute_uri(page.url),
         "frequency": frequency,
         "donor_email": email,
+        "donor_first_name": first_name,
+        "donor_last_name": last_name,
+        "donor_address_line1": address_line1,
+        "donor_city": city,
+        "donor_state": state,
+        "donor_postcode": postcode,
     }
 
     client = _stripe_client()

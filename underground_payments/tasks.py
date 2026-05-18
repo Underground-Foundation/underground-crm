@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 _CURRENCY = "AUD"
 
 
-def handle_successful_donation(payment_intent_id: str, amount_cents: int, metadata: dict) -> None:
+def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadata: dict) -> None:
     """
     Post-payment side effects triggered by a Stripe payment_intent.succeeded webhook:
     create a Donation record, apply donor_tag, update Person aggregates, and
@@ -25,6 +25,12 @@ def handle_successful_donation(payment_intent_id: str, amount_cents: int, metada
     donor_email = metadata.get("donor_email", "").strip().lower()
     frequency = metadata.get("frequency", "once")
     page_url = metadata.get("page_url", "")
+    first_name = metadata.get("donor_first_name", "").strip()
+    last_name = metadata.get("donor_last_name", "").strip()
+    address_line1 = metadata.get("donor_address_line1", "").strip()
+    city = metadata.get("donor_city", "").strip()
+    state = metadata.get("donor_state", "").strip()
+    postcode = metadata.get("donor_postcode", "").strip()
 
     page = (
         PaymentPage.objects.select_related("donor_tag", "success_email__sender__sender")
@@ -49,13 +55,41 @@ def handle_successful_donation(payment_intent_id: str, amount_cents: int, metada
         logger.info("payment_intent %s already recorded; skipping.", payment_intent_id)
         return
 
+    from underground_crm.models import Address
+
     User = get_user_model()
     person = User.objects.filter(email__iexact=donor_email).first()
     if not person:
-        person = User(email=donor_email)
+        person = User(
+            email=donor_email,
+            first_name=first_name or None,
+            last_name=last_name or None,
+        )
         person.set_unusable_password()
         person.save()
         logger.info("Created new Person for donor %s", donor_email)
+    else:
+        # Fill in blanks but never overwrite existing data.
+        fill = {}
+        if first_name and not person.first_name:
+            fill["first_name"] = first_name
+        if last_name and not person.last_name:
+            fill["last_name"] = last_name
+        if fill:
+            for k, v in fill.items():
+                setattr(person, k, v)
+            person.save(update_fields=list(fill.keys()))
+
+    # Store billing address if provided and the person doesn't have one yet.
+    if not person.billing_address_id and (address_line1 or city or state or postcode):
+        addr = Address.objects.create(
+            line1=address_line1 or None,
+            city=city or None,
+            state=state or None,
+            postcode=postcode or None,
+        )
+        person.billing_address = addr
+        person.save(update_fields=["billing_address"])
 
     amount = Money(amount_cents / 100, _CURRENCY)
     is_recurring = frequency in ("monthly", "annual")
@@ -136,7 +170,7 @@ def handle_successful_subscription_renewal(
         pass
 
     metadata.setdefault("frequency", interval)
-    handle_successful_donation(payment_intent_id, amount_cents, metadata)
+    handle_successful_payment(payment_intent_id, amount_cents, metadata)
 
 
 def _send_success_email(campaign, person) -> None:
