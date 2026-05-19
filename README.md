@@ -32,7 +32,7 @@ heap limit, so `docker-compose.yml` sets `NODE_OPTIONS=--max-old-space-size=8192
 to give it an 8 GB heap. Allow additional RAM for OpenSearch and the OS on top
 of that.
 
-## Setting up a theme project
+## Setting up and running a theme project
 
 ```bash
 mkdir my-theme && cd my-theme
@@ -70,21 +70,82 @@ timezone. See `underground_crm/settings.py` for the full list.
 
 Then apply migrations and create a superuser:
 
-```bash
+```shell
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
 
 In a second terminal, run the queue cluster:
-```bash
+```shell
 python manage.py qcluster
 ```
+
+In a third terminal, run the associated Docker containers:
+```shell
+./start_containers.sh
+```
+
+Your theme might require you to run further applications to load the full website functionality. 
 
 Visit one of these pages:
 - Django admin: `/django-admin/`
 - Wagtail CMS: `/cms/`
 - Login: `/account/login/`
+
+---
+
+## Static site generation
+
+Underground CRM includes [Wagtail Bakery](https://github.com/wagtail-nest/wagtail-bakery),
+which can render all published Wagtail pages to static HTML files and optionally
+upload them to an object store (e.g. Amazon S3).
+
+To build the static site into the `BUILD_DIR` directory:
+
+```bash
+python manage.py build
+```
+
+The default `BAKERY_VIEWS` setting bakes every published Wagtail page. To exclude pages
+that require a live backend (e.g. payment pages, form submissions), override
+`BAKERY_VIEWS` in your theme's settings to point at a custom subclass of
+`AllPublishedPagesView`:
+
+```python
+# my_theme/bakery_views.py
+from wagtailbakery.views import AllPublishedPagesView
+from my_app.models import CheckoutPage
+
+class AllPublishedPagesExcludingCheckout(AllPublishedPagesView):
+    def get_queryset(self):
+        return super().get_queryset().not_type(CheckoutPage)
+```
+
+```python
+# my_site/settings.py
+BAKERY_VIEWS = ("my_app.bakery_views.AllPublishedPagesExcludingCheckout",)
+BUILD_DIR = BASE_DIR / "build"
+```
+
+Note that the default Django login / logout / signup pages are not Wagtail pages and hence
+will not be baked. This is just as well, as they aren't suitable for static rendering.
+
+### User-dependent components
+
+Baked pages are "static" HTML — a version of the page that was already rendered
+for users to see before we ever knew who the user was. No request reaches the Django
+web application, so that means no authentication is checked and no database queries
+are executed at the time of the request.
+
+Any part of your UI that depends on the
+current user (login state, member-specific content, personalised data) will not
+work in a baked page, so you should either [exclude those from the "baking" of 
+Wagtail-bakery](https://github.com/wagtail-nest/wagtail-bakery/), or **_your theme_** will need to figure out how to handle such components:
+
+* Maybe a user can fill out a form and include all their signup information all 
+  over again, in case they weren't already registered.
+* Maybe you can use jQuery to fetch things (at API endpoints) after the page loads.
 
 ---
 

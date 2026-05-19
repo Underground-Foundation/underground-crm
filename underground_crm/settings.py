@@ -30,6 +30,9 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost 127.0.0.1").sp
 INSTALLED_APPS = [
     # Underground CRM library
     "underground_crm",
+    # Static site generation (wagtail-bakery)
+    "bakery",
+    "wagtailbakery",
     # Django-money
     "djmoney",
     # Color picker widget
@@ -166,6 +169,11 @@ else:
 WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
 
 WAGTAIL_SITE_NAME = "Underground CRM"
+
+# wagtail-bakery: static site generation.
+# Themes should override BUILD_DIR and BAKERY_VIEWS after setting their own BASE_DIR.
+BUILD_DIR = BASE_DIR / "build"
+BAKERY_VIEWS = ("wagtailbakery.views.AllPublishedPagesView",)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
