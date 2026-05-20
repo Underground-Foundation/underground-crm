@@ -28,7 +28,6 @@ dependencies = [
     "smtp2go",
     "stripe>=8.0",
     "wagtail>=6.0,<7.0",
-    "wagtail-bakery>=0.8",
 ]
 
 [project.optional-dependencies]
@@ -52,12 +51,11 @@ target-version = ["py311"]
 
 [tool.pylint.main]
 load-plugins = ["pylint_django"]
-django-settings-module = "underground_crm.pylint_settings"
+django-settings-module = "underground_crm.settings"
 # Migrations are auto-generated; the migration/ dir contains standalone scripts
 # that import a config module not on the pylint path.
 ignore-paths = [
     "underground_crm/migrations",
-    "underground_crm/pylint_settings.py",
     "migration",
 ]
 

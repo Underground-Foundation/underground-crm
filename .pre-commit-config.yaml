@@ -15,5 +15,5 @@ repos:
         files: ^(underground_crm|underground_email|underground_payments|migration)/
         args:
           - --load-plugins=pylint_django
-          - --django-settings-module=underground_crm.pylint_settings
+          - --django-settings-module=underground_crm.settings
           - --errors-only
