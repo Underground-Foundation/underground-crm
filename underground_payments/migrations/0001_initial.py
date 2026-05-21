@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("underground_crm", "0028_person_nullable_fields"),
+        ("underground_crm", "0002_pages"),
         ("underground_email", "0011_alter_emailcampaign_body_and_more"),
         ("wagtailcore", "0094_alter_page_locale"),
     ]

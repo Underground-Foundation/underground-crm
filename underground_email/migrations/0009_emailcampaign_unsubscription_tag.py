@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("underground_crm", "0024_alter_engagement_action_type"),
+        ("underground_crm", "0001_initial"),
         ("underground_email", "0008_add_preview_text_to_emailcampaign"),
     ]
 

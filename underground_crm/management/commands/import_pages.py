@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup, Tag
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
+from requests.utils import super_len
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, Site
 
@@ -40,7 +41,7 @@ from underground_crm.contactability import (
     parse_address,
 )
 from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
-from underground_crm.models.pages import EventPage
+from underground_crm.models.pages import EventPage, BlogPost
 from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
 
@@ -523,11 +524,30 @@ def build_payment_page(
     return page
 
 
+def build_blog_post(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=BlogPost,
+) -> BlogPost:
+    return build_underground_basic_page(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+        site=site,
+        return_class=return_class,
+    )
+
+
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
     "Donation": build_payment_page,
     "Event": build_event_page,
     "Blog": build_blog_page,
+    "Blog Post": build_underground_basic_page,
     "Redirect": build_redirection,
 }
 

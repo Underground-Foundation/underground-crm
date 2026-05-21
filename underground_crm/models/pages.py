@@ -32,9 +32,10 @@ class PageWithMetadataForm(WagtailAdminPageForm):
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        self.fields["author"].queryset = User.objects.order_by(
-            "-is_admin", "-is_staff", "first_name", "last_name"
-        )
+        if "author" in self.fields:
+            self.fields["author"].queryset = User.objects.order_by(
+                "-is_admin", "-is_staff", "first_name", "last_name"
+            )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -60,16 +61,6 @@ class PageWithMetadata(Page):
     """
 
     DEFAULT_CACHE_TTL: int = 3600
-
-    # todo: this will need to be moved out
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name=_("Author"),
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
-    )
 
     search_image = models.ForeignKey(
         "wagtailimages.Image",
@@ -149,7 +140,6 @@ class PageWithMetadata(Page):
 
     promote_panels = [
         FieldPanel("slug"),
-        FieldPanel("author", heading=_("Author")),
         FieldPanel("seo_title", heading="og:title"),
         FieldPanel("search_description", heading="og:description"),
         FieldPanel("search_image", heading="og:image"),
@@ -307,13 +297,31 @@ class Blog(BasicPage):
     edit_handler = TabbedInterface(
         [
             ObjectList(content_panels, heading=_("Content")),
-            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
             ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
         ]
     )
 
     class Meta:
         verbose_name = _("Blog")
+
+
+class BlogPost(UndergroundBasicPage):
+    """
+    A page belonging within a Blog (although this isn't strictly enforced).
+    """
+
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name=_("Author"),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    content_panels = BasicPage.content_panels + [
+        FieldPanel("author", heading=_("Author")),
+    ]
 
 
 class EventPage(BasicPage):

@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("underground_crm", "0029_basicpage_cache_ttl_override_alter_basicpage_author_and_more"),
+        ("underground_crm", "0002_pages"),
         ("underground_email", "0011_alter_emailcampaign_body_and_more"),
         ("underground_payments", "0001_initial"),
         ("wagtailcore", "0094_alter_page_locale"),
