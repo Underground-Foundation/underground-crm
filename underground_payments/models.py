@@ -8,6 +8,11 @@ from underground_crm.models.pages import BasicPage, PageWithMetadata
 class PaymentPage(BasicPage):
     is_creatable = True
 
+    @property
+    def og_type(self) -> str:
+        # The Open Graph type for this page. See https://ogp.me/#types for the full list of valid types.
+        return "payment.link"
+
     allow_monthly_payments = models.BooleanField(
         default=True,
         verbose_name=_("Allow monthly payments"),
@@ -69,10 +74,10 @@ class PaymentPage(BasicPage):
 
     edit_handler = TabbedInterface(
         [
-            ObjectList(content_panels, heading="Content"),
-            ObjectList(payment_panels, heading="Payment"),
-            ObjectList(PageWithMetadata.promote_panels, heading="Metadata"),
-            ObjectList(PageWithMetadata.visibility_panels, heading="Visibility"),
+            ObjectList(content_panels, heading=_("Content")),
+            ObjectList(payment_panels, heading=_("Payment")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
         ]
     )
 

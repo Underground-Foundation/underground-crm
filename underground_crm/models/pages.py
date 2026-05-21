@@ -61,6 +61,7 @@ class PageWithMetadata(Page):
 
     DEFAULT_CACHE_TTL: int = 3600
 
+    # todo: this will need to be moved out
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         verbose_name=_("Author"),
@@ -79,14 +80,9 @@ class PageWithMetadata(Page):
         related_name="+",
     )
 
-    og_type = models.CharField(
-        max_length=50,
-        default="article",
-        help_text=_(
-            "The Open Graph type for this page. "
-            "See https://ogp.me/#types for the full list of valid types."
-        ),
-    )
+    @property
+    def og_type(self) -> str:
+        return "website"
 
     cache_ttl_override = models.PositiveIntegerField(
         null=True,
@@ -157,7 +153,6 @@ class PageWithMetadata(Page):
         FieldPanel("seo_title", heading="og:title"),
         FieldPanel("search_description", heading="og:description"),
         FieldPanel("search_image", heading="og:image"),
-        FieldPanel("og_type", heading="og:type"),
     ]
 
     visibility_panels = [
