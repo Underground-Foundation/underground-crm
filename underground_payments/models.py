@@ -23,7 +23,7 @@ class PaymentPage(BasicPage):
         on_delete=models.SET_NULL,
         related_name="+",
         verbose_name=_("Donor tag"),
-        help_text=_("Tag applied to the donor's person record after a successful payment."),
+        help_text=_("Tag applied to the donor after a successful payment."),
     )
     redirect_to = models.ForeignKey(
         "wagtailcore.Page",
@@ -33,7 +33,7 @@ class PaymentPage(BasicPage):
         related_name="+",
         verbose_name=_("Redirect to"),
         help_text=_(
-            "Page to redirect to after a successful payment. "
+            "The redirection page after a successful payment. "
             "Leave blank to show a thank-you message on this page."
         ),
     )
@@ -44,14 +44,14 @@ class PaymentPage(BasicPage):
         on_delete=models.SET_NULL,
         related_name="+",
         verbose_name=_("Success email"),
-        help_text=_("Email campaign sent to the donor after a successful payment."),
+        help_text=_("Email sent to the donor after a successful payment."),
     )
     email_every_time = models.BooleanField(
         default=False,
-        verbose_name=_("Email every time"),
+        verbose_name=_("Email every time?"),
         help_text=_(
             "Send the success email for every donation. "
-            "When off, only the first donation to this page triggers an email."
+            "If set to false, only the donor's first donation at this page will trigger an email."
         ),
     )
 
