@@ -380,7 +380,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     @property
     def latest_engagement(self):
-        return self.engagements.first()
+        return self.engagements.first()  # pylint: disable=no-member
 
 
 class PersonTag(models.Model):
