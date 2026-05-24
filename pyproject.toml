@@ -17,6 +17,7 @@ dependencies = [
     "djangorestframework-simplejwt>=5.3",
     "django-colorfield",
     "django-money>=3.0",
+    "nh3>=0.2",
     "django-q2",
     "django-phonenumber-field[phonenumbers]",
     "dnspython>=2.0",
