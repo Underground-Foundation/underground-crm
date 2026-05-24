@@ -110,6 +110,46 @@ Current commands:
   Requires `LEGACY_WEBSITE_URL`, `LEGACY_USER_AGENT`, and `LEGACY_ADMIN_COOKIE_FILE` env vars
   (or `--cookie-file` override). Idempotent via `legacy_activity_id` deduplication.
 
+## Process separation
+
+The application is designed to run as three separate processes sharing the
+same codebase and database:
+
+1. **Web process** (gunicorn / `manage.py runserver`) — serves CRM routes, CMS
+   pages, Wagtail admin, the REST API, and email webhook endpoints.  Webhook
+   events are accepted and returned immediately; the actual processing is
+   enqueued to the email worker.
+
+2. **CRM worker** (`manage.py qcluster`) — processes lightweight background
+   tasks: address geocoding, engagement recording, and RSVP tracking.
+
+3. **Email worker** (`Q_CLUSTER_NAME=email manage.py qcluster`) — processes
+   heavy email operations: campaign dispatch, SMTP2Go result polling, and
+   webhook event handling (spam / unsubscription).
+
+This separation prevents bulk email campaigns from starving CRM tasks for
+worker slots and isolates failures: a crash in the web process does not halt
+active email dispatch, and an exception in an email task does not bring down
+the public site.
+
+Tasks are routed to the email worker by passing `cluster="email"` to
+`async_task()` or `schedule()`.  Tasks without a `cluster` argument are
+handled by the default CRM worker.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `Q_CRM_WORKERS` | `2` | Number of worker threads in the default (CRM) cluster |
+| `Q_CRM_QUEUE_LIMIT` | `50` | Maximum queued tasks before the CRM cluster stops accepting |
+| `Q_CRM_TIMEOUT` | `300` | Task timeout in seconds for CRM tasks |
+| `Q_CRM_RETRY` | `600` | Retry delay in seconds for failed CRM tasks |
+| `Q_EMAIL_WORKERS` | `1` | Number of worker threads in the email cluster |
+| `Q_EMAIL_QUEUE_LIMIT` | `10` | Maximum queued tasks before the email cluster stops accepting |
+| `Q_EMAIL_TIMEOUT` | `3600` | Task timeout in seconds for email tasks (1 hour) |
+| `Q_EMAIL_RETRY` | `7200` | Retry delay in seconds for failed email tasks (2 hours) |
+| `DB_CONN_MAX_AGE` | `600` | Database connection lifetime in seconds (0 for per-request) |
+
 ## Addressr (Australian address search)
 
 `docker-compose.yml` runs Addressr backed by OpenSearch. The G-NAF dataset

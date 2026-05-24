@@ -76,10 +76,22 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-In a second terminal, run the queue cluster:
+In a second terminal, run the default queue cluster (CRM tasks):
 ```bash
 python manage.py qcluster
 ```
+
+In a third terminal, run the email queue cluster:
+```bash
+Q_CLUSTER_NAME=email python manage.py qcluster
+```
+
+The default cluster handles lightweight CRM tasks (geocoding, engagement
+recording).  The email cluster handles heavy email operations (campaign
+dispatch, SMTP2Go result polling, webhook event processing).  Running them
+as separate processes prevents bulk email campaigns from starving CRM tasks
+and isolates failures so that a crash in one worker does not affect the other
+or the web server.
 
 Visit one of these pages:
 - Django admin: `/django-admin/`
