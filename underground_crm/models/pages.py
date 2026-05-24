@@ -8,7 +8,6 @@ from wagtail.fields import StreamField
 from wagtail.blocks import (
     CharBlock,
     RichTextBlock,
-    RawHTMLBlock,
     BlockQuoteBlock,
     StructBlock,
     ChoiceBlock,
@@ -17,6 +16,7 @@ from wagtail.images.blocks import ImageChooserBlock
 from wagtail.admin.panels import FieldPanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
 from .address import Address
+from underground_crm.blocks import SanitizedRawHTMLBlock
 
 
 class PageWithMetadataForm(WagtailAdminPageForm):
@@ -134,7 +134,7 @@ class BasicPage(PageWithMetadata):
             ),
             (
                 "html",
-                RawHTMLBlock(
+                SanitizedRawHTMLBlock(
                     label="Raw HTML",
                     help_text=(
                         "Paste raw HTML directly. "
