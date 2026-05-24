@@ -14,6 +14,34 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def drop_identity_and_convert_to_uuid_groups(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE underground_crm_person_groups "
+            "    ALTER COLUMN id DROP IDENTITY IF EXISTS;"
+        )
+        cursor.execute(
+            "ALTER TABLE underground_crm_person_groups "
+            "    ALTER COLUMN id TYPE uuid USING gen_random_uuid();"
+        )
+
+
+def drop_identity_and_convert_to_uuid_permissions(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE underground_crm_person_user_permissions "
+            "    ALTER COLUMN id DROP IDENTITY IF EXISTS;"
+        )
+        cursor.execute(
+            "ALTER TABLE underground_crm_person_user_permissions "
+            "    ALTER COLUMN id TYPE uuid USING gen_random_uuid();"
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -60,14 +88,9 @@ class Migration(migrations.Migration):
             database_operations=[
                 # Drop the bigint IDENTITY constraint, then widen the column to uuid.
                 # gen_random_uuid() assigns a fresh UUID to every existing row.
-                migrations.RunSQL(
-                    sql=(
-                        "ALTER TABLE underground_crm_person_groups"
-                        "    ALTER COLUMN id DROP IDENTITY IF EXISTS;"
-                        " ALTER TABLE underground_crm_person_groups"
-                        "    ALTER COLUMN id TYPE uuid USING gen_random_uuid();"
-                    ),
-                    reverse_sql=migrations.RunSQL.noop,
+                migrations.RunPython(
+                    drop_identity_and_convert_to_uuid_groups,
+                    reverse_code=migrations.RunPython.noop,
                 ),
             ],
         ),
@@ -131,14 +154,9 @@ class Migration(migrations.Migration):
                 ),
             ],
             database_operations=[
-                migrations.RunSQL(
-                    sql=(
-                        "ALTER TABLE underground_crm_person_user_permissions"
-                        "    ALTER COLUMN id DROP IDENTITY IF EXISTS;"
-                        " ALTER TABLE underground_crm_person_user_permissions"
-                        "    ALTER COLUMN id TYPE uuid USING gen_random_uuid();"
-                    ),
-                    reverse_sql=migrations.RunSQL.noop,
+                migrations.RunPython(
+                    drop_identity_and_convert_to_uuid_permissions,
+                    reverse_code=migrations.RunPython.noop,
                 ),
             ],
         ),

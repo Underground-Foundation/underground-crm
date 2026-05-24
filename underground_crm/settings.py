@@ -123,9 +123,35 @@ CACHES = {
 }
 
 # https://django-q2.readthedocs.io/en/master/brokers.html#redis
+# https://django-q2.readthedocs.io/en/master/configure.html#alt-clusters
+#
+# The default cluster handles lightweight CRM tasks (geocoding, engagement
+# recording).  The "email" alternate cluster handles heavy email operations
+# (campaign dispatch, SMTP2Go result polling, webhook event processing).
+#
+# Start a dedicated email worker with:
+#   Q_CLUSTER_NAME=email python manage.py qcluster
+#
+# Tasks are routed to the email cluster by passing cluster="email" to
+# async_task() or schedule().  Tasks without a cluster argument are processed
+# by the default cluster.
 Q_CLUSTER = {
     "name": "underground_crm",
     "redis": _REDIS_URL,
+    "workers": int(os.environ.get("Q_CRM_WORKERS", "2")),
+    "queue_limit": int(os.environ.get("Q_CRM_QUEUE_LIMIT", "50")),
+    "timeout": int(os.environ.get("Q_CRM_TIMEOUT", "300")),
+    "retry": int(os.environ.get("Q_CRM_RETRY", "600")),
+    "ALT_CLUSTERS": {
+        "email": {
+            "name": "underground_email",
+            "redis": _REDIS_URL,
+            "workers": int(os.environ.get("Q_EMAIL_WORKERS", "1")),
+            "queue_limit": int(os.environ.get("Q_EMAIL_QUEUE_LIMIT", "10")),
+            "timeout": int(os.environ.get("Q_EMAIL_TIMEOUT", "3600")),
+            "retry": int(os.environ.get("Q_EMAIL_RETRY", "7200")),
+        },
+    },
 }
 
 
@@ -134,16 +160,30 @@ Q_CLUSTER = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("PGDATABASE", ""),
-        "USER": os.environ.get("PGUSER", ""),
-        "PASSWORD": os.environ.get("PGPASSWORD", ""),
-        "HOST": os.environ.get("PGHOST", ""),
-        "PORT": os.environ.get("PGPORT", "5432"),
+_PGDATABASE = os.environ.get("PGDATABASE", "")
+if not _PGDATABASE and os.environ.get("DJANGO_TESTING", "false").lower() == "true":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _PGDATABASE,
+            "USER": os.environ.get("PGUSER", ""),
+            "PASSWORD": os.environ.get("PGPASSWORD", ""),
+            "HOST": os.environ.get("PGHOST", ""),
+            "PORT": os.environ.get("PGPORT", "5432"),
+            # Reuse connections for up to 10 minutes to avoid per-request connect
+            # overhead.  Set to 0 via DB_CONN_MAX_AGE to restore per-request
+            # connections if running behind PgBouncer in transaction mode.
+            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "600")),
+            "CONN_HEALTH_CHECKS": True,
+        }
+    }
 
 # Wagtail
 WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")

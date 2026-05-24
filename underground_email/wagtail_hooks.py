@@ -104,6 +104,7 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
                         task_name=task_name,
                         schedule_type=Schedule.ONCE,
                         next_run=campaign.sending_date,
+                        cluster="email",
                     )
                 else:
                     logger.info(
@@ -116,6 +117,7 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
                         "underground_email.tasks.send_emails",
                         campaign.utm_id,
                         task_name=task_name,
+                        cluster="email",
                     )
             except Exception:
                 logger.exception(

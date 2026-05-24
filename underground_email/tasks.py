@@ -155,6 +155,7 @@ def send_emails(campaign_utm_id: str) -> None:
         task_name=f"email_results_{campaign_utm_id}",
         schedule_type=Schedule.ONCE,
         next_run=timezone.now() + datetime.timedelta(hours=24),
+        cluster="email",
     )
 
 
@@ -432,3 +433,16 @@ def register_email_failure_webhooks() -> None:
     )
     resp.raise_for_status()
     logger.info("SMTP2Go webhook registration response: %s", resp.json())
+
+
+def process_webhook_event(payload: dict, recipient_email: str) -> None:
+    """Process a spam or unsubscription webhook event asynchronously.
+
+    Called via async_task() from the email_webhook view so that the HTTP
+    response is returned immediately without blocking on database writes.
+    """
+    recipient = get_user_model().objects.filter(email=recipient_email).first()
+    if not recipient:
+        logger.warning("Webhook event for unknown email address: %s", recipient_email)
+        return
+    handle_spam_or_unsubscription(payload, recipient=recipient)
