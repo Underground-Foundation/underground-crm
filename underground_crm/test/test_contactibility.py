@@ -125,6 +125,8 @@ class NamingTest(unittest.TestCase):
         )
 
     def test_get_ambiguous_admin_by_full_name(self):
+        from underground_crm.models import Person
+        Person.objects.create(email="owen@example.com", first_name="Owen", last_name="Miller", is_admin=True)
         user = get_ambiguous_admin_by_full_name("Owen Miller")
         self.assertTrue(user)
 

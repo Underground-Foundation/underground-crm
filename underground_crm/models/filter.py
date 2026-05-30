@@ -5,7 +5,6 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
 
-
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
 # field_type must be one of: "text", "boolean", "integer", "filter".
