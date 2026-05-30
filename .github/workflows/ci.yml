@@ -1,13 +1,13 @@
-name: CI Pipeline
+name: Underground CRM Continuous Integration Pipeline
 
 on:
   push:
     branches:
-      - main
+      - master
       - develop
   pull_request:
     branches:
-      - main
+      - master
       - develop
 
 jobs:
@@ -28,12 +28,14 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: underground_crm.settings
       REDIS_URL: redis://127.0.0.1:6379
-      # Note: We omit PostgreSQL credentials to automatically trigger the SQLite fallback
-      # defined in underground_crm/settings.py for CI/CD test execution.
+      # Note: We omit PostgreSQL environment variables in order to trigger
+      # the SQLite fallback defined in underground_crm/settings.py for CI/CD
+      # test execution.
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        # https://github.com/actions/checkout
 
       - name: Install System Dependencies
         run: |
@@ -41,9 +43,10 @@ jobs:
           sudo apt-get install -y gdal-bin libgdal-dev gettext-base
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
+        # https://github.com/actions/setup-python
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Python Dependencies

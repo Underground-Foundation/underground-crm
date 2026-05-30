@@ -147,6 +147,7 @@ if _pg_name:
         }
     }
 else:
+    # By running in memory, this database is handy for our CI/CD pipeline.
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
