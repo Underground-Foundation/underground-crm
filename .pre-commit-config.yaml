@@ -3,6 +3,7 @@ repos:
     rev: 25.1.0
     hooks:
       - id: black
+        files: ^(underground_crm|underground_email|underground_payments|migration)/
 
   - repo: local
     hooks:
@@ -11,7 +12,6 @@ repos:
         entry: .venv/bin/pylint
         language: system
         types: [python]
+        files: ^(underground_crm|underground_email|underground_payments|migration)/
         args:
-          - --load-plugins=pylint_django
-          - --django-settings-module=underground_crm.settings
           - --errors-only

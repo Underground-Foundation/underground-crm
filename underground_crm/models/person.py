@@ -3,6 +3,7 @@ from datetime import date
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import BadRequest, PermissionDenied, ValidationError
 from django.db import models
 from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
@@ -354,6 +355,13 @@ class Person(AbstractBaseUser, PermissionsMixin):
         else:
             # Email address is required
             return self.email
+
+    def clean(self):
+        super().clean()
+        if self.is_admin and not self.is_staff:
+            raise ValidationError(
+                f"Admins should always be staff members. This is not the case for {self}"
+            )
 
     @property
     def full_name(self):

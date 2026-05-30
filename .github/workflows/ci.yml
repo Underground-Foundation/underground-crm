@@ -54,11 +54,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev,migration]
 
-      - name: Strict Formatting Check (Black)
-        run: black --check underground_crm underground_email migration
-
-      - name: Static Analysis Linting (Pylint)
-        run: pylint --load-plugins=pylint_django --django-settings-module=underground_crm.settings --errors-only underground_crm underground_email
+      - name: Formatting and Static Analysis
+        # By invoking pre-commit rather than the constituent pylint & black, we ensure
+        # that we're using the same settings as when the commit occurred.
+        run: pre-commit run --all-files
 
       - name: Execute Test Suite (Pytest)
         run: pytest
