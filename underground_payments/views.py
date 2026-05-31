@@ -11,6 +11,15 @@ from django.views.decorators.http import require_POST
 logger = logging.getLogger(__name__)
 
 _CURRENCY = "aud"
+
+
+def _fit(value: str, max_len: int, field: str) -> str:
+    if len(value) > max_len:
+        logger.warning("Truncating field %r from %d to %d chars", field, len(value), max_len)
+        return value[:max_len]
+    return value
+
+
 _MIN_AMOUNT_CENTS = 100  # $1.00
 
 
@@ -43,12 +52,17 @@ def create_payment_intent(request, page_pk: int):
         amount_cents = int(data["amount_cents"])
         frequency = data.get("frequency", "once")
         email = data.get("email", "").strip()
-        first_name = data.get("first_name", "").strip()[:100]
-        last_name = data.get("last_name", "").strip()[:100]
-        address_line1 = data.get("address_line1", "").strip()[:200]
-        city = data.get("city", "").strip()[:100]
-        state = data.get("state", "").strip()[:100]
-        postcode = data.get("postcode", "").strip()[:20]
+        first_name = _fit(data.get("first_name", "").strip(), 100, "first_name")
+        middle_name = _fit(data.get("middle_name", "").strip(), 100, "middle_name")
+        last_name = _fit(data.get("last_name", "").strip(), 100, "last_name")
+        phone = _fit(data.get("phone", "").strip(), 30, "phone")
+        address_line1 = _fit(data.get("address_line1", "").strip(), 200, "address_line1")
+        address_line2 = _fit(data.get("address_line2", "").strip(), 200, "address_line2")
+        address_line3 = _fit(data.get("address_line3", "").strip(), 200, "address_line3")
+        city = _fit(data.get("city", "").strip(), 100, "city")
+        state = _fit(data.get("state", "").strip(), 100, "state")
+        postcode = _fit(data.get("postcode", "").strip(), 20, "postcode")
+        country = _fit(data.get("country", "").strip(), 2, "country")
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
@@ -72,11 +86,16 @@ def create_payment_intent(request, page_pk: int):
         "frequency": frequency,
         "donor_email": email,
         "donor_first_name": first_name,
+        "donor_middle_name": middle_name,
         "donor_last_name": last_name,
+        "donor_phone": phone,
         "donor_address_line1": address_line1,
+        "donor_address_line2": address_line2,
+        "donor_address_line3": address_line3,
         "donor_city": city,
         "donor_state": state,
         "donor_postcode": postcode,
+        "donor_country": country,
     }
 
     client = _stripe_client()
@@ -152,7 +171,7 @@ def stripe_webhook(request):
             from django_q.tasks import async_task
 
             async_task(
-                "underground_payments.tasks.handle_successful_donation",
+                "underground_payments.tasks.handle_successful_payment",
                 pi["id"],
                 pi["amount"],
                 dict(meta),

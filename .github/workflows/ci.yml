@@ -61,3 +61,14 @@ jobs:
 
       - name: Execute Test Suite (Pytest)
         run: pytest
+
+  stripe-countries:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Check Stripe country list
+        working-directory: underground_payments
+        run: bash checkStripeCountries.sh

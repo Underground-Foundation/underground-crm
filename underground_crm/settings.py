@@ -106,6 +106,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-au"
 PHONE_REGION = "AU"
+DEFAULT_COUNTRY = PHONE_REGION  # Used for signup forms
 TIME_ZONE = "Australia/Melbourne"
 USE_I18N = True
 USE_TZ = True
@@ -140,6 +141,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+# https://docs.stripe.com/currencies#presentment-currencies
+STRIPE_DEFAULT_CURRENCY = os.environ.get("STRIPE_DEFAULT_CURRENCY", "aud")
 
 _pg_name = os.environ.get("PGDATABASE", "")
 if _pg_name:
@@ -157,9 +160,9 @@ else:
     # By running in memory, this database is handy for our CI/CD pipeline.
     DATABASES = {
         "default": {
-                       "ENGINE": "django.db.backends.sqlite3",
-                       "NAME": ":memory:",
-                   }
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
 
 # Wagtail

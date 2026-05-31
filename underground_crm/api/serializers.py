@@ -99,3 +99,18 @@ class AddressSerializer(serializers.ModelSerializer):
             "longitude",
             "geocode_reliability",
         ]
+
+
+class UnverifiedAddressSerializer(serializers.ModelSerializer):
+    """Read-only address serializer for addresses that have not yet been geocoded.
+
+    Omits geocoding fields and coerces null field values to empty strings, making
+    it safe to use directly in JSON responses without null-checking on the client.
+    """
+
+    class Meta:
+        model = Address
+        fields = ["line1", "line2", "line3", "city", "state", "postcode", "country_code"]
+
+    def to_representation(self, instance):
+        return {k: v or "" for k, v in super().to_representation(instance).items()}

@@ -88,6 +88,13 @@ class PaymentPage(BasicPage):
         from django.conf import settings as django_settings
 
         context = super().get_context(request, *args, **kwargs)
+        from .app_settings import SUPPORTED_COUNTRIES
+
         context["stripe_publishable_key"] = getattr(django_settings, "STRIPE_PUBLISHABLE_KEY", "")
+        context["stripe_default_currency"] = getattr(
+            django_settings, "STRIPE_DEFAULT_CURRENCY", "aud"
+        )
+        context["default_country"] = getattr(django_settings, "DEFAULT_COUNTRY", "AU")
+        context["supported_countries"] = SUPPORTED_COUNTRIES
         context["redirect_url"] = self.redirect_to.url if self.redirect_to_id else ""
         return context

@@ -34,3 +34,8 @@ class Address(models.Model):
     @property
     def one_line(self):
         return str(self)
+
+    def is_equivalent(self, other: "Address") -> bool:
+        """True if both addresses describe the same physical location."""
+        fields = ("line1", "line2", "line3", "city", "state", "postcode", "country_code")
+        return all((getattr(self, f) or "") == (getattr(other, f) or "") for f in fields)

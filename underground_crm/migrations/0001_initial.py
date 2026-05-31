@@ -142,12 +142,16 @@ class Migration(migrations.Migration):
                         validators=[
                             underground_crm.contactability.validate_email_with_deliverability
                         ],
+                        verbose_name="Email address",
                     ),
                 ),
                 (
                     "email_is_bad",
                     models.BooleanField(
-                        blank=True, help_text="Can the user actually be emailed?", null=True
+                        blank=True,
+                        help_text="Can the user actually be emailed?",
+                        null=True,
+                        verbose_name="Email address is bad",
                     ),
                 ),
                 (
@@ -158,15 +162,51 @@ class Migration(migrations.Migration):
                         help_text="Person ID from the previous CRM, used for data migration.",
                         null=True,
                         unique=True,
+                        verbose_name="Legacy ID",
                     ),
                 ),
-                ("prefix", models.CharField(blank=True, max_length=10, null=True)),
-                ("first_name", models.CharField(blank=True, max_length=100, null=True)),
-                ("middle_name", models.CharField(blank=True, max_length=100, null=True)),
-                ("last_name", models.CharField(blank=True, max_length=100, null=True)),
-                ("suffix", models.CharField(blank=True, max_length=20, null=True)),
-                ("legal_name", models.CharField(blank=True, max_length=200, null=True)),
-                ("preferred_name", models.CharField(blank=True, max_length=100, null=True)),
+                (
+                    "prefix",
+                    models.CharField(
+                        blank=True, max_length=10, null=True, verbose_name="Name prefix"
+                    ),
+                ),
+                (
+                    "first_name",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="First name"
+                    ),
+                ),
+                (
+                    "middle_name",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Middle name"
+                    ),
+                ),
+                (
+                    "last_name",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Last name"
+                    ),
+                ),
+                (
+                    "suffix",
+                    models.CharField(
+                        blank=True, max_length=20, null=True, verbose_name="Name suffix"
+                    ),
+                ),
+                (
+                    "legal_name",
+                    models.CharField(
+                        blank=True, max_length=200, null=True, verbose_name="Legal name"
+                    ),
+                ),
+                (
+                    "preferred_name",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Preferred name"
+                    ),
+                ),
                 (
                     "mailing_name",
                     models.CharField(
@@ -174,6 +214,7 @@ class Migration(migrations.Migration):
                         help_text="Name as it should appear on postal correspondence.",
                         max_length=200,
                         null=True,
+                        verbose_name="Mailing name",
                     ),
                 ),
                 (
@@ -182,6 +223,7 @@ class Migration(migrations.Migration):
                         choices=[(0, "Person"), (1, "Organisation")],
                         default=0,
                         help_text="Whether this record represents an individual or an organisation.",
+                        verbose_name="Record type",
                     ),
                 ),
                 (
@@ -189,10 +231,11 @@ class Migration(migrations.Migration):
                     phonenumber_field.modelfields.PhoneNumberField(
                         blank=True,
                         db_index=True,
-                        help_text="This should only be used if the phone number is not a mobile phone",
+                        help_text="This should only be used if the phone number is not a mobile phone.",
                         max_length=128,
                         null=True,
                         region="AU",
+                        verbose_name="Phone number",
                     ),
                 ),
                 (
@@ -200,16 +243,19 @@ class Migration(migrations.Migration):
                     phonenumber_field.modelfields.PhoneNumberField(
                         blank=True,
                         db_index=True,
-                        help_text="This field should be used where possible",
+                        help_text="This field should be used where possible.",
                         max_length=128,
                         null=True,
                         region="AU",
+                        verbose_name="Mobile number",
                     ),
                 ),
                 (
                     "mobile_opt_in",
                     models.BooleanField(
-                        default=False, help_text="Person has opted in to receive SMS updates."
+                        default=False,
+                        help_text="Person has opted in to receive SMS updates.",
+                        verbose_name="Mobile opt-in",
                     ),
                 ),
                 (
@@ -217,22 +263,39 @@ class Migration(migrations.Migration):
                     models.BooleanField(
                         default=False,
                         help_text="Mobile number is known to be invalid or unreachable.",
+                        verbose_name="Mobile number is bad",
                     ),
                 ),
                 (
                     "work_phone_number",
                     phonenumber_field.modelfields.PhoneNumberField(
-                        blank=True, db_index=True, max_length=128, null=True, region="AU"
+                        blank=True,
+                        db_index=True,
+                        max_length=128,
+                        null=True,
+                        region="AU",
+                        verbose_name="Work phone number",
                     ),
                 ),
-                ("twitter_login", models.CharField(blank=True, max_length=100, null=True)),
-                ("facebook_username", models.CharField(blank=True, max_length=100, null=True)),
+                (
+                    "twitter_login",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Twitter login"
+                    ),
+                ),
+                (
+                    "facebook_username",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Facebook username"
+                    ),
+                ),
                 (
                     "submitted_address",
                     models.TextField(
                         blank=True,
                         help_text="Raw address string as submitted by the person, before geocoding.",
                         null=True,
+                        verbose_name="Submitted address",
                     ),
                 ),
                 (
@@ -241,16 +304,44 @@ class Migration(migrations.Migration):
                         blank=True,
                         null=True,
                         validators=[underground_crm.contactability.validate_domain_name],
+                        verbose_name="Website",
                     ),
                 ),
-                ("bio", models.TextField(blank=True, null=True)),
-                ("description", models.TextField(blank=True, null=True)),
-                ("date_of_birth", models.DateField(blank=True, null=True)),
-                ("gender", models.CharField(blank=True, max_length=50, null=True)),
+                ("bio", models.TextField(blank=True, null=True, verbose_name="Biography")),
+                (
+                    "description",
+                    models.TextField(blank=True, null=True, verbose_name="Description"),
+                ),
+                (
+                    "date_of_birth",
+                    models.DateField(blank=True, null=True, verbose_name="Date of birth"),
+                ),
+                (
+                    "gender",
+                    models.CharField(
+                        blank=True,
+                        help_text="This is needed for addressing people in gendered languages such as French and Spanish.",
+                        max_length=50,
+                        null=True,
+                        verbose_name="Gender",
+                    ),
+                ),
+                (
+                    "language_preferences",
+                    models.CharField(
+                        blank=True,
+                        help_text="The languages property from their web browser: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/languages",
+                        max_length=128,
+                        null=True,
+                        verbose_name="Language preferences",
+                    ),
+                ),
                 (
                     "email_opt_in",
                     models.BooleanField(
-                        default=False, help_text="Person has opted in to receive email updates."
+                        default=False,
+                        help_text="Person has opted in to receive email updates.",
+                        verbose_name="Email opt-in",
                     ),
                 ),
                 (
@@ -259,9 +350,10 @@ class Migration(migrations.Migration):
                         blank=True,
                         help_text="When the person unsubscribed from all emails.",
                         null=True,
+                        verbose_name="Unsubscribed at",
                     ),
                 ),
-                ("is_supporter", models.BooleanField(default=False)),
+                ("is_supporter", models.BooleanField(default=False, verbose_name="Is a supporter")),
                 (
                     "support_level",
                     models.SmallIntegerField(
@@ -269,6 +361,7 @@ class Migration(migrations.Migration):
                         choices=[(1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
                         help_text="Manually assigned support rating from 1 (weak) to 5 (strong).",
                         null=True,
+                        verbose_name="Support level",
                     ),
                 ),
                 (
@@ -278,6 +371,7 @@ class Migration(migrations.Migration):
                         choices=[(1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
                         help_text="Support level derived algorithmically.",
                         null=True,
+                        verbose_name="Inferred support level",
                     ),
                 ),
                 (
@@ -287,20 +381,28 @@ class Migration(migrations.Migration):
                         choices=[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
                         help_text="Outreach priority from 0 (lowest) to 5 (highest).",
                         null=True,
+                        verbose_name="Priority level",
                     ),
                 ),
-                ("is_volunteer", models.BooleanField(default=False)),
+                ("is_volunteer", models.BooleanField(default=False, verbose_name="Is a volunteer")),
                 (
                     "is_prospect",
                     models.BooleanField(
                         default=False,
                         help_text="Being cultivated as a potential supporter but not yet confirmed.",
+                        verbose_name="Is a prospect",
                     ),
                 ),
-                ("is_deceased", models.BooleanField(default=False)),
-                ("is_donor", models.BooleanField(default=False)),
-                ("is_fundraiser", models.BooleanField(default=False)),
-                ("donations_count", models.PositiveIntegerField(default=0)),
+                ("is_deceased", models.BooleanField(default=False, verbose_name="Is deceased")),
+                ("is_donor", models.BooleanField(default=False, verbose_name="Is a donor")),
+                (
+                    "is_fundraiser",
+                    models.BooleanField(default=False, verbose_name="Is a fundraiser"),
+                ),
+                (
+                    "donations_count",
+                    models.PositiveIntegerField(default=0, verbose_name="Donations count"),
+                ),
                 (
                     "donations_amount_currency",
                     djmoney.models.fields.CurrencyField(
@@ -626,17 +728,28 @@ class Migration(migrations.Migration):
                         default_currency="AUD",
                         help_text="Total amount donated across all time.",
                         max_digits=14,
+                        verbose_name="Donations amount",
                     ),
                 ),
-                ("first_donated_at", models.DateTimeField(blank=True, null=True)),
-                ("last_donated_at", models.DateTimeField(blank=True, null=True)),
-                ("do_not_call", models.BooleanField(default=False)),
-                ("do_not_contact", models.BooleanField(default=False)),
+                (
+                    "first_donated_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="First donated at"),
+                ),
+                (
+                    "last_donated_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="Last donated at"),
+                ),
+                ("do_not_call", models.BooleanField(default=False, verbose_name="Do not call")),
+                (
+                    "do_not_contact",
+                    models.BooleanField(default=False, verbose_name="Do not contact"),
+                ),
                 (
                     "is_profile_published",
                     models.BooleanField(
                         default=True,
                         help_text="Whether this person's public profile is visible on the site.",
+                        verbose_name="Profile is published",
                     ),
                 ),
                 (
@@ -644,11 +757,27 @@ class Migration(migrations.Migration):
                     models.BooleanField(
                         default=False,
                         help_text="Whether this person's activity is hidden from public streams.",
+                        verbose_name="Activity is private",
                     ),
                 ),
-                ("federal_district", models.CharField(blank=True, max_length=100, null=True)),
-                ("state_upper_district", models.CharField(blank=True, max_length=100, null=True)),
-                ("state_lower_district", models.CharField(blank=True, max_length=100, null=True)),
+                (
+                    "federal_district",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="Federal district"
+                    ),
+                ),
+                (
+                    "state_upper_district",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="State upper district"
+                    ),
+                ),
+                (
+                    "state_lower_district",
+                    models.CharField(
+                        blank=True, max_length=100, null=True, verbose_name="State lower district"
+                    ),
+                ),
                 (
                     "council_district",
                     models.CharField(
@@ -656,6 +785,7 @@ class Migration(migrations.Migration):
                         help_text="Local government area (e.g. City of Moreland).",
                         max_length=100,
                         null=True,
+                        verbose_name="Council district",
                     ),
                 ),
                 (
@@ -665,6 +795,7 @@ class Migration(migrations.Migration):
                         help_text="Ward or suburb-level electoral division within the council area.",
                         max_length=100,
                         null=True,
+                        verbose_name="Ward",
                     ),
                 ),
                 (
@@ -674,25 +805,30 @@ class Migration(migrations.Migration):
                         help_text="Membership number from a previous membership system.",
                         max_length=100,
                         null=True,
+                        verbose_name="Membership number",
                     ),
                 ),
                 (
                     "is_staff",
                     models.BooleanField(
-                        default=False, help_text="Grants access to the Django admin interface."
+                        default=False,
+                        help_text="Grants access to the Django admin interface.",
+                        verbose_name="Is staff",
                     ),
                 ),
                 (
                     "is_admin",
                     models.BooleanField(
-                        default=False, help_text="Grants elevated permissions within the CRM."
+                        default=False,
+                        help_text="Grants elevated permissions within the CRM.",
+                        verbose_name="Is admin",
                     ),
                 ),
                 (
                     "is_active",
                     models.BooleanField(
                         default=True,
-                        help_text="Inactive users are treated as tombstones",
+                        help_text="Inactive users are treated as tombstones.",
                         verbose_name="Is active",
                     ),
                 ),
@@ -701,10 +837,11 @@ class Migration(migrations.Migration):
                     models.BooleanField(
                         default=False,
                         help_text="Does this user have permission to create raw HTML for web pages?",
+                        verbose_name="Has HTML permission",
                     ),
                 ),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="Created at")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated at")),
                 (
                     "point_person",
                     models.ForeignKey(
@@ -714,6 +851,7 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="assigned_contacts",
                         to=settings.AUTH_USER_MODEL,
+                        verbose_name="Point person",
                     ),
                 ),
                 (
@@ -725,6 +863,7 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="recruits",
                         to=settings.AUTH_USER_MODEL,
+                        verbose_name="Recruiter",
                     ),
                 ),
                 (
@@ -735,26 +874,31 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="billing_for",
                         to="underground_crm.address",
+                        verbose_name="Billing address",
                     ),
                 ),
                 (
                     "home_address",
                     models.OneToOneField(
                         blank=True,
+                        help_text="This shall be used for knowing when to invite them to events nearby.",
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="home_for",
                         to="underground_crm.address",
+                        verbose_name="Home address",
                     ),
                 ),
                 (
                     "mailing_address",
                     models.OneToOneField(
                         blank=True,
+                        help_text="Literally just where to send things. No relation to where they live.",
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="mailing_for",
                         to="underground_crm.address",
+                        verbose_name="Mailing address",
                     ),
                 ),
                 (
@@ -765,6 +909,7 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="primary_for",
                         to="underground_crm.address",
+                        verbose_name="Primary address",
                     ),
                 ),
                 (
@@ -776,16 +921,7 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="registered_for",
                         to="underground_crm.address",
-                    ),
-                ),
-                (
-                    "work_address",
-                    models.OneToOneField(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="work_for",
-                        to="underground_crm.address",
+                        verbose_name="Registered address",
                     ),
                 ),
             ],

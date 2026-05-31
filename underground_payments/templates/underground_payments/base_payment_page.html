@@ -1,41 +1,42 @@
 {% extends "underground_crm/underground_basic_page.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block extra_head %}
   <script src="https://js.stripe.com/v3/" async></script>
 {% endblock %}
 
 {% block extra_body_content %}
-This is the Underground donation page
-<div class="container my-4">
-  <div class="col form-wrap mx-auto">
-    {# ── Success panel (hidden until payment completes) ── #}
-    <div id="payment-success" class="alert alert-success d-none" role="alert">
-      <h4 class="alert-heading">Thank you for your donation!</h4>
-      <p>Your payment has been received. We appreciate your support.</p>
+  {% trans "This is the Underground donation page" %}
+  {# ── Success panel (hidden until payment completes) ── #}
+  <div id="payment-success" class="alert alert-success d-none" role="alert">
+    <div class="col form-wrap mx-auto">
+      <h4 class="alert-heading">{% trans "Thank you for your donation!" %}</h4>
+      <p>{% trans "Your payment has been received. We appreciate your support." %}</p>
     </div>
+  </div>
 
-    {# ── Payment form ── #}
-    {% block payment_form %}
+  {# ── Payment form ── #}
+  {% block payment_form %}
     <form id="payment-form" novalidate>
       {% csrf_token %}
 
       {# Amount #}
       <fieldset class="mb-3">
-        <legend class="form-label fw-semibold">Select amount</legend>
+        <legend class="form-label fw-semibold">{% trans "Select amount" %}</legend>
         <div class="d-flex flex-wrap gap-2 mb-2" id="preset-amounts">
           <button type="button" class="btn btn-outline-primary preset-amount" data-cents="1000">$10</button>
           <button type="button" class="btn btn-outline-primary preset-amount" data-cents="2500">$25</button>
           <button type="button" class="btn btn-outline-primary preset-amount" data-cents="5000">$50</button>
           <button type="button" class="btn btn-outline-primary preset-amount" data-cents="10000">$100</button>
           <button type="button" class="btn btn-outline-primary preset-amount" data-cents="25000">$250</button>
-          <button type="button" class="btn btn-outline-secondary" id="custom-amount-btn">Other</button>
+          <button type="button" class="btn btn-outline-secondary" id="custom-amount-btn">{% trans "Other" %}</button>
         </div>
         <div id="custom-amount-wrapper" class="d-none">
           <div class="input-group">
             <span class="input-group-text">$</span>
             <input type="number" id="custom-amount" class="form-control"
-                   placeholder="0.00" min="1" step="0.01" aria-label="Custom amount">
+                   placeholder="{% trans '0.00' %}" min="1" step="0.01" aria-label="{% trans 'Custom amount' %}">
           </div>
         </div>
         <input type="hidden" id="amount-cents" name="amount_cents" value="">
@@ -44,17 +45,17 @@ This is the Underground donation page
       {# Frequency #}
       {% if page.allow_monthly_payments or page.allow_annual_payments %}
         <fieldset class="mb-3">
-          <legend class="form-label fw-semibold">Frequency</legend>
+          <legend class="form-label fw-semibold">{% trans "Frequency" %}</legend>
           <div class="btn-group" role="group" aria-label="Payment frequency">
             <input type="radio" class="btn-check" name="frequency" id="freq-once" value="once" checked autocomplete="off">
-            <label class="btn btn-outline-secondary" for="freq-once">One-time</label>
+            <label class="btn btn-outline-secondary" for="freq-once">{% trans "One-time" %}</label>
             {% if page.allow_monthly_payments %}
               <input type="radio" class="btn-check" name="frequency" id="freq-monthly" value="monthly" autocomplete="off">
-              <label class="btn btn-outline-secondary" for="freq-monthly">Monthly</label>
+              <label class="btn btn-outline-secondary" for="freq-monthly">{% trans "Monthly" %}</label>
             {% endif %}
             {% if page.allow_annual_payments %}
               <input type="radio" class="btn-check" name="frequency" id="freq-annual" value="annual" autocomplete="off">
-              <label class="btn btn-outline-secondary" for="freq-annual">Annual</label>
+              <label class="btn btn-outline-secondary" for="freq-annual">{% trans "Annual" %}</label>
             {% endif %}
           </div>
         </fieldset>
@@ -64,9 +65,9 @@ This is the Underground donation page
 
       {# Email #}
       <div class="mb-3">
-        <label for="donor-email" class="form-label fw-semibold">Email address</label>
+        <label for="donor-email" class="form-label fw-semibold">{% trans "Email address" %}</label>
         <input type="email" id="donor-email" class="form-control"
-               placeholder="you@example.com"
+               placeholder="{% trans 'you@example.com' %}"
                value="{{ request.user.email|default:'' }}"
                autocomplete="email" required>
       </div>
@@ -75,34 +76,34 @@ This is the Underground donation page
       <div id="guest-fields">
         <div class="form-row mb-3">
           <div class="col-6 pr-2">
-            <label for="donor-first-name" class="form-label fw-semibold">First name</label>
+            <label for="donor-first-name" class="form-label fw-semibold">{% trans "First name" %}</label>
             <input type="text" id="donor-first-name" class="form-control"
                    autocomplete="given-name" required>
           </div>
           <div class="col-6 pl-2">
-            <label for="donor-last-name" class="form-label fw-semibold">Last name</label>
+            <label for="donor-last-name" class="form-label fw-semibold">{% trans "Last name" %}</label>
             <input type="text" id="donor-last-name" class="form-control"
                    autocomplete="family-name" required>
           </div>
         </div>
         <div class="mb-3">
-          <label for="donor-address-line1" class="form-label fw-semibold">Street address</label>
+          <label for="donor-address-line1" class="form-label fw-semibold">{% trans "Street address" %}</label>
           <input type="text" id="donor-address-line1" class="form-control"
                  autocomplete="address-line1" required>
         </div>
         <div class="form-row mb-3">
           <div class="col-12 col-md-5 mb-2 mb-md-0">
-            <label for="donor-city" class="form-label fw-semibold">Suburb / City</label>
+            <label for="donor-city" class="form-label fw-semibold">{% trans "Suburb / City" %}</label>
             <input type="text" id="donor-city" class="form-control"
                    autocomplete="address-level2" required>
           </div>
           <div class="col-6 col-md-3 px-md-2">
-            <label for="donor-state" class="form-label fw-semibold">State</label>
+            <label for="donor-state" class="form-label fw-semibold">{% trans "State" %}</label>
             <input type="text" id="donor-state" class="form-control"
                    autocomplete="address-level1" maxlength="10" required>
           </div>
           <div class="col-6 col-md-4">
-            <label for="donor-postcode" class="form-label fw-semibold">Postcode</label>
+            <label for="donor-postcode" class="form-label fw-semibold">{% trans "Postcode" %}</label>
             <input type="text" id="donor-postcode" class="form-control"
                    autocomplete="postal-code" maxlength="10" required>
           </div>
@@ -111,7 +112,7 @@ This is the Underground donation page
 
       {# Step 1 button — collects amount/frequency/email then mounts Stripe Element #}
       <button type="button" id="continue-btn" class="btn btn-primary w-100 mb-3">
-        Continue to payment
+        {% trans "Continue to payment" %}
       </button>
 
       {# ── Stripe Payment Element (hidden until step 2) ── #}
@@ -119,15 +120,12 @@ This is the Underground donation page
         <div id="payment-element" class="mb-3"></div>
         <div id="payment-errors" class="alert alert-danger d-none" role="alert"></div>
         <button type="submit" id="submit-btn" class="btn btn-success w-100">
-          <span id="submit-label">Donate now</span>
+          <span id="submit-label">{% trans "Donate now" %}</span>
           <span id="submit-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
         </button>
       </div>
     </form>
-    {% endblock %}
-
-  </div>
-</div>
+  {% endblock %}
 {% endblock %}
 
 {% block extra_js %}
@@ -141,6 +139,16 @@ This is the Underground donation page
       const PUBLISHABLE_KEY = "{{ stripe_publishable_key }}";
       const CREATE_INTENT_URL = "{% url 'payment_create_intent' page.pk %}";
       const REDIRECT_URL = "{{ redirect_url|default:'' }}";
+
+      const MSG_MIN_AMOUNT    = "{% trans 'Please select a donation amount of at least $1.' %}";
+      const MSG_EMAIL         = "{% trans 'Please enter your email address.' %}";
+      const MSG_NAME          = "{% trans 'Please enter your name.' %}";
+      const MSG_ADDRESS       = "{% trans 'Please enter your mailing address.' %}";
+      const MSG_NETWORK_ERROR = "{% trans 'Network error. Please check your connection and try again.' %}";
+      const MSG_GENERIC_ERROR = "{% trans 'An error occurred. Please try again.' %}";
+      const MSG_DONATE        = "{% trans 'Donate' %}";
+      const MSG_MONTH         = "{% trans 'month' %}";
+      const MSG_YEAR          = "{% trans 'year' %}";
 
       // Preset amounts in cents.
       const PRESET_CENTS = [1000, 2500, 5000, 10000, 25000];
@@ -207,20 +215,20 @@ This is the Underground donation page
         const postcode    = document.getElementById("donor-postcode")?.value.trim() ?? "";
 
         if (!selectedCents || selectedCents < 100) {
-          alert("Please select a donation amount of at least $1.");
+          alert(MSG_MIN_AMOUNT);
           return;
         }
         if (!email) {
-          alert("Please enter your email address.");
+          alert(MSG_EMAIL);
           return;
         }
         if (guestSection) {
           if (!firstName || !lastName) {
-            alert("Please enter your name.");
+            alert(MSG_NAME);
             return;
           }
           if (!addressLine1 || !city || !stateVal || !postcode) {
-            alert("Please enter your mailing address.");
+            alert(MSG_ADDRESS);
             return;
           }
         }
@@ -254,12 +262,12 @@ This is the Underground donation page
           });
           data = await resp.json();
           if (!resp.ok) {
-            showError(data.error ?? "An error occurred. Please try again.");
+            showError(data.error ?? MSG_GENERIC_ERROR);
             document.getElementById("continue-btn").disabled = false;
             return;
           }
         } catch (err) {
-          showError("Network error. Please check your connection and try again.");
+          showError(MSG_NETWORK_ERROR);
           document.getElementById("continue-btn").disabled = false;
           return;
         }
@@ -280,7 +288,7 @@ This is the Underground donation page
           style: "currency", currency: "AUD", maximumFractionDigits: 0,
         });
         document.getElementById("submit-label").textContent =
-          `Donate ${dollars}${frequency !== "once" ? " / " + (frequency === "monthly" ? "month" : "year") : ""}`;
+          `${MSG_DONATE} ${dollars}${frequency !== "once" ? " / " + (frequency === "monthly" ? MSG_MONTH : MSG_YEAR) : ""}`;
       });
 
       // ── Step 2: Confirm payment ───────────────────────────────────────────────

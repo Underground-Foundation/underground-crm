@@ -2,7 +2,8 @@
 Management command to import private notes from the legacy CRM into PersonNote.
 
 Usage:
-    python manage.py import_legacy_private_notes <legacy_person_id> --cookie-file <path>
+    python manage.py import_legacy_private_notes --legacy-person-id <id>
+    python manage.py import_legacy_private_notes --legacy-person-id <id> --cookie-file <path>
 
 Requires an admin session cookie file (Netscape format) for the legacy CRM.
 Export your cookies from the browser using a cookie export extension,
@@ -16,102 +17,17 @@ with --cookie-file.
 #       for bulk import without requiring live legacy CRM access.
 """
 
-import html
-import http.cookiejar
-import json
-import re
-import time
 import urllib.error
-import urllib.parse
-import urllib.request
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
+from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
 from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import PersonNote
 
 LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
-LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
 LEGACY_ADMIN_COOKIE_FILE = require_env("LEGACY_ADMIN_COOKIE_FILE")
-
-
-def _build_opener(cookie_file):
-    jar = http.cookiejar.MozillaCookieJar(cookie_file)
-    jar.load(ignore_discard=True, ignore_expires=True)
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-    opener.addheaders = [
-        ("User-Agent", LEGACY_USER_AGENT),
-        ("Accept", "application/json, text/javascript, */*; q=0.01"),
-        ("X-Requested-With", "XMLHttpRequest"),
-    ]
-    return opener
-
-
-def _fetch_activities(opener, legacy_person_id, page=1):
-    params = urllib.parse.urlencode(
-        {
-            "id": legacy_person_id,
-            "page": page,
-            "range": "All time",
-            "type_id": "",
-        }
-    )
-    url = f"{LEGACY_ADMIN_URL}/admin/activities/signup.json?{params}"
-    req = urllib.request.Request(
-        url,
-        headers={"Referer": f"{LEGACY_ADMIN_URL}/admin/signups/{legacy_person_id}"},
-    )
-    with opener.open(req) as resp:
-        return json.loads(resp.read())
-
-
-def _strip_html(text):
-    text = re.sub(r"<[^>]+>", " ", text)
-    return html.unescape(re.sub(r"\s+", " ", text)).strip()
-
-
-def _extract_note_text(oneliner):
-    match = re.search(
-        r'<div class="activity_content_text">(.*?)</div>',
-        oneliner,
-        re.DOTALL,
-    )
-    if match:
-        return _strip_html(match.group(1))
-    return ""
-
-
-def fetch_private_notes(opener, legacy_person_id, stdout=None):
-    """Return all private note activities for a person in the legacy CRM."""
-    notes = []
-    page = 1
-    while True:
-        if stdout:
-            stdout.write(f"  Fetching page {page}...")
-        data = _fetch_activities(opener, legacy_person_id, page)
-        activities = data.get("activities", [])
-        if stdout:
-            stdout.write(f"  Page {page}: {len(activities)} activity/activities returned.")
-        if not activities:
-            break
-        for act in activities:
-            if act.get("type") == "profile_private_note":
-                related = act.get("relatedSignups", {})
-                notes.append(
-                    {
-                        "activity_id": act["id"],
-                        "person_legacy_id": related.get("signup", {}).get("id") or legacy_person_id,
-                        "author_legacy_id": related.get("author", {}).get("id"),
-                        "text": _extract_note_text(act.get("oneliner", "")),
-                        "created_at": act.get("timestamp", ""),
-                    }
-                )
-        if len(activities) < 20:
-            break
-        page += 1
-        time.sleep(0.1)
-    return notes
 
 
 class Command(BaseCommand):
@@ -119,8 +35,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "legacy_person_id",
+            "--legacy-person-id",
             type=int,
+            required=True,
             help="Legacy CRM person ID to import notes for.",
         )
         parser.add_argument(
@@ -146,7 +63,6 @@ class Command(BaseCommand):
 
         for var, val in [
             ("LEGACY_ADMIN_URL", LEGACY_ADMIN_URL),
-            ("LEGACY_USER_AGENT", LEGACY_USER_AGENT),
             ("LEGACY_ADMIN_COOKIE_FILE", cookie_file),
         ]:
             if not val:
@@ -167,14 +83,14 @@ class Command(BaseCommand):
         self.stdout.write(f"  Local user: {user} (pk={user.pk})")
 
         try:
-            opener = _build_opener(cookie_file)
+            opener = build_cookie_opener(cookie_file)
         except FileNotFoundError as exc:
             raise CommandError(f"Cookie file not found: {cookie_file}") from exc
 
         self.stdout.write("  Cookie file loaded. Fetching activities...")
 
         try:
-            raw_notes = fetch_private_notes(opener, legacy_person_id, self.stdout)
+            raw_notes = fetch_private_notes(opener, LEGACY_ADMIN_URL, legacy_person_id, self.stdout)
         except urllib.error.HTTPError as e:
             raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
         except urllib.error.URLError as e:
@@ -231,6 +147,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Imported {imported} note(s) for {user} " f"({skipped} already existed)."
+                    f"Imported {imported} note(s) for {user} ({skipped} already existed)."
                 )
             )

@@ -14,6 +14,7 @@ from .serializers import (
     InteractionSerializer,
     PersonNoteSerializer,
     TagSerializer,
+    UnverifiedAddressSerializer,
 )
 
 
@@ -75,9 +76,34 @@ class AddressViewSet(ModelViewSet):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def me(request):
-    if request.user.is_authenticated:
-        user = cast(settings.AUTH_USER_MODEL, request.user)
-        return Response(
-            {"authenticated": True, "name": user.full_name, "email_address": user.email}
+    if not request.user.is_authenticated:
+        return Response({"authenticated": False})
+
+    user = cast(settings.AUTH_USER_MODEL, request.user)
+    data: dict = {"authenticated": True, "name": user.full_name, "email_address": user.email}
+
+    if request.GET.get("context") == "billing":
+        billing = user.billing_address
+        data.update(
+            {
+                "first_name": user.first_name or "",
+                "middle_name": user.middle_name or "",
+                "last_name": user.last_name or "",
+                "phone": str(user.mobile_number or user.phone_number or ""),
+                "billing_address": UnverifiedAddressSerializer(billing).data if billing else None,
+            }
         )
-    return Response({"authenticated": False})
+        for attr, key in [
+            ("home_address", "home_address"),
+            ("mailing_address", "mailing_address"),
+            ("registered_address", "registered_address"),
+        ]:
+            addr = getattr(user, attr)
+            if addr is None:
+                data[key] = None
+            else:
+                entry = dict(UnverifiedAddressSerializer(addr).data)
+                entry["same_as_billing"] = bool(billing and addr.is_equivalent(billing))
+                data[key] = entry
+
+    return Response(data)

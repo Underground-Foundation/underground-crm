@@ -7,6 +7,16 @@ from djmoney.money import Money
 
 logger = logging.getLogger(__name__)
 
+
+def _fit(value: str, max_len: int, field: str) -> str:
+    if len(value) > max_len:
+        logger.warning(
+            "Truncating metadata field %r from %d to %d chars", field, len(value), max_len
+        )
+        return value[:max_len]
+    return value
+
+
 _CURRENCY = "AUD"
 
 
@@ -25,12 +35,23 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
     donor_email = metadata.get("donor_email", "").strip().lower()
     frequency = metadata.get("frequency", "once")
     page_url = metadata.get("page_url", "")
-    first_name = metadata.get("donor_first_name", "").strip()
-    last_name = metadata.get("donor_last_name", "").strip()
-    address_line1 = metadata.get("donor_address_line1", "").strip()
-    city = metadata.get("donor_city", "").strip()
-    state = metadata.get("donor_state", "").strip()
-    postcode = metadata.get("donor_postcode", "").strip()
+    first_name = _fit(metadata.get("donor_first_name", "").strip(), 100, "donor_first_name")
+    middle_name = _fit(metadata.get("donor_middle_name", "").strip(), 100, "donor_middle_name")
+    last_name = _fit(metadata.get("donor_last_name", "").strip(), 100, "donor_last_name")
+    phone = _fit(metadata.get("donor_phone", "").strip(), 30, "donor_phone")
+    address_line1 = _fit(
+        metadata.get("donor_address_line1", "").strip(), 200, "donor_address_line1"
+    )
+    address_line2 = _fit(
+        metadata.get("donor_address_line2", "").strip(), 200, "donor_address_line2"
+    )
+    address_line3 = _fit(
+        metadata.get("donor_address_line3", "").strip(), 200, "donor_address_line3"
+    )
+    city = _fit(metadata.get("donor_city", "").strip(), 100, "donor_city")
+    state = _fit(metadata.get("donor_state", "").strip(), 100, "donor_state")
+    postcode = _fit(metadata.get("donor_postcode", "").strip(), 20, "donor_postcode")
+    country = _fit(metadata.get("donor_country", "").strip(), 2, "donor_country")
 
     page = (
         PaymentPage.objects.select_related("donor_tag", "success_email__sender__sender")
@@ -80,16 +101,46 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
                 setattr(person, k, v)
             person.save(update_fields=list(fill.keys()))
 
-    # Store billing address if provided and the person doesn't have one yet.
-    if not person.billing_address_id and (address_line1 or city or state or postcode):
-        addr = Address.objects.create(
-            line1=address_line1 or None,
-            city=city or None,
-            state=state or None,
-            postcode=postcode or None,
-        )
-        person.billing_address = addr
-        person.save(update_fields=["billing_address"])
+    # Store or update billing address if the donation supplied one.
+    if address_line1 or city or state or postcode:
+        if person.billing_address_id:
+            logger.info(
+                "Updating billing address for %s via payment_intent %s",
+                donor_email,
+                payment_intent_id,
+            )
+            addr = person.billing_address
+            addr.line1 = address_line1 or None
+            addr.line2 = address_line2 or None
+            addr.line3 = address_line3 or None
+            addr.city = city or None
+            addr.state = state or None
+            addr.postcode = postcode or None
+            if country:
+                addr.country_code = country
+            addr.save(
+                update_fields=[
+                    "line1",
+                    "line2",
+                    "line3",
+                    "city",
+                    "state",
+                    "postcode",
+                    "country_code",
+                ]
+            )
+        else:
+            addr = Address.objects.create(
+                line1=address_line1 or None,
+                line2=address_line2 or None,
+                line3=address_line3 or None,
+                city=city or None,
+                state=state or None,
+                postcode=postcode or None,
+                country_code=country or "AU",
+            )
+            person.billing_address = addr
+            person.save(update_fields=["billing_address"])
 
     amount = Money(amount_cents / 100, _CURRENCY)
     is_recurring = frequency in ("monthly", "annual")

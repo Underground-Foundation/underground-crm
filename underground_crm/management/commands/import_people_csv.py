@@ -25,8 +25,6 @@ The legacy CRM connection is configured via environment variables (see .env.exam
 """
 
 import csv
-import html
-import http.cookiejar
 import json
 from typing import Optional, Tuple
 
@@ -44,6 +42,7 @@ from django.db import transaction
 from phonenumbers import PhoneNumberType
 from phonenumbers.phonenumber import PhoneNumber
 
+from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
 from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import Interaction, Person, PersonNote, Tag
 from underground_crm.models.address import Address
@@ -365,74 +364,9 @@ def _import_interactions(person, legacy_person_id, dry_run, stderr):
     return imported, skipped
 
 
-# ---------------------------------------------------------------------------
-# Private note fetching (mirrors logic in import_legacy_private_notes.py)
-# ---------------------------------------------------------------------------
-
-
-def _build_cookie_opener(cookie_file):
-    jar = http.cookiejar.MozillaCookieJar(cookie_file)
-    jar.load(ignore_discard=True, ignore_expires=True)
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-    opener.addheaders = [
-        ("User-Agent", _LEGACY_USER_AGENT),
-        ("Accept", "application/json, text/javascript, */*; q=0.01"),
-        ("X-Requested-With", "XMLHttpRequest"),
-    ]
-    return opener
-
-
-def _fetch_private_notes(opener, legacy_person_id):
-    notes = []
-    page = 1
-    while True:
-        params = urllib.parse.urlencode(
-            {
-                "id": legacy_person_id,
-                "page": page,
-                "range": "All time",
-                "type_id": "",
-            }
-        )
-        url = f"{_LEGACY_ADMIN_URL}/admin/activities/signup.json?{params}"
-        req = urllib.request.Request(
-            url,
-            headers={"Referer": f"{_LEGACY_ADMIN_URL}/admin/signups/{legacy_person_id}"},
-        )
-        with opener.open(req) as resp:
-            data = json.loads(resp.read())
-        activities = data.get("activities", [])
-        if not activities:
-            break
-        for act in activities:
-            if act.get("type") == "profile_private_note":
-                related = act.get("relatedSignups", {})
-                oneliner = act.get("oneliner", "")
-                match = re.search(
-                    r'<div class="activity_content_text">(.*?)</div>', oneliner, re.DOTALL
-                )
-                text = ""
-                if match:
-                    text = html.unescape(re.sub(r"<[^>]+>", " ", match.group(1)))
-                    text = re.sub(r"\s+", " ", text).strip()
-                notes.append(
-                    {
-                        "activity_id": act["id"],
-                        "author_legacy_id": related.get("author", {}).get("id"),
-                        "text": text,
-                        "created_at": act.get("timestamp", ""),
-                    }
-                )
-        if len(activities) < 20:
-            break
-        page += 1
-        time.sleep(0.1)
-    return notes
-
-
 def _import_notes(person, legacy_person_id, opener, dry_run, stderr):
     try:
-        raw_notes = _fetch_private_notes(opener, legacy_person_id)
+        raw_notes = fetch_private_notes(opener, _LEGACY_ADMIN_URL, legacy_person_id)
     except urllib.error.HTTPError as e:
         print(f"  [warn] notes for {legacy_person_id}: HTTP {e.code}", file=stderr)
         return 0, 0
@@ -514,7 +448,7 @@ class Command(BaseCommand):
         note_opener = None
         if with_notes:
             try:
-                note_opener = _build_cookie_opener(_LEGACY_ADMIN_COOKIE_FILE)
+                note_opener = build_cookie_opener(_LEGACY_ADMIN_COOKIE_FILE)
             except FileNotFoundError as exc:
                 raise CommandError(f"Cookie file not found: {_LEGACY_ADMIN_COOKIE_FILE}") from exc
 
@@ -579,7 +513,6 @@ class Command(BaseCommand):
                     ("mailing_address", "mailing"),
                     ("registered_address", "registered"),
                     ("billing_address", "billing"),
-                    ("work_address", "work"),
                 ]:
                     addr = _build_address(row, prefix)
                     if addr is not None and getattr(person, attr) is None:
