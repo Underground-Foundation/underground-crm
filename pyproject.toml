@@ -36,7 +36,6 @@ dev = [
     "pylint-django>=2.5",
     "black>=25.0",
     "pre-commit>=4.0",
-    "pytest"
 ]
 migration = [
     "beautifulsoup4>=4.12",
