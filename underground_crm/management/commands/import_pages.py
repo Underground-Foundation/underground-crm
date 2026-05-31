@@ -13,7 +13,8 @@ For each <slug>.html found in <domain>/, the command:
      as a Raw HTML body block.
 
 Supported page types:
-  "Basic" -> UndergroundBasicPage
+  "Basic"    -> UndergroundBasicPage
+  "Donation" -> PaymentPage
 """
 
 import datetime
@@ -30,6 +31,7 @@ from bs4 import BeautifulSoup, Tag
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
+from requests.utils import super_len
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, Site
 
@@ -39,7 +41,8 @@ from underground_crm.contactability import (
     parse_address,
 )
 from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
-from underground_crm.models.pages import EventPage
+from underground_crm.models.pages import EventPage, BlogPost
+from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
 
 
@@ -482,10 +485,69 @@ def build_redirection(
     )
 
 
+def extract_donation_frequency(soup: BeautifulSoup) -> tuple[bool, bool]:
+    """
+    Inspect donation-frequency radio buttons to determine which recurrence
+    options are offered on the page.
+
+    Looks for a <fieldset> whose <legend> contains the word "frequency", then
+    collects the `value` attributes of any <input type="radio"> inside it.
+
+    Returns (allow_monthly, allow_annual).
+    """
+    for fieldset in soup.find_all("fieldset"):
+        legend = fieldset.find("legend")
+        if not legend or "frequency" not in legend.get_text().lower():
+            continue
+        values = {
+            inp.get("value", "").strip().lower()
+            for inp in fieldset.find_all("input", {"type": "radio"})
+        }
+        return "monthly" in values, ("annual" in values or "yearly" in values)
+    return False, False
+
+
+def build_payment_page(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=PaymentPage,
+) -> PaymentPage:
+    kwargs = get_page_args(document_soup, importable_html, attributes, slug, site)
+    kwargs.pop("show_toc")
+    page = return_class(**kwargs)
+    page.allow_monthly_payments, page.allow_annual_payments = extract_donation_frequency(
+        document_soup
+    )
+    return page
+
+
+def build_blog_post(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=BlogPost,
+) -> BlogPost:
+    return build_underground_basic_page(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+        site=site,
+        return_class=return_class,
+    )
+
+
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
+    "Donation": build_payment_page,
     "Event": build_event_page,
     "Blog": build_blog_page,
+    "Blog Post": build_underground_basic_page,
     "Redirect": build_redirection,
 }
 

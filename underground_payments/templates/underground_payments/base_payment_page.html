@@ -1,0 +1,353 @@
+{% extends "underground_crm/underground_basic_page.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block extra_head %}
+  <script src="https://js.stripe.com/v3/" async></script>
+{% endblock %}
+
+{% block extra_body_content %}
+  {% trans "This is the Underground donation page" %}
+  {# ── Success panel (hidden until payment completes) ── #}
+  <div id="payment-success" class="alert alert-success d-none" role="alert">
+    <div class="col form-wrap mx-auto">
+      <h4 class="alert-heading">{% trans "Thank you for your donation!" %}</h4>
+      <p>{% trans "Your payment has been received. We appreciate your support." %}</p>
+    </div>
+  </div>
+
+  {# ── Payment form ── #}
+  {% block payment_form %}
+    <form id="payment-form" novalidate>
+      {% csrf_token %}
+
+      {# Amount #}
+      <fieldset class="mb-3">
+        <legend class="form-label fw-semibold">{% trans "Select amount" %}</legend>
+        <div class="d-flex flex-wrap gap-2 mb-2" id="preset-amounts">
+          <button type="button" class="btn btn-outline-primary preset-amount" data-cents="1000">$10</button>
+          <button type="button" class="btn btn-outline-primary preset-amount" data-cents="2500">$25</button>
+          <button type="button" class="btn btn-outline-primary preset-amount" data-cents="5000">$50</button>
+          <button type="button" class="btn btn-outline-primary preset-amount" data-cents="10000">$100</button>
+          <button type="button" class="btn btn-outline-primary preset-amount" data-cents="25000">$250</button>
+          <button type="button" class="btn btn-outline-secondary" id="custom-amount-btn">{% trans "Other" %}</button>
+        </div>
+        <div id="custom-amount-wrapper" class="d-none">
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input type="number" id="custom-amount" class="form-control"
+                   placeholder="{% trans '0.00' %}" min="1" step="0.01" aria-label="{% trans 'Custom amount' %}">
+          </div>
+        </div>
+        <input type="hidden" id="amount-cents" name="amount_cents" value="">
+      </fieldset>
+
+      {# Frequency #}
+      {% if page.allow_monthly_payments or page.allow_annual_payments %}
+        <fieldset class="mb-3">
+          <legend class="form-label fw-semibold">{% trans "Frequency" %}</legend>
+          <div class="btn-group" role="group" aria-label="Payment frequency">
+            <input type="radio" class="btn-check" name="frequency" id="freq-once" value="once" checked autocomplete="off">
+            <label class="btn btn-outline-secondary" for="freq-once">{% trans "One-time" %}</label>
+            {% if page.allow_monthly_payments %}
+              <input type="radio" class="btn-check" name="frequency" id="freq-monthly" value="monthly" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="freq-monthly">{% trans "Monthly" %}</label>
+            {% endif %}
+            {% if page.allow_annual_payments %}
+              <input type="radio" class="btn-check" name="frequency" id="freq-annual" value="annual" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="freq-annual">{% trans "Annual" %}</label>
+            {% endif %}
+          </div>
+        </fieldset>
+      {% else %}
+        <input type="hidden" name="frequency" value="once">
+      {% endif %}
+
+      {# Email #}
+      <div class="mb-3">
+        <label for="donor-email" class="form-label fw-semibold">{% trans "Email address" %}</label>
+        <input type="email" id="donor-email" class="form-control"
+               placeholder="{% trans 'you@example.com' %}"
+               value="{{ request.user.email|default:'' }}"
+               autocomplete="email" required>
+      </div>
+
+      {# Name + mailing address — always rendered; JS hides them if the user is logged in #}
+      <div id="guest-fields">
+        <div class="form-row mb-3">
+          <div class="col-6 pr-2">
+            <label for="donor-first-name" class="form-label fw-semibold">{% trans "First name" %}</label>
+            <input type="text" id="donor-first-name" class="form-control"
+                   autocomplete="given-name" required>
+          </div>
+          <div class="col-6 pl-2">
+            <label for="donor-last-name" class="form-label fw-semibold">{% trans "Last name" %}</label>
+            <input type="text" id="donor-last-name" class="form-control"
+                   autocomplete="family-name" required>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="donor-address-line1" class="form-label fw-semibold">{% trans "Street address" %}</label>
+          <input type="text" id="donor-address-line1" class="form-control"
+                 autocomplete="address-line1" required>
+        </div>
+        <div class="form-row mb-3">
+          <div class="col-12 col-md-5 mb-2 mb-md-0">
+            <label for="donor-city" class="form-label fw-semibold">{% trans "Suburb / City" %}</label>
+            <input type="text" id="donor-city" class="form-control"
+                   autocomplete="address-level2" required>
+          </div>
+          <div class="col-6 col-md-3 px-md-2">
+            <label for="donor-state" class="form-label fw-semibold">{% trans "State" %}</label>
+            <input type="text" id="donor-state" class="form-control"
+                   autocomplete="address-level1" maxlength="10" required>
+          </div>
+          <div class="col-6 col-md-4">
+            <label for="donor-postcode" class="form-label fw-semibold">{% trans "Postcode" %}</label>
+            <input type="text" id="donor-postcode" class="form-control"
+                   autocomplete="postal-code" maxlength="10" required>
+          </div>
+        </div>
+      </div>
+
+      {# Step 1 button — collects amount/frequency/email then mounts Stripe Element #}
+      <button type="button" id="continue-btn" class="btn btn-primary w-100 mb-3">
+        {% trans "Continue to payment" %}
+      </button>
+
+      {# ── Stripe Payment Element (hidden until step 2) ── #}
+      <div id="stripe-section" class="d-none">
+        <div id="payment-element" class="mb-3"></div>
+        <div id="payment-errors" class="alert alert-danger d-none" role="alert"></div>
+        <button type="submit" id="submit-btn" class="btn btn-success w-100">
+          <span id="submit-label">{% trans "Donate now" %}</span>
+          <span id="submit-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+        </button>
+      </div>
+    </form>
+  {% endblock %}
+{% endblock %}
+
+{% block extra_js %}
+    {% block extra_payment_js %}{% endblock %}
+
+    {% block payment_processor_js %}
+    <script>
+    (function () {
+      "use strict";
+
+      const PUBLISHABLE_KEY = "{{ stripe_publishable_key }}";
+      const CREATE_INTENT_URL = "{% url 'payment_create_intent' page.pk %}";
+      const REDIRECT_URL = "{{ redirect_url|default:'' }}";
+
+      const MSG_MIN_AMOUNT    = "{% trans 'Please select a donation amount of at least $1.' %}";
+      const MSG_EMAIL         = "{% trans 'Please enter your email address.' %}";
+      const MSG_NAME          = "{% trans 'Please enter your name.' %}";
+      const MSG_ADDRESS       = "{% trans 'Please enter your mailing address.' %}";
+      const MSG_NETWORK_ERROR = "{% trans 'Network error. Please check your connection and try again.' %}";
+      const MSG_GENERIC_ERROR = "{% trans 'An error occurred. Please try again.' %}";
+      const MSG_DONATE        = "{% trans 'Donate' %}";
+      const MSG_MONTH         = "{% trans 'month' %}";
+      const MSG_YEAR          = "{% trans 'year' %}";
+
+      // Preset amounts in cents.
+      const PRESET_CENTS = [1000, 2500, 5000, 10000, 25000];
+
+      // ── Render preset amount labels ──────────────────────────────────────────
+      document.querySelectorAll(".preset-amount").forEach((btn, i) => {
+        const cents = PRESET_CENTS[i];
+        btn.dataset.cents = cents;
+        btn.textContent = "$" + (cents / 100).toFixed(0);
+      });
+
+      // ── Amount selection ─────────────────────────────────────────────────────
+      let selectedCents = null;
+
+      function selectPreset(btn) {
+        document.querySelectorAll(".preset-amount").forEach(b => b.classList.remove("active", "btn-primary"));
+        btn.classList.add("active", "btn-primary");
+        btn.classList.remove("btn-outline-primary");
+        selectedCents = parseInt(btn.dataset.cents, 10);
+        document.getElementById("amount-cents").value = selectedCents;
+        document.getElementById("custom-amount-wrapper").classList.add("d-none");
+        document.getElementById("custom-amount").value = "";
+      }
+
+      document.querySelectorAll(".preset-amount").forEach(btn => {
+        btn.addEventListener("click", () => selectPreset(btn));
+      });
+
+      document.getElementById("custom-amount-btn").addEventListener("click", () => {
+        document.querySelectorAll(".preset-amount").forEach(b => {
+          b.classList.remove("active", "btn-primary");
+          b.classList.add("btn-outline-primary");
+        });
+        selectedCents = null;
+        document.getElementById("custom-amount-wrapper").classList.remove("d-none");
+        document.getElementById("custom-amount").focus();
+      });
+
+      document.getElementById("custom-amount").addEventListener("input", e => {
+        const dollars = parseFloat(e.target.value);
+        if (!isNaN(dollars) && dollars >= 1) {
+          selectedCents = Math.round(dollars * 100);
+          document.getElementById("amount-cents").value = selectedCents;
+        } else {
+          selectedCents = null;
+        }
+      });
+
+      // ── Step 1: Continue ─────────────────────────────────────────────────────
+      let stripe = null;
+      let elements = null;
+
+      document.getElementById("continue-btn").addEventListener("click", async () => {
+        const email = document.getElementById("donor-email").value.trim();
+        const frequency = document.querySelector("input[name=frequency]:checked")?.value ?? "once";
+
+        // Guest-only fields (absent from DOM when logged in).
+        const guestSection = document.getElementById("guest-fields");
+        const firstName   = document.getElementById("donor-first-name")?.value.trim() ?? "";
+        const lastName    = document.getElementById("donor-last-name")?.value.trim() ?? "";
+        const addressLine1 = document.getElementById("donor-address-line1")?.value.trim() ?? "";
+        const city        = document.getElementById("donor-city")?.value.trim() ?? "";
+        const stateVal    = document.getElementById("donor-state")?.value.trim() ?? "";
+        const postcode    = document.getElementById("donor-postcode")?.value.trim() ?? "";
+
+        if (!selectedCents || selectedCents < 100) {
+          alert(MSG_MIN_AMOUNT);
+          return;
+        }
+        if (!email) {
+          alert(MSG_EMAIL);
+          return;
+        }
+        if (guestSection) {
+          if (!firstName || !lastName) {
+            alert(MSG_NAME);
+            return;
+          }
+          if (!addressLine1 || !city || !stateVal || !postcode) {
+            alert(MSG_ADDRESS);
+            return;
+          }
+        }
+
+        const csrfToken = document.cookie
+          .split("; ")
+          .find(r => r.startsWith("csrftoken="))
+          ?.split("=")[1] ?? "";
+
+        document.getElementById("continue-btn").disabled = true;
+
+        let data;
+        try {
+          const resp = await fetch(CREATE_INTENT_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({
+              amount_cents: selectedCents,
+              frequency,
+              email,
+              first_name: firstName,
+              last_name: lastName,
+              address_line1: addressLine1,
+              city,
+              state: stateVal,
+              postcode,
+            }),
+          });
+          data = await resp.json();
+          if (!resp.ok) {
+            showError(data.error ?? MSG_GENERIC_ERROR);
+            document.getElementById("continue-btn").disabled = false;
+            return;
+          }
+        } catch (err) {
+          showError(MSG_NETWORK_ERROR);
+          document.getElementById("continue-btn").disabled = false;
+          return;
+        }
+
+        // Mount the Stripe Payment Element.
+        if (!stripe) {
+          stripe = Stripe(PUBLISHABLE_KEY);
+        }
+        elements = stripe.elements({ clientSecret: data.client_secret });
+        const paymentElement = elements.create("payment");
+        paymentElement.mount("#payment-element");
+
+        document.getElementById("continue-btn").classList.add("d-none");
+        document.getElementById("stripe-section").classList.remove("d-none");
+
+        // Update the submit label to show the amount.
+        const dollars = (selectedCents / 100).toLocaleString("en-AU", {
+          style: "currency", currency: "AUD", maximumFractionDigits: 0,
+        });
+        document.getElementById("submit-label").textContent =
+          `${MSG_DONATE} ${dollars}${frequency !== "once" ? " / " + (frequency === "monthly" ? MSG_MONTH : MSG_YEAR) : ""}`;
+      });
+
+      // ── Step 2: Confirm payment ───────────────────────────────────────────────
+      document.getElementById("payment-form").addEventListener("submit", async e => {
+        e.preventDefault();
+        if (!stripe || !elements) return;
+
+        setLoading(true);
+        clearError();
+
+        const returnUrl = window.location.href.split("?")[0] + "?payment_complete=1";
+
+        const { error } = await stripe.confirmPayment({
+          elements,
+          confirmParams: { return_url: returnUrl },
+          // Don't force a full redirect for card payments — handle success inline.
+          redirect: "if_required",
+        });
+
+        if (error) {
+          showError(error.message);
+          setLoading(false);
+        } else {
+          // Payment confirmed without a redirect (card) — handle success now.
+          handlePaymentSuccess();
+        }
+      });
+
+      // On page load, check if we landed here from a Stripe redirect.
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("redirect_status") === "succeeded" || params.get("payment_complete") === "1") {
+        handlePaymentSuccess();
+      }
+
+      function handlePaymentSuccess() {
+        document.getElementById("payment-form").classList.add("d-none");
+        document.getElementById("payment-success").classList.remove("d-none");
+        if (REDIRECT_URL) {
+          setTimeout(() => { window.location.href = REDIRECT_URL; }, 2000);
+        }
+      }
+
+      function showError(message) {
+        const el = document.getElementById("payment-errors");
+        el.textContent = message;
+        el.classList.remove("d-none");
+      }
+
+      function clearError() {
+        document.getElementById("payment-errors").classList.add("d-none");
+      }
+
+      function setLoading(loading) {
+        const btn = document.getElementById("submit-btn");
+        const spinner = document.getElementById("submit-spinner");
+        btn.disabled = loading;
+        loading ? spinner.classList.remove("d-none") : spinner.classList.add("d-none");
+      }
+    })();
+    </script>
+    {% endblock %}
+{% endblock %}

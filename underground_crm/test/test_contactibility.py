@@ -1,4 +1,6 @@
 import unittest
+from unittest import skipUnless
+import django.test
 
 import dns.resolver
 from email_validator import EmailUndeliverableError, EmailSyntaxError
@@ -102,7 +104,7 @@ class PhoneNumberTest(unittest.TestCase):
         self.assertIsNone(result)
 
 
-class NamingTest(unittest.TestCase):
+class NamingTest(django.test.TestCase):
     def test_get_full_name_options_with_single_word(self):
         pairs = list(get_full_name_options("Madonna"))
         self.assertEqual(len(pairs), 1)
@@ -126,9 +128,36 @@ class NamingTest(unittest.TestCase):
 
     def test_get_ambiguous_admin_by_full_name(self):
         from underground_crm.models import Person
-        Person.objects.create(email="owen@example.com", first_name="Owen", last_name="Miller", is_admin=True)
+
+        Person.objects.create(
+            email="owen.staff@example.com",
+            first_name="Owen",
+            last_name="Miller",
+            is_admin=False,
+            is_staff=True,
+        )
+        # Create the admin in the middle, so we can be sure that the admin doesn't get selected due to creation time.
+        Person.objects.create(
+            email="owen.admin@example.com",
+            first_name="Owen",
+            last_name="Miller",
+            is_admin=True,
+            is_staff=True,
+        )
+        Person.objects.create(
+            email="owen.peon@example.com",
+            first_name="Owen",
+            last_name="Miller",
+            is_admin=False,
+            is_staff=False,
+        )
         user = get_ambiguous_admin_by_full_name("Owen Miller")
         self.assertTrue(user)
+        self.assertIn(
+            "admin",
+            user.email,
+            msg="It was expected that in ambiguous circumstances, the full-name retrieval should prefer users who are admins",
+        )
 
 
 class AddressTest(unittest.TestCase):

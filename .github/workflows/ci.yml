@@ -1,13 +1,13 @@
-name: CI Pipeline
+name: Underground CRM Continuous Integration Pipeline
 
 on:
   push:
     branches:
-      - main
+      - master
       - develop
   pull_request:
     branches:
-      - main
+      - master
       - develop
 
 jobs:
@@ -28,12 +28,14 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: underground_crm.settings
       REDIS_URL: redis://127.0.0.1:6379
-      # Note: We omit PostgreSQL credentials to automatically trigger the SQLite fallback
-      # defined in underground_crm/settings.py for CI/CD test execution.
+      # Note: We omit PostgreSQL environment variables in order to trigger
+      # the SQLite fallback defined in underground_crm/settings.py for CI/CD
+      # test execution.
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        # https://github.com/actions/checkout
 
       - name: Install System Dependencies
         run: |
@@ -41,9 +43,10 @@ jobs:
           sudo apt-get install -y gdal-bin libgdal-dev gettext-base
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
+        # https://github.com/actions/setup-python
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Python Dependencies
@@ -51,11 +54,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev,migration]
 
-      - name: Strict Formatting Check (Black)
-        run: black --check underground_crm underground_email migration
+      - name: Formatting and Static Analysis
+        # By invoking pre-commit rather than the constituent pylint & black, we ensure
+        # that we're using the same settings as when the commit occurred.
+        run: pre-commit run --all-files
 
-      - name: Static Analysis Linting (Pylint)
-        run: pylint --load-plugins=pylint_django --django-settings-module=underground_crm.settings --errors-only underground_crm underground_email
+      - name: Execute Test Suite
+        run: >-
+          python manage.py test -v 3 --keepdb
+          underground_crm.test
+          underground_email.test
+          underground_crm.management.commands.test
 
-      - name: Execute Test Suite (Pytest)
-        run: pytest
+  stripe-countries:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Check Stripe country list
+        working-directory: underground_payments
+        run: bash checkStripeCountries.sh
