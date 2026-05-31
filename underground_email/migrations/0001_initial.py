@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("auth", "0012_alter_user_first_name_max_length"),
-        ("underground_crm", "0022_remove_address_geocode_confidence"),
+        ("underground_crm", "0001_initial"),
     ]
 
     operations = [

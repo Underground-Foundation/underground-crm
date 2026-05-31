@@ -59,5 +59,20 @@ jobs:
         # that we're using the same settings as when the commit occurred.
         run: pre-commit run --all-files
 
-      - name: Execute Test Suite (Pytest)
-        run: pytest
+      - name: Execute Test Suite
+        run: >-
+          python manage.py test -v 3 --keepdb
+          underground_crm.test
+          underground_email.test
+          underground_crm.management.commands.test
+
+  stripe-countries:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Check Stripe country list
+        working-directory: underground_payments
+        run: bash checkStripeCountries.sh

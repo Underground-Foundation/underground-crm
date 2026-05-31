@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from underground_crm.contactability import get_validated_email_address
 from underground_crm.management.commands.import_pages import (
+    extract_donation_frequency,
     extract_event_population,
     extract_event_time,
     extract_event_venue,
@@ -136,3 +137,72 @@ class TestBlogExtraction(unittest.TestCase):
     def test_extract_page_size(self):
         page_size = extract_page_size(self.blog_soup)
         self.assertEqual(10, page_size)
+
+
+class TestDonationExtraction(unittest.TestCase):
+    donate_html_file = Path(__file__).parent / "donate_sample.html"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.donate_soup, _ = extract_importable_html(cls.donate_html_file, importable_dir=None)
+        cls.assertTrue(cls, cls.donate_soup)
+
+    def test_monthly_payments_allowed(self):
+        allow_monthly, _ = extract_donation_frequency(self.donate_soup)
+        self.assertTrue(allow_monthly, "Monthly radio button was present on the donate page")
+
+    def test_annual_payments_not_offered(self):
+        _, allow_annual = extract_donation_frequency(self.donate_soup)
+        self.assertFalse(allow_annual, "No annual radio button was present on the donate page")
+
+    def test_frequency_when_only_one_time_present(self):
+        html = """
+        <fieldset>
+          <legend>Donation frequency</legend>
+          <input type="radio" value="one-time"/>
+        </fieldset>
+        """
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        allow_monthly, allow_annual = extract_donation_frequency(soup)
+        self.assertFalse(allow_monthly)
+        self.assertFalse(allow_annual)
+
+    def test_frequency_when_all_three_present(self):
+        html = """
+        <fieldset>
+          <legend>Donation frequency</legend>
+          <input type="radio" value="one-time"/>
+          <input type="radio" value="monthly"/>
+          <input type="radio" value="annual"/>
+        </fieldset>
+        """
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        allow_monthly, allow_annual = extract_donation_frequency(soup)
+        self.assertTrue(allow_monthly)
+        self.assertTrue(allow_annual)
+
+    def test_frequency_yearly_alias_counts_as_annual(self):
+        html = """
+        <fieldset>
+          <legend>Donation frequency</legend>
+          <input type="radio" value="one-time"/>
+          <input type="radio" value="monthly"/>
+          <input type="radio" value="yearly"/>
+        </fieldset>
+        """
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        _, allow_annual = extract_donation_frequency(soup)
+        self.assertTrue(allow_annual)
+
+    def test_frequency_returns_false_false_when_no_frequency_fieldset(self):
+        html = "<div><input type='radio' value='monthly'/></div>"
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        self.assertEqual(extract_donation_frequency(soup), (False, False))

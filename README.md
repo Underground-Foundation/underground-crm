@@ -32,7 +32,7 @@ heap limit, so `docker-compose.yml` sets `NODE_OPTIONS=--max-old-space-size=8192
 to give it an 8 GB heap. Allow additional RAM for OpenSearch and the OS on top
 of that.
 
-## Setting up a theme project
+## Setting up and running a theme project
 
 ```bash
 mkdir my-theme && cd my-theme
@@ -70,16 +70,23 @@ timezone. See `underground_crm/settings.py` for the full list.
 
 Then apply migrations and create a superuser:
 
-```bash
+```shell
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
 
 In a second terminal, run the queue cluster:
-```bash
+```shell
 python manage.py qcluster
 ```
+
+In a third terminal, run the associated Docker containers:
+```shell
+./start_containers.sh
+```
+
+Your theme might require you to run further applications to load the full website functionality. 
 
 Visit one of these pages:
 - Django admin: `/django-admin/`

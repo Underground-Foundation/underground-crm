@@ -9,9 +9,11 @@ repos:
     hooks:
       - id: pylint
         name: pylint
-        entry: .venv/bin/pylint
+        entry: pylint
         language: system
         types: [python]
         files: ^(underground_crm|underground_email|underground_payments|migration)/
         args:
+          - --load-plugins=pylint_django
+          - --django-settings-module=underground_crm.settings
           - --errors-only
