@@ -4,12 +4,11 @@ repos:
     hooks:
       - id: black
         files: ^(underground_crm|underground_email|underground_payments|migration)/
-
   - repo: local
     hooks:
       - id: pylint
         name: pylint
-        entry: .venv/bin/pylint
+        entry: bash -c 'if command -v pylint &> /dev/null; then exec pylint "$@"; elif [ -f .venv/bin/pylint ]; then exec .venv/bin/pylint "$@"; else echo "pylint not found in PATH or .venv/bin/pylint" >&2; exit 1; fi' --
         language: system
         types: [python]
         files: ^(underground_crm|underground_email|underground_payments|migration)/
