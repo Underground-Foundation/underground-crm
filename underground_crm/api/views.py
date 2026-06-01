@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from ..models import Address, Donation, Engagement, Interaction, PersonNote, Tag
+from .permissions import IsCRMStaff
 from .serializers import (
     AddressSerializer,
     DonationSerializer,
@@ -21,10 +22,12 @@ from .serializers import (
 class TagViewSet(ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
+    permission_classes = [IsCRMStaff]
 
 
 class PersonNoteViewSet(ModelViewSet):
     serializer_class = PersonNoteSerializer
+    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = PersonNote.objects.all()
@@ -36,6 +39,7 @@ class PersonNoteViewSet(ModelViewSet):
 
 class InteractionViewSet(ModelViewSet):
     serializer_class = InteractionSerializer
+    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Interaction.objects.all()
@@ -47,6 +51,7 @@ class InteractionViewSet(ModelViewSet):
 
 class EngagementViewSet(ModelViewSet):
     serializer_class = EngagementSerializer
+    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Engagement.objects.all()
@@ -58,6 +63,7 @@ class EngagementViewSet(ModelViewSet):
 
 class DonationViewSet(ModelViewSet):
     serializer_class = DonationSerializer
+    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Donation.objects.all()
@@ -70,8 +76,7 @@ class DonationViewSet(ModelViewSet):
 class AddressViewSet(ModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
-    permission_classes = [IsAdminUser]
-
+    permission_classes = [IsCRMStaff]
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
