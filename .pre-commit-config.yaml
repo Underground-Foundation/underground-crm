@@ -4,7 +4,6 @@ repos:
     hooks:
       - id: black
         files: ^(underground_crm|underground_email|underground_payments|migration)/
-
   - repo: local
     hooks:
       - id: pylint

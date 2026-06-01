@@ -2,11 +2,12 @@ from typing import cast
 
 from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from ..models import Address, Donation, Engagement, Interaction, PersonNote, Tag
+from .permissions import IsCRMStaff
 from .serializers import (
     AddressSerializer,
     DonationSerializer,
@@ -18,12 +19,16 @@ from .serializers import (
 )
 
 
-class TagViewSet(ModelViewSet):
+class CRMStaffModelViewSet(ModelViewSet):
+    permission_classes = [IsCRMStaff]
+
+
+class TagViewSet(CRMStaffModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
 
 
-class PersonNoteViewSet(ModelViewSet):
+class PersonNoteViewSet(CRMStaffModelViewSet):
     serializer_class = PersonNoteSerializer
 
     def get_queryset(self):
@@ -34,7 +39,7 @@ class PersonNoteViewSet(ModelViewSet):
         return qs
 
 
-class InteractionViewSet(ModelViewSet):
+class InteractionViewSet(CRMStaffModelViewSet):
     serializer_class = InteractionSerializer
 
     def get_queryset(self):
@@ -45,7 +50,7 @@ class InteractionViewSet(ModelViewSet):
         return qs
 
 
-class EngagementViewSet(ModelViewSet):
+class EngagementViewSet(CRMStaffModelViewSet):
     serializer_class = EngagementSerializer
 
     def get_queryset(self):
@@ -56,7 +61,7 @@ class EngagementViewSet(ModelViewSet):
         return qs
 
 
-class DonationViewSet(ModelViewSet):
+class DonationViewSet(CRMStaffModelViewSet):
     serializer_class = DonationSerializer
 
     def get_queryset(self):
@@ -67,10 +72,9 @@ class DonationViewSet(ModelViewSet):
         return qs
 
 
-class AddressViewSet(ModelViewSet):
+class AddressViewSet(CRMStaffModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
-    permission_classes = [IsAdminUser]
 
 
 @api_view(["GET"])
