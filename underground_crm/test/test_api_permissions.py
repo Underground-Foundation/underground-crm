@@ -40,51 +40,57 @@ class APIPermissionsTestCase(APITestCase):
 
     def test_anonymous_user_is_denied(self) -> None:
         for endpoint in self.endpoints:
-            url = reverse(endpoint)
-            response = self.client.get(url)
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_403_FORBIDDEN,
-                f"Anonymous user should be denied access to {endpoint}",
-            )
+            with self.subTest(endpoint=endpoint, method="GET"):
+                url = reverse(endpoint)
+                response = self.client.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_403_FORBIDDEN,
+                    f"Anonymous user should be denied access to {endpoint}",
+                )
 
     def test_public_user_is_denied(self) -> None:
         self.client.force_authenticate(user=self.public_user)
         for endpoint in self.endpoints:
-            url = reverse(endpoint)
-            response = self.client.get(url)
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_403_FORBIDDEN,
-                f"Public user should be denied access to {endpoint}",
-            )
+            with self.subTest(endpoint=endpoint, method="GET"):
+                url = reverse(endpoint)
+                response = self.client.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_403_FORBIDDEN,
+                    f"Public user should be denied access to {endpoint}",
+                )
 
             # Test write access as well
-            response = self.client.post(url, data={})
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_403_FORBIDDEN,
-                f"Public user should be denied write access to {endpoint}",
-            )
+            with self.subTest(endpoint=endpoint, method="POST"):
+                url = reverse(endpoint)
+                response = self.client.post(url, data={})
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_403_FORBIDDEN,
+                    f"Public user should be denied write access to {endpoint}",
+                )
 
     def test_staff_user_is_allowed(self) -> None:
         self.client.force_authenticate(user=self.staff_user)
         for endpoint in self.endpoints:
-            url = reverse(endpoint)
-            response = self.client.get(url)
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_200_OK,
-                f"Staff user should be allowed access to {endpoint}",
-            )
+            with self.subTest(endpoint=endpoint, method="GET"):
+                url = reverse(endpoint)
+                response = self.client.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"Staff user should be allowed access to {endpoint}",
+                )
 
     def test_admin_user_is_allowed(self) -> None:
         self.client.force_authenticate(user=self.admin_user)
         for endpoint in self.endpoints:
-            url = reverse(endpoint)
-            response = self.client.get(url)
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_200_OK,
-                f"Admin user should be allowed access to {endpoint}",
-            )
+            with self.subTest(endpoint=endpoint, method="GET"):
+                url = reverse(endpoint)
+                response = self.client.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"Admin user should be allowed access to {endpoint}",
+                )
