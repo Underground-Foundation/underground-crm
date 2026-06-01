@@ -13,5 +13,5 @@ class IsCRMStaff(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and (request.user.is_staff or getattr(request.user, "is_admin", False))
+            and request.user.is_staff
         )
