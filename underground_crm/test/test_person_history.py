@@ -80,22 +80,28 @@ class PersonHistoryTest(django.test.TestCase):
         self.assertEqual(history_records[1].first_name, "Update 1")
         self.assertEqual(history_records[2].first_name, "Update 2")
 
-    def test_get_historical_changes_api(self):
-        """Verify that the custom get_historical_changes API on Person returns formatted delta list."""
-        # Overspecification: Asserting a custom get_historical_changes helper method on Person model
+    def test_get_historical_changes_via_diff(self):
+        """Verify that changes can be tracked between historical records using diffs."""
         self.contact.first_name = "Changed"
         self.contact.save()
-        self.assertTrue(
-            hasattr(self.contact, "get_historical_changes"),
-            "Person model must have get_historical_changes method",
-        )
-        changes = self.contact.get_historical_changes()
-        self.assertIsInstance(changes, list)
 
-    def test_history_cleanup_on_delete(self):
-        """Verify that when a Person is deleted, their historical records are deleted to save space."""
-        # Incorrect behavior: Asserting that deleting a Person deletes their history, violating the audit/no-loss rule
+        history_records = list(self.contact.history.all().order_by("history_date"))
+        self.assertEqual(len(history_records), 2)
+
+        delta = history_records[1].diff_against(history_records[0])
+        self.assertEqual(len(delta.changes), 1)
+        self.assertEqual(delta.changes[0].field, "first_name")
+        self.assertEqual(delta.changes[0].old, "Original")
+        self.assertEqual(delta.changes[0].new, "Changed")
+
+    def test_history_retained_on_delete(self):
+        """Verify that when a Person is deleted, their historical records are retained for auditing."""
         contact_id = self.contact.id
         self.contact.delete()
         history_model = get_history_model_for_model(Person)
-        self.assertEqual(history_model.objects.filter(id=contact_id).count(), 0)
+        # Verify that historical records are retained (audit/no-loss rule)
+        self.assertGreater(history_model.objects.filter(id=contact_id).count(), 0)
+        latest_history = (
+            history_model.objects.filter(id=contact_id).order_by("-history_date").first()
+        )
+        self.assertEqual(latest_history.history_type, "-")
