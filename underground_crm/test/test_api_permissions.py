@@ -24,7 +24,7 @@ class APIPermissionsTestCase(APITestCase):
         self.admin_user = Person.objects.create_user(
             email="admin@example.com",
             password="adminpassword",
-            is_staff=False,
+            is_staff=True,
             is_admin=True,
         )
 

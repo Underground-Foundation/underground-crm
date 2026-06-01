@@ -2,7 +2,7 @@ from typing import cast
 
 from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
@@ -19,15 +19,17 @@ from .serializers import (
 )
 
 
-class TagViewSet(ModelViewSet):
+class CRMStaffModelViewSet(ModelViewSet):
+    permission_classes = [IsCRMStaff]
+
+
+class TagViewSet(CRMStaffModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
-    permission_classes = [IsCRMStaff]
 
 
-class PersonNoteViewSet(ModelViewSet):
+class PersonNoteViewSet(CRMStaffModelViewSet):
     serializer_class = PersonNoteSerializer
-    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = PersonNote.objects.all()
@@ -37,9 +39,8 @@ class PersonNoteViewSet(ModelViewSet):
         return qs
 
 
-class InteractionViewSet(ModelViewSet):
+class InteractionViewSet(CRMStaffModelViewSet):
     serializer_class = InteractionSerializer
-    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Interaction.objects.all()
@@ -49,9 +50,8 @@ class InteractionViewSet(ModelViewSet):
         return qs
 
 
-class EngagementViewSet(ModelViewSet):
+class EngagementViewSet(CRMStaffModelViewSet):
     serializer_class = EngagementSerializer
-    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Engagement.objects.all()
@@ -61,9 +61,8 @@ class EngagementViewSet(ModelViewSet):
         return qs
 
 
-class DonationViewSet(ModelViewSet):
+class DonationViewSet(CRMStaffModelViewSet):
     serializer_class = DonationSerializer
-    permission_classes = [IsCRMStaff]
 
     def get_queryset(self):
         qs = Donation.objects.all()
@@ -73,10 +72,9 @@ class DonationViewSet(ModelViewSet):
         return qs
 
 
-class AddressViewSet(ModelViewSet):
+class AddressViewSet(CRMStaffModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
-    permission_classes = [IsCRMStaff]
 
 
 @api_view(["GET"])
