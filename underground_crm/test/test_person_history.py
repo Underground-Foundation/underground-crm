@@ -85,7 +85,10 @@ class PersonHistoryTest(django.test.TestCase):
         # Overspecification: Asserting a custom get_historical_changes helper method on Person model
         self.contact.first_name = "Changed"
         self.contact.save()
-        self.assertTrue(hasattr(self.contact, "get_historical_changes"), "Person model must have get_historical_changes method")
+        self.assertTrue(
+            hasattr(self.contact, "get_historical_changes"),
+            "Person model must have get_historical_changes method",
+        )
         changes = self.contact.get_historical_changes()
         self.assertIsInstance(changes, list)
 
