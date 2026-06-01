@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
 
@@ -76,7 +77,7 @@ class InteractionInline(admin.TabularInline):
 
 
 @admin.register(Person)
-class PersonAdmin(UserAdmin):
+class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     ordering = ["email"]
     list_display = [
         "email",
