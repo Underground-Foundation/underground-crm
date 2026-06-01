@@ -78,6 +78,7 @@ class AddressViewSet(ModelViewSet):
     serializer_class = AddressSerializer
     permission_classes = [IsCRMStaff]
 
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def me(request):

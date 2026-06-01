@@ -4,12 +4,12 @@ repos:
     hooks:
       - id: black
         files: ^(underground_crm|underground_email|underground_payments|migration)/
-
   - repo: local
     hooks:
       - id: pylint
         name: pylint
         entry: pylint
+        entry: .venv/bin/pylint
         language: system
         types: [python]
         files: ^(underground_crm|underground_email|underground_payments|migration)/
