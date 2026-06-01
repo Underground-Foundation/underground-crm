@@ -16,3 +16,5 @@ data/
 progress.md
 
 *.patch
+
+**/.agents/**
