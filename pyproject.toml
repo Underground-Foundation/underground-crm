@@ -28,6 +28,7 @@ dependencies = [
     "smtp2go",
     "stripe>=8.0",
     "wagtail>=6.0,<7.0",
+    "django-simple-history",
 ]
 
 [project.optional-dependencies]

@@ -3,11 +3,12 @@ from datetime import date
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.core.exceptions import BadRequest, PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import models
 from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext_lazy as _
+from simple_history.models import HistoricalRecords
 
 from .address import Address
 from ..contactability import (
@@ -422,6 +423,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated at"))
 
     objects = PersonManager()
+    history = HistoricalRecords(inherit=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

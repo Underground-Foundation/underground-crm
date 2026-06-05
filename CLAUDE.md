@@ -69,6 +69,10 @@ migration/                One-off data migration scripts (not Django management 
 - Money fields use `django-money` (`MoneyField`), default currency AUD.
 - All timestamps are `DateTimeField` with `USE_TZ = True` (Australia/Melbourne).
 
+## Internationalization
+All strings being presented to users should be sent for translation. This is supported in
+Django templates and in python code (`from django.utils.translation import gettext_lazy as _`).
+
 ## Migration philosophy
 
 - This library owns its migrations. Downstream themes (`fusion-underground` etc.) must
@@ -140,6 +144,31 @@ python manage.py runserver
 
 Database is PostgreSQL. Settings are read from environment variables; copy
 `.env.example` to `.env` and fill in values.
+
+## Testing
+Do not use "magic numbers" or equivalently, "magic variables" of any sort in tests. If you are expecting
+some result to be `2` for instance, that should be a constant that gets fed in as an input to the
+function you're testing. Especially when this cannot be done, there should be a message for the assertion,
+explaining why this is a valid assertion.
+
+If anyone sees that the test fails, they are going to question the legitimacy of the test. You need to
+ensure that like any code, the tests are *justifiable*. It can be seen that they're providing a useful
+function and that they can be trusted. Being transparent about what they're doing is a good way of 
+building trust.
+
+In ensuring that the tests are useful, you should obviously keep the use of mocks to a minimum. Perhaps you'll
+need to add extra arguments to the functions you're testing, to eg override a timestamp being used. This is
+much better than mocking anything, as mocks break the intended encapsulation, inherently making assertions
+that are beyond their remit.
+
+If you need to use an external service and it's not available, perhaps create one test with a mock of it,
+and another one that calls `skip()` when it finds that the service is not available. Some people will
+complain that we are creating "unit tests" and that by definition, "unit tests" shouldn't call external
+services. I don't care what you call the tests you're creating; they need to be able to verify an actual
+system, not a thought experiment.
+
+For the tests, please always use plausible data. Not anything like foo="bar". Humans need to read the tests
+and make sense of them. They'll be comparing the examples to real-world scenarios, not algebraic puzzles.
 
 ## Auth
 

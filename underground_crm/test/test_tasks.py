@@ -29,10 +29,17 @@ def _addressr_reachable() -> bool:
     logger.info("Checking if Addressr is accessible at %s", url)
     try:
         urllib.request.urlopen(url, timeout=2)
-        logger.info("Addressr is indeed available")
-        return True
     except (urllib.error.URLError, OSError):
+        logger.info("Addressr is not accessible at %s", url)
         return False
+    # A 200 root response only means the process is up; GNAF data may not be loaded yet.
+    # Verify by running a known search — if it returns nothing, skip the tests.
+    results = addressr_client.search("1 Cook Road Lindfield NSW")
+    if not results:
+        logger.info("Addressr is running but GNAF data is not loaded — skipping geocoding tests")
+        return False
+    logger.info("Addressr is available and returning results")
+    return True
 
 
 ADDRESSR_AVAILABLE = _addressr_reachable()

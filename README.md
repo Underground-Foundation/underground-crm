@@ -205,3 +205,8 @@ recreate it:
 ```bash
 python import_pages.py --domain fusionparty.org.au --replace
 ```
+
+## Testing
+```shell
+python manage.py test
+```
