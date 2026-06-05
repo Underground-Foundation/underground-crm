@@ -69,6 +69,10 @@ migration/                One-off data migration scripts (not Django management 
 - Money fields use `django-money` (`MoneyField`), default currency AUD.
 - All timestamps are `DateTimeField` with `USE_TZ = True` (Australia/Melbourne).
 
+## Internationalization
+All strings being presented to users should be sent for translation. This is supported in
+Django templates and in python code (`from django.utils.translation import gettext_lazy as _`).
+
 ## Migration philosophy
 
 - This library owns its migrations. Downstream themes (`fusion-underground` etc.) must
