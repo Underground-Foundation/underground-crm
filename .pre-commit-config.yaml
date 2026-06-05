@@ -8,7 +8,7 @@ repos:
     hooks:
       - id: pylint
         name: pylint
-        entry: bash -c 'if command -v pylint &> /dev/null; then exec pylint "$@"; elif [ -f .venv/bin/pylint ]; then exec .venv/bin/pylint "$@"; else echo "pylint not found in PATH or .venv/bin/pylint" >&2; exit 1; fi' --
+        entry: pylint
         language: system
         types: [python]
         files: ^(underground_crm|underground_email|underground_payments|migration)/

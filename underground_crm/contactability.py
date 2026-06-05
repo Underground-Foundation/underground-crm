@@ -105,8 +105,8 @@ def get_user_by_full_name(
             if not allow_ambiguity:
                 return None
         return users.first()
-    logger.error(
-        "User «%s» could not be found in our database. Please import users before pages", full_name
+    logger.warning(
+        "User «%s» could not be found in our database. Have all users been imported?", full_name
     )
     return None
 
