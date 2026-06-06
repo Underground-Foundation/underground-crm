@@ -1,12 +1,22 @@
 {% extends "underground_crm/base.html" %}
+{% load socialaccount %}
 
 {% block title %}Sign up{% endblock %}
 
-{% block content %}
+{% block page_body %}
 <form method="post" novalidate>
   {% csrf_token %}
   {{ form.as_p }}
   <button type="submit">Sign up</button>
 </form>
 <p><a href="{% url 'underground_crm:login' %}">Already have an account? Log in</a></p>
+
+{% if enabled_social_providers %}
+<hr>
+<p>Or sign up with a social account:</p>
+{% if "discord" in enabled_social_providers %}<a href="{% provider_login_url 'discord' %}">Discord</a>{% endif %}
+{% if "facebook" in enabled_social_providers %}<a href="{% provider_login_url 'facebook' %}">Facebook</a>{% endif %}
+{% if "instagram" in enabled_social_providers %}<a href="{% provider_login_url 'instagram' %}">Instagram</a>{% endif %}
+{% if "linkedin" in enabled_social_providers %}<a href="{% provider_login_url 'linkedin' %}">LinkedIn</a>{% endif %}
+{% endif %}
 {% endblock %}

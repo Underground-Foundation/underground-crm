@@ -10,6 +10,7 @@ and then override or extend as needed.  At minimum, they must supply:
 All other settings have sensible defaults and can be overridden as needed.
 """
 
+import logging as _logging
 import os
 from pathlib import Path
 
@@ -62,9 +63,19 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.sites",
     "underground_email",
     "underground_payments",
     "simple_history",
+    # django-allauth — https://docs.allauth.org/en/latest/installation/quickstart.html
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    # Active social login providers:
+    "allauth.socialaccount.providers.discord",
+    "allauth.socialaccount.providers.facebook",
+    "allauth.socialaccount.providers.instagram",
+    "allauth.socialaccount.providers.openid_connect",  # used for LinkedIn
 ]
 
 MIDDLEWARE = [
@@ -74,6 +85,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -92,6 +104,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "underground_crm.context_processors.enabled_social_providers",
             ],
         },
     },
@@ -250,6 +263,121 @@ LOGGING = {
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
+
+# Required by django.contrib.sites (used by allauth)
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+# django-allauth account settings
+# https://docs.allauth.org/en/latest/account/configuration.html
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+# django-allauth social account settings
+# https://docs.allauth.org/en/latest/socialaccount/configuration.html
+SOCIALACCOUNT_ADAPTER = "underground_crm.social_adapters.PersonSocialAccountAdapter"
+
+_startup_logger = _logging.getLogger(__name__)
+
+
+def _missing_env_vars(*names: str) -> list[str]:
+    return [name for name in names if not os.environ.get(name, "")]
+
+
+def _build_social_providers() -> tuple[dict, list[str]]:
+    """
+    Constructs SOCIALACCOUNT_PROVIDERS from environment variables.
+    Any provider whose credentials are absent is omitted, and a warning
+    identifying the missing variable(s) is logged at import time.
+
+    Returns a (providers, enabled_names) tuple.  ``enabled_names`` uses the
+    public provider ID in every case (e.g. ``"linkedin"``, not the allauth
+    key ``"openid_connect"``), so templates can check membership directly.
+    """
+    providers: dict = {}
+    enabled: list[str] = []
+
+    def _warn(provider: str, missing: list[str]) -> None:
+        verb = "is" if len(missing) == 1 else "are"
+        _startup_logger.warning(
+            "%s social login is disabled: %s %s not set.",
+            provider,
+            " and ".join(missing),
+            verb,
+        )
+
+    missing = _missing_env_vars("DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET")
+    if missing:
+        _warn("Discord", missing)
+    else:
+        providers["discord"] = {
+            "APP": {
+                "client_id": os.environ.get("DISCORD_CLIENT_ID"),
+                "secret": os.environ.get("DISCORD_CLIENT_SECRET"),
+            },
+        }
+        enabled.append("discord")
+
+    missing = _missing_env_vars("FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET")
+    if missing:
+        _warn("Facebook", missing)
+    else:
+        providers["facebook"] = {
+            "SCOPE": ["email", "public_profile"],
+            "AUTH_PARAMS": {"auth_type": "reauthenticate"},
+            "APP": {
+                "client_id": os.environ.get("FACEBOOK_APP_ID"),
+                "secret": os.environ.get("FACEBOOK_APP_SECRET"),
+            },
+        }
+        enabled.append("facebook")
+
+    missing = _missing_env_vars("INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET")
+    if missing:
+        _warn("Instagram", missing)
+    else:
+        providers["instagram"] = {
+            # Instagram requires a Facebook Developer account and business verification.
+            # Register at https://developers.facebook.com/
+            "APP": {
+                "client_id": os.environ.get("INSTAGRAM_APP_ID"),
+                "secret": os.environ.get("INSTAGRAM_APP_SECRET"),
+            },
+        }
+        enabled.append("instagram")
+
+    # LinkedIn is now an OpenID Connect provider — configured via the generic
+    # openid_connect provider rather than a dedicated LinkedIn app entry.
+    # https://docs.allauth.org/en/latest/socialaccount/providers/linkedin.html
+    missing = _missing_env_vars("LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET")
+    if missing:
+        _warn("LinkedIn", missing)
+    else:
+        providers["openid_connect"] = {
+            "APPS": [
+                {
+                    "provider_id": "linkedin",
+                    "name": "LinkedIn",
+                    "client_id": os.environ.get("LINKEDIN_CLIENT_ID"),
+                    "secret": os.environ.get("LINKEDIN_CLIENT_SECRET"),
+                    "settings": {
+                        "server_url": "https://www.linkedin.com/oauth",
+                    },
+                },
+            ],
+        }
+        enabled.append("linkedin")
+
+    return providers, enabled
+
+
+SOCIALACCOUNT_PROVIDERS, ENABLED_SOCIAL_PROVIDERS = _build_social_providers()
 
 
 UNDERGROUND_COLOR_PALETTE = [
