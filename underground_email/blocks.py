@@ -1,7 +1,6 @@
 import logging
-from django import forms
-from colorfield.widgets import ColorWidget
-from wagtail.blocks import CharBlock, FieldBlock, RichTextBlock, StreamBlock, StructBlock, URLBlock
+from underground_crm.blocks import ColorBlock
+from wagtail.blocks import CharBlock, RichTextBlock, StreamBlock, StructBlock, URLBlock
 
 _RICH_TEXT_FEATURES = [
     "h2",
@@ -18,37 +17,6 @@ _RICH_TEXT_FEATURES = [
 ]
 
 logger = logging.getLogger(__name__)
-
-
-class ColorBlock(FieldBlock):
-    def __init__(
-        self,
-        default: str = "#000000",
-        required: bool = True,
-        palette_only: bool = False,
-        palette_setting: str = "UNDERGROUND_COLOR_PALETTE",
-        **kwargs,
-    ):
-        from django.conf import settings
-
-        palette = getattr(settings, palette_setting, None)
-        attrs: dict = {}
-        if palette:
-            attrs["swatches"] = [hex_val for hex_val, _ in palette]
-            if palette_only:
-                attrs["swatches_only"] = True
-        self.field = forms.CharField(
-            required=required,
-            widget=ColorWidget(attrs=attrs),
-            initial=default,
-        )
-        super().__init__(default=default, **kwargs)
-
-    def get_prep_value(self, value: str) -> str:
-        return value or ""
-
-    def value_from_form(self, value: str) -> str:
-        return value or ""
 
 
 class ButtonBlock(StructBlock):

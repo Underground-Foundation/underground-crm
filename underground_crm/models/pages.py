@@ -17,6 +17,7 @@ from wagtail.blocks import (
     StructBlock,
     ChoiceBlock,
 )
+from underground_crm.blocks import ButtonBlock
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.admin.panels import FieldPanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
@@ -157,6 +158,53 @@ class PageWithMetadata(Page):
         abstract = True
 
 
+BASIC_PAGE_BLOCKS = [
+    (
+        "rich_text",
+        RichTextBlock(
+            features=["h2", "h3", "h4", "bold", "italic", "link", "ol", "ul", "hr", "blockquote", "image"],
+            label=_("Rich Text"),
+        ),
+    ),
+    (
+        "html",
+        RawHTMLBlock(
+            label=_("Raw HTML"),
+            help_text=_(
+                "Paste raw HTML directly. "
+                "Useful for migrating existing content or embedding custom markup."
+            ),
+        ),
+    ),
+    (
+        "image",
+        StructBlock(
+            [
+                ("image", ImageChooserBlock()),
+                ("caption", CharBlock(required=False)),
+                (
+                    "alignment",
+                    ChoiceBlock(
+                        choices=[
+                            ("full-width", _("Full width")),
+                            ("left", _("Left aligned")),
+                            ("right", _("Right aligned")),
+                            ("w-50", _("Half width")),
+                        ],
+                        default="full-width",
+                    ),
+                ),
+            ],
+            icon="image",
+            label=_("Image"),
+            template="underground_crm/blocks/image_block.html",
+        ),
+    ),
+    ("blockquote", BlockQuoteBlock(label=_("Blockquote"))),
+    ("button", ButtonBlock()),
+]
+
+
 class BasicPage(PageWithMetadata):
     """
     A general-purpose content page built on StreamField. Supports rich text,
@@ -173,62 +221,7 @@ class BasicPage(PageWithMetadata):
 
     legacy_id = models.PositiveIntegerField(blank=True, null=True)
     body = StreamField(
-        [
-            (
-                "rich_text",
-                RichTextBlock(
-                    features=[
-                        "h2",
-                        "h3",
-                        "h4",
-                        "bold",
-                        "italic",
-                        "link",
-                        "ol",
-                        "ul",
-                        "hr",
-                        "blockquote",
-                        "image",
-                    ],
-                    label=_("Rich Text"),
-                ),
-            ),
-            (
-                "html",
-                RawHTMLBlock(
-                    label=_("Raw HTML"),
-                    help_text=_(
-                        "Paste raw HTML directly. "
-                        "Useful for migrating existing content or embedding custom markup."
-                    ),
-                ),
-            ),
-            (
-                "image",
-                StructBlock(
-                    [
-                        ("image", ImageChooserBlock()),
-                        ("caption", CharBlock(required=False)),
-                        (
-                            "alignment",
-                            ChoiceBlock(
-                                choices=[
-                                    ("full-width", _("Full width")),
-                                    ("left", _("Left aligned")),
-                                    ("right", _("Right aligned")),
-                                    ("w-50", _("Half width")),
-                                ],
-                                default="full-width",
-                            ),
-                        ),
-                    ],
-                    icon="image",
-                    label=_("Image"),
-                    template="underground_crm/blocks/image_block.html",
-                ),
-            ),
-            ("blockquote", BlockQuoteBlock(label=_("Blockquote"))),
-        ],
+        BASIC_PAGE_BLOCKS,
         use_json_field=True,
         blank=True,
     )

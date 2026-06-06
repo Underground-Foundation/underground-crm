@@ -251,6 +251,16 @@ LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
+
+UNDERGROUND_COLOR_PALETTE = [
+    ("#77ff33", "Green"),  # Add your own brand colours here for UI widgets
+]
+
+UNDERGROUND_BUTTON_BACKGROUND_PALETTE = [
+    ("#46d3e0", "Opal"),
+
+]
+
 UNDERGROUND_EMAIL_BUTTON_TEXT_COLORS = [
     ("#ffffff", "White"),
     ("#000000", "Black"),
