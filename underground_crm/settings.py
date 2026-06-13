@@ -105,6 +105,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "underground_crm.context_processors.enabled_social_providers",
+                "underground_crm.context_processors.session_settings",
             ],
         },
     },
@@ -282,6 +283,15 @@ ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 # django-allauth social account settings
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
 SOCIALACCOUNT_ADAPTER = "underground_crm.social_adapters.PersonSocialAccountAdapter"
+# When a "social" OAuth provider supplies a verified email address that matches an
+# existing account in our system, we'll sign the user into that account rather than
+# throwing an error.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+# Upon signing in through a "social" OAuth provider, the OAuth identity will "automatically"
+# be linked permanently to a Person record. So even if they go on to change their Facebook
+# email address, that Facebook identity is still tied to the user with their original email
+# address, in our system.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
 _startup_logger = _logging.getLogger(__name__)
 
@@ -317,6 +327,9 @@ def _build_social_providers() -> tuple[dict, list[str]]:
         _warn("Discord", missing)
     else:
         providers["discord"] = {
+            # Discord requires a verified email address before allowing OAuth,
+            # so any email returned by Discord is guaranteed to be verified.
+            "VERIFIED_EMAIL": True,
             "APP": {
                 "client_id": os.environ.get("DISCORD_CLIENT_ID"),
                 "secret": os.environ.get("DISCORD_CLIENT_SECRET"),
@@ -331,26 +344,17 @@ def _build_social_providers() -> tuple[dict, list[str]]:
         providers["facebook"] = {
             "SCOPE": ["email", "public_profile"],
             "AUTH_PARAMS": {"auth_type": "reauthenticate"},
+            # allauth's Facebook provider hardcodes verified=False on email addresses
+            # because data['verified'] (account verification) does not imply email
+            # verification. However, Facebook does verify email addresses independently,
+            # so we override this here to allow email-based account matching.
+            "VERIFIED_EMAIL": True,
             "APP": {
                 "client_id": os.environ.get("FACEBOOK_APP_ID"),
                 "secret": os.environ.get("FACEBOOK_APP_SECRET"),
             },
         }
         enabled.append("facebook")
-
-    missing = _missing_env_vars("INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET")
-    if missing:
-        _warn("Instagram", missing)
-    else:
-        providers["instagram"] = {
-            # Instagram requires a Facebook Developer account and business verification.
-            # Register at https://developers.facebook.com/
-            "APP": {
-                "client_id": os.environ.get("INSTAGRAM_APP_ID"),
-                "secret": os.environ.get("INSTAGRAM_APP_SECRET"),
-            },
-        }
-        enabled.append("instagram")
 
     # LinkedIn is now an OpenID Connect provider — configured via the generic
     # openid_connect provider rather than a dedicated LinkedIn app entry.
