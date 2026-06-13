@@ -86,7 +86,7 @@ In a third terminal, run the associated Docker containers:
 ./start_containers.sh
 ```
 
-Your theme might require you to run further applications to load the full website functionality. 
+Your theme might require you to run further applications to load the full website functionality.
 
 Visit one of these pages:
 - Django admin: `/django-admin/`
@@ -101,6 +101,15 @@ For the first time you run the containers, you'll need to explicitly load the g-
 You'll also need to run this script when data.gov.au releases new data (every [3 months](https://github.com/mountain-pass/addressr#self-hosted))
 
 Address searches will not return any results until the indexing completes (roughly 1–2 hours).
+
+### Running the tests
+
+```shell
+python manage.py test -v 3 --keepdb underground_crm.test underground_email.test underground_crm.management.commands.test
+```
+
+The tests use SQLite and do not require the Docker services to be running. `--keepdb` avoids recreating the test 
+database on each run, which makes subsequent runs faster.
 
 ---
 
