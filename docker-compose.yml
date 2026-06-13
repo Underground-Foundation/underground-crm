@@ -31,6 +31,8 @@ services:
 
   # Australian address search and geocoding. Run update-gnaf.sh to refresh G-NAF data
   # or to load it for the first time.
+  # https://addressr.io/
+  # https://github.com/mountain-pass/addressr
   addressr:
     image: mountainpass/addressr
     environment:

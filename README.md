@@ -93,6 +93,15 @@ Visit one of these pages:
 - Wagtail CMS: `/cms/`
 - Login: `/account/login/`
 
+### Addressr setup
+For the first time you run the containers, you'll need to explicitly load the g-naf data:
+```shell
+./update-gnaf.sh
+```
+You'll also need to run this script when data.gov.au releases new data (every [3 months](https://github.com/mountain-pass/addressr#self-hosted))
+
+Address searches will not return any results until the indexing completes (roughly 1–2 hours).
+
 ---
 
 ## Data migration
