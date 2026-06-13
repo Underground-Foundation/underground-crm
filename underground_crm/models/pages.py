@@ -162,7 +162,19 @@ BASIC_PAGE_BLOCKS = [
     (
         "rich_text",
         RichTextBlock(
-            features=["h2", "h3", "h4", "bold", "italic", "link", "ol", "ul", "hr", "blockquote", "image"],
+            features=[
+                "h2",
+                "h3",
+                "h4",
+                "bold",
+                "italic",
+                "link",
+                "ol",
+                "ul",
+                "hr",
+                "blockquote",
+                "image",
+            ],
             label=_("Rich Text"),
         ),
     ),

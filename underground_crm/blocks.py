@@ -110,7 +110,11 @@ class ButtonBlock(StructBlock):
         palette = getattr(settings, "UNDERGROUND_BUTTON_BACKGROUND_PALETTE", None) or []
         bg_color: str = value.get("background_color", "")
         bg_class = next(
-            (f"bg-{label.lower()}" for hex_val, label in palette if hex_val.lower() == bg_color.lower()),
+            (
+                f"bg-{label.lower()}"
+                for hex_val, label in palette
+                if hex_val.lower() == bg_color.lower()
+            ),
             f"bg-[{bg_color}]",
         )
         context["background_class"] = bg_class
