@@ -1,0 +1,86 @@
+{% load i18n %}
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  <fieldset>
+    <h2 class="{{ h2_class }}">{% trans "Log in" %}</h2>
+
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger" role="alert">
+      {% for error in form.non_field_errors %}
+        <p class="mb-0">{{ error }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label for="{{ form.login.id_for_label }}">{% trans "Email address" %}</label>
+      <input type="email"
+             class="form-control{% if form.login.errors %} is-invalid{% endif %}"
+             id="{{ form.login.id_for_label }}"
+             name="{{ form.login.html_name }}"
+             value="{{ form.login.value|default:'' }}"
+             autocomplete="email"
+             autofocus>
+      {% for error in form.login.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+      <input type="password"
+             class="form-control{% if form.password.errors %} is-invalid{% endif %}"
+             id="{{ form.password.id_for_label }}"
+             name="{{ form.password.html_name }}"
+             autocomplete="current-password">
+      {% for error in form.password.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    {% if form.remember %}
+    <div class="form-group">
+      <div class="custom-control custom-checkbox">
+        <input class="custom-control-input"
+               type="checkbox"
+               id="{{ form.remember.id_for_label }}"
+               name="{{ form.remember.html_name }}"
+               {% if form.remember.value %}checked{% endif %}>
+        <label class="custom-control-label" for="{{ form.remember.id_for_label }}">
+          {% trans "Remember me" %}
+        </label>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+      <button type="submit" class="btn bg-pink btn-primary btn-lg btn-block">
+        {% trans "Log in" %}
+      </button>
+    </div>
+  </fieldset>
+</form>
+
+{% if enabled_social_providers %}
+<hr class="divider">
+<fieldset>
+  <h2 class="{{ h2_class }}">{% trans "Or log in with" %}</h2>
+  <div class="d-flex flex-column">
+    {% if "discord" in enabled_social_providers %}
+      {% include "underground_crm/auth/oauth_login_button.html" with provider_id="discord" provider_name="Discord" image_src="underground_crm/images/discord.svg" %}
+    {% endif %}
+    {% if "facebook" in enabled_social_providers %}
+      {% include "underground_crm/auth/oauth_login_button.html" with provider_id="facebook" provider_name="Facebook" image_src="underground_crm/images/facebook.svg" %}
+    {% endif %}
+    {% if "linkedin" in enabled_social_providers %}
+      {% include "underground_crm/auth/oauth_login_button.html" with provider_id="linkedin" provider_name="LinkedIn" image_src="underground_crm/images/linkedin.svg" %}
+    {% endif %}
+  </div>
+</fieldset>
+{% endif %}
+
+<hr class="divider">
+<p class="text-center mb-1">
+  <a href="{{ signup_url }}">{% trans "Don't have an account? Sign up" %}</a>
+</p>

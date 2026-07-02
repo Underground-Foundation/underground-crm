@@ -30,6 +30,9 @@ dependencies = [
     "wagtail>=6.0,<7.0",
     "django-simple-history",
     "django-allauth[socialaccount]>=65.0",
+    "django-compressor>=4.0",
+    "csscompressor>=0.9",
+    "whitenoise>=6.0",
 ]
 
 [project.optional-dependencies]

@@ -1,15 +1,15 @@
 {% extends "underground_crm/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Sign up" %}{% endblock %}
+{% block title %}{% trans "Login Cancelled" %}{% endblock %}
 
 {% block page_body %}
 {% url 'underground_crm:login' as login_url %}
-<div class="container my-4 pt-5">
+<div class="container">
   <div class="row justify-content-center">
     <div class="col-10">
       <div class="form bg-aquamarine-transparent rounded px-3 py-4 mx-1 mt-4">
-        {% include "underground_crm/auth/signup_with_oauth_or_form.html" with login_url=login_url h2_class="h-underline h-pink h-underline-animate" %}
+        {% include "socialaccount/_login_cancelled.html" with h2_class="h-underline h-pink h-underline-animate" login_url=login_url %}
       </div>
     </div>
   </div>

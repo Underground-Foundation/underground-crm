@@ -76,3 +76,16 @@ jobs:
       - name: Check Stripe country list
         working-directory: underground_payments
         run: bash checkStripeCountries.sh
+
+  translations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Install gettext
+        run: sudo apt-get update && sudo apt-get install -y gettext
+
+      - name: Compile translations
+        run: bash compile_translations.sh

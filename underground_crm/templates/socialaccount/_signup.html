@@ -1,0 +1,64 @@
+{% load i18n %}
+
+<h2 class="{{ h2_class }}">{% trans "Sign up" %}</h2>
+<p>{% blocktrans with provider_name=account.get_provider.name site_name=site.name %}You are about to use your {{ provider_name }} account to log in to {{ site_name }}. As a final step, please complete the following form:{% endblocktrans %}</p>
+
+{% url 'socialaccount_signup' as action_url %}
+<form method="post" action="{{ action_url }}" novalidate>
+  {% csrf_token %}
+  {{ redirect_field }}
+
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger" role="alert">
+    {% for error in form.non_field_errors %}
+      <p class="mb-0">{{ error }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for field in form %}
+  {% if field.is_hidden %}
+  {{ field }}
+  {% elif field.field.widget.input_type == 'checkbox' %}
+  <div class="form-group">
+    <div class="custom-control custom-checkbox">
+      <input class="custom-control-input{% if field.errors %} is-invalid{% endif %}"
+             type="checkbox"
+             id="{{ field.id_for_label }}"
+             name="{{ field.html_name }}"
+             {% if field.value %}checked{% endif %}>
+      <label class="custom-control-label" for="{{ field.id_for_label }}">
+        {{ field.label }}
+      </label>
+      {% for error in field.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="form-group">
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    <input type="{{ field.field.widget.input_type }}"
+           class="form-control{% if field.errors %} is-invalid{% endif %}"
+           id="{{ field.id_for_label }}"
+           name="{{ field.html_name }}"
+           {% if field.field.widget.input_type != 'password' %}value="{{ field.value|default:'' }}"{% endif %}
+           {% if field.field.widget.input_type == 'email' %}autocomplete="email"{% endif %}
+           {% if field.field.widget.input_type == 'password' %}autocomplete="new-password"{% endif %}
+           {% if field.html_name == 'email' %}autofocus{% endif %}>
+    {% if field.help_text %}
+    <small class="form-text text-muted">{{ field.help_text }}</small>
+    {% endif %}
+    {% for error in field.errors %}
+      <div class="invalid-feedback">{{ error }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  <div class="mt-4">
+    <button type="submit" class="btn bg-pink btn-primary btn-lg btn-block">
+      {% trans "Sign up" %}
+    </button>
+  </div>
+</form>

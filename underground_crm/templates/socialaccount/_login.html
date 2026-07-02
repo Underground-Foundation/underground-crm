@@ -1,0 +1,16 @@
+{% load i18n %}
+
+{% if process == "connect" %}
+<h2 class="{{ h2_class }}">{% blocktrans with name=provider.name %}Connect {{ name }}{% endblocktrans %}</h2>
+<p>{% blocktrans with name=provider.name %}You are about to connect a new third-party account from {{ name }}.{% endblocktrans %}</p>
+{% else %}
+<h2 class="{{ h2_class }}">{% blocktrans with name=provider.name %}Sign in via {{ name }}{% endblocktrans %}</h2>
+<p>{% blocktrans with name=provider.name %}You are about to sign in using a third-party account from {{ name }}.{% endblocktrans %}</p>
+{% endif %}
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  <button type="submit" class="btn bg-pink btn-primary btn-lg btn-block mt-3">
+    {% trans "Continue" %}
+  </button>
+</form>

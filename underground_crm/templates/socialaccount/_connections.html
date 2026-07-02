@@ -1,0 +1,40 @@
+{% load i18n %}
+
+<h2 class="{{ h2_class }}">{% trans "Account connections" %}</h2>
+
+{% if form.accounts %}
+<p>{% trans "You can sign in to your account using any of the following third-party accounts:" %}</p>
+
+{% url 'socialaccount_connections' as action_url %}
+<form method="post" action="{{ action_url }}" novalidate>
+  {% csrf_token %}
+
+  {% for acc in form.fields.account.choices %}
+  {% with account=acc.0.instance.get_provider_account %}
+  <div class="custom-control custom-radio mb-2">
+    <input type="radio"
+           class="custom-control-input"
+           name="account"
+           value="{{ account.account.pk }}"
+           id="id_account_{{ account.account.pk }}">
+    <label class="custom-control-label" for="id_account_{{ account.account.pk }}">
+      {{ account }}
+    </label>
+  </div>
+  {% endwith %}
+  {% endfor %}
+
+  <div class="mt-3">
+    <button type="submit" class="btn btn-outline-danger">
+      {% trans "Remove" %}
+    </button>
+  </div>
+</form>
+{% else %}
+<p>{% trans "You currently have no third-party accounts connected to this account." %}</p>
+{% endif %}
+
+<hr class="divider">
+<h2 class="{{ h2_class }}">{% trans "Add a third-party account" %}</h2>
+{% include "socialaccount/snippets/provider_list.html" with process="connect" %}
+{% include "socialaccount/snippets/login_extra.html" %}

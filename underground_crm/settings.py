@@ -74,12 +74,13 @@ INSTALLED_APPS = [
     # Active social login providers:
     "allauth.socialaccount.providers.discord",
     "allauth.socialaccount.providers.facebook",
-    "allauth.socialaccount.providers.instagram",
     "allauth.socialaccount.providers.openid_connect",  # used for LinkedIn
+    "compressor",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "wagtail.contrib.redirects.middleware.RedirectMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -129,6 +130,11 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
+
+COMPRESS_CSS_FILTERS = [
+    "compressor.filters.css_default.CssAbsoluteFilter",
+    "compressor.filters.csscompressor.CSSCompressorFilter",
+]
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")
 

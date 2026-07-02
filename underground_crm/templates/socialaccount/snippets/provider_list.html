@@ -1,0 +1,24 @@
+{% load i18n static socialaccount %}
+{% get_providers as socialaccount_providers %}
+{% if socialaccount_providers %}
+<div class="d-flex flex-column">
+  {% for provider in socialaccount_providers %}
+  {% provider_login_url provider process=process scope=scope auth_params=auth_params as href %}
+  <a href="{{ href }}" class="btn btn-outline-secondary mb-2 d-flex align-items-center justify-content-center">
+    {% if provider.id == "discord" %}
+    <img src="{% static 'underground_crm/images/discord.svg' %}"
+         alt="" aria-hidden="true" width="20" height="20" class="mr-2">
+    {% elif provider.id == "facebook" %}
+    <img src="{% static 'underground_crm/images/facebook.svg' %}"
+         alt="" aria-hidden="true" width="20" height="20"
+         style="background: white; border-radius: 50%;" class="mr-2">
+
+    {% elif "linkedin" in provider.id %}
+    <img src="{% static 'underground_crm/images/linkedin.svg' %}"
+         alt="" aria-hidden="true" width="20" height="20" class="mr-2">
+    {% endif %}
+    {{ provider.name }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
