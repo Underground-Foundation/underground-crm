@@ -26,7 +26,19 @@ services:
   gnaf-api:
     image: nginx:alpine
     volumes:
-      - ./docker/gnaf-package.json:/usr/share/nginx/html/gnaf-package.json:ro
+      # create_host_path: false stops Docker from silently creating a
+      # root-owned directory at this path when the file doesn't exist yet.
+      # Without it, a missing file becomes a directory, which then breaks
+      # every future `up` with a "mounting a directory onto a file" error
+      # until removed by hand. start_containers.sh creates this file before
+      # calling `up`, so this guard is a backstop against ways of starting
+      # the stack that skip that step.
+      - type: bind
+        source: ./docker/gnaf-package.json
+        target: /usr/share/nginx/html/gnaf-package.json
+        read_only: true
+        bind:
+          create_host_path: false
     restart: unless-stopped
 
   # Australian address search and geocoding. Run update-gnaf.sh to refresh G-NAF data
