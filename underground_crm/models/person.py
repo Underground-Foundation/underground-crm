@@ -22,6 +22,11 @@ class Tag(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
+    is_protected = models.BooleanField(
+        default=False,
+        verbose_name=_("Is protected"),
+        help_text=_("Ensures the tag can only be deleted by an admin through the console."),
+    )
 
     class Meta:
         ordering = ["name"]
@@ -157,6 +162,13 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
     facebook_username = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("Facebook username")
+    )
+    profile_picture_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name=_("Profile picture URL"),
+        help_text=_("Picture URL supplied by a social login provider, e.g. LinkedIn."),
     )
 
     # --- Addresses ---
@@ -301,7 +313,6 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Priority level"),
         help_text=_("Outreach priority from 0 (lowest) to 5 (highest)."),
     )
-    is_volunteer = models.BooleanField(default=False, verbose_name=_("Is a volunteer"))
     is_prospect = models.BooleanField(
         default=False,
         verbose_name=_("Is a prospect"),

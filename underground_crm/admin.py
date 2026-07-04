@@ -9,12 +9,15 @@ from .models import (
     Address,
     Donation,
     Engagement,
+    FormSubmission,
+    InputField,
     Interaction,
     Membership,
     MembershipType,
     Person,
     PeopleFilter,
     PersonNote,
+    SubmittedField,
     Tag,
 )
 from .models.person import PersonGroup, PersonPermission, PersonTag
@@ -84,14 +87,12 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
         "first_name",
         "last_name",
         "is_supporter",
-        "is_volunteer",
         "is_donor",
         "created_at",
     ]
     list_filter = [
         SavedFilterListFilter,
         "is_supporter",
-        "is_volunteer",
         "is_donor",
         "email_opt_in",
         "is_staff",
@@ -154,7 +155,6 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                     "support_level",
                     "inferred_support_level",
                     "priority_level",
-                    "is_volunteer",
                     "is_prospect",
                     "is_deceased",
                 )
@@ -242,7 +242,46 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
+    list_display = ["name", "is_protected"]
+    list_filter = ["is_protected"]
     search_fields = ["name"]
+
+    def has_delete_permission(self, request, obj=None):
+        # The pre_delete signal (signals.py) is the actual enforcement — this just
+        # hides the delete button/bulk action for protected tags instead of letting
+        # staff hit the PermissionDenied error after the fact.
+        if obj is not None and obj.is_protected:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+@admin.register(InputField)
+class InputFieldAdmin(admin.ModelAdmin):
+    list_display = ["description_en", "name", "input_type"]
+    list_filter = ["input_type"]
+    search_fields = ["description_en", "name"]
+
+
+class SubmittedFieldInline(admin.TabularInline):
+    model = SubmittedField
+    extra = 0
+    fields = ["input_field", "has_value"]
+
+
+@admin.register(FormSubmission)
+class FormSubmissionAdmin(admin.ModelAdmin):
+    list_display = [
+        "__str__",
+        "is_authenticated",
+        "person",
+        "email_address",
+        "page",
+        "submission_time",
+    ]
+    list_filter = ["is_authenticated", "page"]
+    search_fields = ["person__email", "person__first_name", "person__last_name", "email_address"]
+    readonly_fields = ["submission_time"]
+    inlines = [SubmittedFieldInline]
 
 
 @admin.register(Address)

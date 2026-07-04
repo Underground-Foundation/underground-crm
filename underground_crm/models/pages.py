@@ -1,5 +1,6 @@
 import datetime
 import logging
+import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -17,11 +18,14 @@ from wagtail.blocks import (
     StructBlock,
     ChoiceBlock,
 )
-from underground_crm.blocks import ButtonBlock
+from modelcluster.fields import ParentalKey
+from underground_crm.blocks import ButtonBlock, InputBlock
 from wagtail.images.blocks import ImageChooserBlock
-from wagtail.admin.panels import FieldPanel, ObjectList, TabbedInterface
+from wagtail.admin.panels import FieldPanel, InlinePanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
 from .address import Address
+from .input_field import FormSubmission
+from .person import Tag
 from underground_crm.panels import ReadOnlyPanel
 
 logger = logging.getLogger(__name__)
@@ -72,9 +76,20 @@ class PageWithMetadata(Page):
         related_name="+",
     )
 
+    og_type_override = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name=_("Open Graph type override"),
+        help_text=_(
+            "Override the 'og:type' meta value (see https://ogp.me/#types for valid "
+            "values). Leave blank to use this page type's default."
+        ),
+    )
+
     @property
     def og_type(self) -> str:
-        return "website"
+        return self.og_type_override or "website"
 
     cache_ttl_override = models.PositiveIntegerField(
         null=True,
@@ -144,6 +159,7 @@ class PageWithMetadata(Page):
         FieldPanel("seo_title", heading="og:title"),
         FieldPanel("search_description", heading="og:description"),
         FieldPanel("search_image", heading="og:image"),
+        FieldPanel("og_type_override", heading="og:type"),
     ]
 
     visibility_panels = [
@@ -254,6 +270,107 @@ class BasicPage(PageWithMetadata):
         verbose_name = _("Basic Page")
 
 
+FORM_PAGE_BLOCKS = BASIC_PAGE_BLOCKS + [
+    ("input", InputBlock(label=_("Input"))),
+]
+
+
+class FormPage(PageWithMetadata):
+    """
+    A page built on StreamField that can host a form. Extends BasicPage's
+    block set with an "input" block (a chooser referencing an Input snippet),
+    so editors can interleave checkbox/date/datetime/text questions with
+    ordinary rich content.
+
+    Not a BasicPage subclass: BasicPage's body field is fixed to
+    BASIC_PAGE_BLOCKS, and Django's multi-table inheritance doesn't allow a
+    subclass to redeclare an inherited concrete field with a different set
+    of StreamField blocks. FormPage therefore extends PageWithMetadata
+    directly, mirroring BasicPage's own definition.
+
+    On a valid submission, a FormSubmission is recorded (see
+    underground_crm.forms.form_submission.FormSubmissionForm for the actual
+    logic). For authenticated submissions only, tags_to_apply are added to
+    the submitting Person — unauthenticated submissions are never allowed to
+    modify a Person record, verified or otherwise.
+    """
+
+    is_creatable = True
+
+    body = StreamField(
+        FORM_PAGE_BLOCKS,
+        use_json_field=True,
+        blank=True,
+    )
+    tags_to_apply = models.ManyToManyField(
+        Tag,
+        through="FormPageTag",
+        blank=True,
+        related_name="form_pages",
+        verbose_name=_("Tags to apply on submission"),
+        help_text=_("Applied to the submitting Person's record. Authenticated submissions only."),
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel("body"),
+        InlinePanel("tag_relations", label=_("Tags to apply on submission")),
+    ]
+
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading=_("Content")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+        ]
+    )
+
+    class Meta:
+        verbose_name = _("Form Page")
+
+    @property
+    def inputs(self):
+        return [
+            block.value
+            for block in self.body  # pylint: disable=not-an-iterable
+            if block.block_type == "input"
+        ]
+
+    def get_submission_form_class(self):
+        """Overridable hook so subclasses (e.g. EventPage) can swap in a form
+        that builds a different FormSubmission subclass."""
+        from underground_crm.forms.form_submission import FormSubmissionForm
+
+        return FormSubmissionForm
+
+    def get_context(self, request, *args, **kwargs):
+        form_class = self.get_submission_form_class()
+
+        context = super().get_context(request, *args, **kwargs)
+        submitted = False
+        if request.method == "POST":
+            form = form_class(request.POST, request=request, page=self)
+            if form.is_valid():
+                form.save()
+                submitted = True
+                form = form_class(request=request, page=self)
+        else:
+            form = form_class(request=request, page=self)
+        context["form"] = form
+        context["submitted"] = submitted
+        return context
+
+
+class FormPageTag(models.Model):
+    """Explicit through model for FormPage.tags_to_apply, carrying a UUID PK for federation support."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    page = ParentalKey(FormPage, on_delete=models.CASCADE, related_name="tag_relations")
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = [("page", "tag")]
+
+
 class UndergroundBasicPage(BasicPage):
     """
     Extends BasicPage with a table-of-contents control.
@@ -329,7 +446,15 @@ class BlogPost(UndergroundBasicPage):
     ]
 
 
-class EventPage(BasicPage):
+class EventPage(FormPage):
+    """
+    An event page. Extends FormPage (rather than BasicPage) so staff can add
+    arbitrary extra "input" blocks to its body via the CMS, same as any
+    FormPage. RSVPs are recorded as EventGuest rows (see EventGuest below) —
+    a baseline "how many guests are you bringing" question is always present
+    on the rendered form, on top of whatever admin-added inputs exist.
+    """
+
     is_creatable = True
 
     host = models.ForeignKey(
@@ -367,15 +492,25 @@ class EventPage(BasicPage):
     def __str__(self):
         return self.slug or self.title
 
+    def get_submission_form_class(self):
+        from underground_crm.forms.event_guest import EventGuestForm
 
-class EventGuest(models.Model):
-    event_page = models.ForeignKey(EventPage, on_delete=models.DO_NOTHING)
-    # The guest might sign up on the event page
-    guest = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
+        return EventGuestForm
+
+
+class EventGuest(FormSubmission):
+    """
+    An RSVP to an EventPage. Extends FormSubmission (rather than adding a
+    generic InputField/SubmittedField for guest count) so that, for a bare
+    event page with no admin-added extra questions, this row alone fully
+    describes the RSVP: is_authenticated/person/email_address (inherited)
+    identify who's coming, and extra_guests says how many people they're
+    bringing. Any admin-added extra questions on the page still produce
+    ordinary SubmittedField rows against this same submission.
+    """
+
+    extra_guests = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("Extra guests"),
+        help_text=_("How many guests will be accompanying you?"),
     )
-    accompanying_population = models.PositiveIntegerField(null=True, blank=True, default=0)

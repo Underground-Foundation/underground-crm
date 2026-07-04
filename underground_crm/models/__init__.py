@@ -5,8 +5,9 @@ from .filter import PeopleFilter
 from .interaction import Interaction
 from .membership import Membership, MembershipType
 from .note import PersonNote
-from .pages import BasicPage, Blog, UndergroundBasicPage
+from .pages import BasicPage, Blog, FormPage, UndergroundBasicPage
 from .person import Person, Tag
+from .input_field import FormSubmission, InputField, SubmittedField
 
 __all__ = [
     "Address",
@@ -19,7 +20,11 @@ __all__ = [
     "PersonNote",
     "BasicPage",
     "Blog",
+    "FormPage",
     "UndergroundBasicPage",
     "Person",
     "Tag",
+    "FormSubmission",
+    "InputField",
+    "SubmittedField",
 ]

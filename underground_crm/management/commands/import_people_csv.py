@@ -247,7 +247,6 @@ def _person_fields(row, is_email_bad: bool):
         "support_level": _int_or_none(row.get("support_level", "")),
         "inferred_support_level": _int_or_none(row.get("inferred_support_level", "")),
         "priority_level": _int_or_none(row.get("priority_level", "")),
-        "is_volunteer": _bool(row.get("is_volunteer", "")),
         "is_prospect": _bool(row.get("is_prospect", "")),
         "is_deceased": _bool(row.get("is_deceased", "")),
         "is_donor": _bool(row.get("is_donor", "")),
@@ -558,6 +557,7 @@ class Command(BaseCommand):
         # ---- Pass 3: tags ----
 
         if not dry_run:
+            volunteer_tag = None
             for row in rows:
                 legacy_id = _int_or_none(row.get("nationbuilder_id", ""))
                 if not legacy_id:
@@ -565,16 +565,25 @@ class Command(BaseCommand):
                 person = legacy_id_to_person.get(legacy_id)
                 if not person:
                     continue
+
                 raw_tags = row.get("tag_list", "").strip()
-                if not raw_tags:
-                    continue
-                tag_names = [t.strip() for t in raw_tags.split(",") if t.strip()]
+                tag_names = (
+                    [t.strip() for t in raw_tags.split(",") if t.strip()] if raw_tags else []
+                )
                 for name in tag_names:
                     tag, created = Tag.objects.get_or_create(name=name)
                     self.stdout.write(
                         f"{'Created' if created else 'Found'} tag {tag.name} for person"
                     )
                     person.tags.add(tag)
+
+                # There's no Person.is_volunteer field — a "Volunteer" Tag (seeded by
+                # migration 0008) is used instead, so this reuses the same tagging
+                # mechanism as tag_list rather than a dedicated boolean column.
+                if _bool(row.get("is_volunteer", "")):
+                    if volunteer_tag is None:
+                        volunteer_tag, _created = Tag.objects.get_or_create(name="Volunteer")
+                    person.tags.add(volunteer_tag)
 
         # ---- Pass 4: interactions and notes (optional) ----
 

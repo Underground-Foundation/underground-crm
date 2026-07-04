@@ -355,6 +355,24 @@ def _build_social_providers() -> tuple[dict, list[str]]:
             # verification. However, Facebook does verify email addresses independently,
             # so we override this here to allow email-based account matching.
             "VERIFIED_EMAIL": True,
+            # Adds "picture" (returned as a large image) to allauth's default FIELDS list,
+            # so PersonSocialAccountAdapter can save a profile picture URL. Facebook's Graph
+            # API doesn't surface this via extract_common_fields, so it's read from the raw
+            # extra_data instead — see PersonSocialAccountAdapter._facebook_picture_url.
+            "FIELDS": [
+                "id",
+                "email",
+                "name",
+                "first_name",
+                "last_name",
+                "verified",
+                "locale",
+                "timezone",
+                "link",
+                "gender",
+                "updated_time",
+                "picture.type(large)",
+            ],
             "APP": {
                 "client_id": os.environ.get("FACEBOOK_APP_ID"),
                 "secret": os.environ.get("FACEBOOK_APP_SECRET"),
@@ -365,6 +383,12 @@ def _build_social_providers() -> tuple[dict, list[str]]:
     # LinkedIn is now an OpenID Connect provider — configured via the generic
     # openid_connect provider rather than a dedicated LinkedIn app entry.
     # https://docs.allauth.org/en/latest/socialaccount/providers/linkedin.html
+    # No explicit SCOPE is set, so allauth requests its default "openid profile
+    # email" — this is already the maximum LinkedIn grants under its self-serve
+    # "Sign In with LinkedIn using OpenID Connect" product, and covers every
+    # field we can get (name, given_name, family_name, picture, email). Wider
+    # profile data (skills, positions, etc.) needs LinkedIn's gated Profile API
+    # and partner approval, not something reachable via extra scopes here.
     missing = _missing_env_vars("LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET")
     if missing:
         _warn("LinkedIn", missing)

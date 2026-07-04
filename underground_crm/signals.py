@@ -1,9 +1,11 @@
-from django.db.models.signals import post_save, pre_save
+from django.core.exceptions import PermissionDenied
+from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django_q.tasks import async_task
 
 from .models.address import Address
 from .models.pages import EventGuest
+from .models.person import Tag
 
 _ADDRESS_CONTENT_FIELDS = ("line1", "line2", "line3", "city", "state", "postcode", "country_code")
 
@@ -39,3 +41,16 @@ def on_event_guest_saved(
 ) -> None:
     if created:
         async_task("underground_crm.tasks.record_rsvp_engagement", str(instance.pk))
+
+
+@receiver(pre_delete, sender=Tag)
+def on_tag_pre_delete(sender: type[Tag], instance: Tag, **kwargs) -> None:
+    """
+    Blocks deletion of protected tags (e.g. "Volunteer") through every ORM
+    path — admin, the Wagtail snippet UI, the API, cascades — not just the
+    admin/snippet "delete" button. An admin can still remove a protected tag
+    by dropping into the Django shell/console and either flipping
+    is_protected off first or deleting via raw SQL.
+    """
+    if instance.is_protected:
+        raise PermissionDenied(f'"{instance.name}" is a protected tag and cannot be deleted.')

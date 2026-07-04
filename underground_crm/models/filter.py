@@ -23,7 +23,6 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("primary_address__suburb", "Suburb (primary)", "text"),
     ("tags__name", "Tag", "text"),
     ("is_supporter", "Is supporter", "boolean"),
-    ("is_volunteer", "Is volunteer", "boolean"),
     ("is_prospect", "Is prospect", "boolean"),
     ("is_donor", "Is donor", "boolean"),
     ("is_fundraiser", "Is fundraiser", "boolean"),
@@ -81,8 +80,8 @@ class PeopleFilter(models.Model):
                 {
                     "logic": "OR",
                     "rules": [
-                        {"field": "is_volunteer", "operator": "true"},
-                        {"field": "is_donor",     "operator": "true"}
+                        {"field": "tags__name", "operator": "exact", "value": "Volunteer"},
+                        {"field": "is_donor",   "operator": "true"}
                     ]
                 }
             ]

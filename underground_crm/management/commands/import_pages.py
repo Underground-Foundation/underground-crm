@@ -13,8 +13,17 @@ For each <slug>.html found in <domain>/, the command:
      as a Raw HTML body block.
 
 Supported page types:
-  "Basic"    -> UndergroundBasicPage
-  "Donation" -> PaymentPage
+  "Basic"            -> UndergroundBasicPage
+  "Donation"         -> PaymentPage
+  "Event"            -> EventPage
+  "Blog"             -> Blog
+  "Blog Post"        -> UndergroundBasicPage
+  "Redirect"         -> Redirect
+  "Volunteer Signup",
+  "Feedback",
+  "Suggestion Box"   -> FormPage (the <form>'s fields become InputField
+                        snippets wired up as "input" StreamField blocks; see
+                        build_form_page)
 """
 
 import datetime
@@ -41,7 +50,9 @@ from underground_crm.contactability import (
     parse_address,
 )
 from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
-from underground_crm.models.pages import EventPage, BlogPost
+from underground_crm.models import Tag as CrmTag
+from underground_crm.models.pages import EventPage, BlogPost, FormPage, FormPageTag
+from underground_crm.models.input_field import InputField
 from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
 
@@ -363,11 +374,9 @@ def get_page_args(document_soup, importable_html, attributes, slug: str, site) -
         "seo_title": seo_title,
         "search_description": extract_og_description(head),
         "latest_revision_created_at": get_publication_date(attributes),
-        "author": author,
-        "og_type": extract_og_type(head),
+        "og_type_override": extract_og_type(head),
         "body": json.dumps([{"type": "html", "value": importable_html}]),
         "show_toc": should_show_toc(document_soup),
-        "site": site,
     }
 
 
@@ -532,14 +541,134 @@ def build_blog_post(
     site: Site,
     return_class=BlogPost,
 ) -> BlogPost:
-    return build_underground_basic_page(
+    page = cast(
+        BlogPost,
+        build_underground_basic_page(
+            document_soup=document_soup,
+            importable_html=importable_html,
+            attributes=attributes,
+            slug=slug,
+            site=site,
+            return_class=return_class,
+        ),
+    )
+    # BlogPost is the only page type with its own author field (distinct from
+    # the inherited "owner") — get_page_args() no longer sets it, since every
+    # other page type this is called for lacks that field entirely.
+    page.author = extract_author(document_soup)
+    return page
+
+
+# Input types that aren't real user-facing fields, so extract_form_inputs()
+# ignores them regardless of surrounding markup.
+_SKIPPED_INPUT_TYPES = {"hidden", "submit", "button", "reset"}
+
+
+def extract_form_inputs(form_tag: Tag) -> List[Tuple[str, str]]:
+    """
+    Extract (description, input_type) pairs for every real, user-facing field
+    in a legacy <form> — skipping hidden/CSRF/bookkeeping inputs, the submit
+    button, and any field wrapped in an aria-hidden container (e.g. the
+    "Optional email code" honeypot/identity field used to recognise a
+    logged-in visitor). Checkbox groups (e.g. volunteer_type_ids[]) yield one
+    entry per checkbox, using its <label for="..."> text as the description;
+    text inputs and textareas do the same.
+    """
+    inputs: List[Tuple[str, str]] = []
+    for field in form_tag.find_all(["input", "textarea"]):
+        field_type = field.get("type", "text") if field.name == "input" else "text"
+        if field_type in _SKIPPED_INPUT_TYPES:
+            continue
+        if field.find_parent(attrs={"aria-hidden": "true"}):
+            continue
+
+        field_id = field.get("id")
+        label = form_tag.find("label", attrs={"for": field_id}) if field_id else None
+        description = label.get_text(strip=True) if label else field.get("name", "").strip()
+        if not description:
+            continue
+
+        input_type = InputField.CHECKBOX if field_type == "checkbox" else InputField.TEXT
+        inputs.append((description, input_type))
+    return inputs
+
+
+def get_or_create_input_field(description: str, input_type: str) -> InputField:
+    input_field, _created = InputField.objects.get_or_create(
+        description_en=description, defaults={"input_type": input_type}
+    )
+    return input_field
+
+
+# Only "Volunteer Signup" submissions should tag the submitting Person as a
+# volunteer; "Feedback" and "Suggestion Box" are legacy types that share the
+# same <form>-extraction logic but must leave tags_to_apply empty.
+_VOLUNTEER_SIGNUP_PAGE_TYPE_NAME = "Volunteer Signup"
+_VOLUNTEER_TAG_NAME = "Volunteer"
+
+
+def get_tags_to_apply_for_legacy_type(page_type_name: Optional[str]) -> List[CrmTag]:
+    if page_type_name != _VOLUNTEER_SIGNUP_PAGE_TYPE_NAME:
+        return []
+    volunteer_tag, _created = CrmTag.objects.get_or_create(name=_VOLUNTEER_TAG_NAME)
+    return [volunteer_tag]
+
+
+def build_form_page(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=FormPage,
+) -> FormPage:
+    """
+    Build a FormPage from a legacy form-bearing page ("Volunteer Signup",
+    "Feedback", or "Suggestion Box"). The <form>'s checkbox/text/textarea
+    fields become InputField snippets wired up as "input" StreamField blocks
+    (see underground_crm.blocks.InputBlock); everything else in #content
+    becomes an ordinary "html" block ahead of them, so the page's intro copy
+    is preserved.
+
+    The source page snapshot may reflect one already-signed-up member's
+    current answers (checked boxes, filled-in text) — only the field
+    descriptions are imported as InputFields, never that member's answers.
+
+    Only "Volunteer Signup" pages get the "Volunteer" tag wired up as
+    tags_to_apply, so that authenticated submitters are tagged as
+    volunteers (see FormPage.tags_to_apply); "Feedback" and "Suggestion Box"
+    pages get no tags_to_apply, since submitting them says nothing about
+    whether the submitter volunteers.
+    """
+    content = document_soup.find(id="content")
+    form_tag = content.find("form") if content else None
+
+    if content is not None and form_tag is not None:
+        form_tag.extract()
+        remaining_html = _prettify(content)
+    else:
+        remaining_html = importable_html
+
+    body_blocks: List[Tuple[str, Any]] = []
+    if remaining_html.strip():
+        body_blocks.append(("html", remaining_html))
+    if form_tag is not None:
+        for description, input_type in extract_form_inputs(form_tag):
+            body_blocks.append(("input", get_or_create_input_field(description, input_type)))
+
+    kwargs = get_page_args(
         document_soup=document_soup,
         importable_html=importable_html,
         attributes=attributes,
         slug=slug,
         site=site,
-        return_class=return_class,
     )
+    kwargs.pop("show_toc")
+    kwargs["body"] = body_blocks
+    page = cast(FormPage, return_class(**kwargs))
+    tags_to_apply = get_tags_to_apply_for_legacy_type(get_page_type_attribute(attributes))
+    page.tag_relations = [FormPageTag(tag=tag) for tag in tags_to_apply]
+    return page
 
 
 PAGE_BUILDING_MAP: dict[str, Any] = {
@@ -549,6 +678,9 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
     "Blog": build_blog_page,
     "Blog Post": build_underground_basic_page,
     "Redirect": build_redirection,
+    "Volunteer Signup": build_form_page,
+    "Feedback": build_form_page,
+    "Suggestion Box": build_form_page,
 }
 
 
