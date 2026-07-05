@@ -24,7 +24,6 @@ from underground_crm.management.commands.import_pages import (
     parse_event_datetime,
 )
 from underground_crm.models.pages import FormPage
-from underground_crm.models.input_field import InputField
 
 
 class TestParseEventDatetime(unittest.TestCase):
@@ -238,8 +237,8 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
 
     def test_extracts_one_entry_per_checkbox_plus_two_free_text_fields(self):
         inputs = extract_form_inputs(self.form_tag)
-        checkbox_count = sum(1 for _, input_type in inputs if input_type == InputField.CHECKBOX)
-        text_count = sum(1 for _, input_type in inputs if input_type == InputField.TEXT)
+        checkbox_count = sum(1 for _, input_type in inputs if input_type == "checkbox")
+        text_count = sum(1 for _, input_type in inputs if input_type == "text")
         self.assertEqual(
             checkbox_count,
             self.expected_checkbox_count,
@@ -312,8 +311,7 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
         page.refresh_from_db()
         return page
 
-    def test_creates_an_input_field_per_checkbox_and_free_text_field(self):
-        starting_input_field_count = InputField.objects.count()
+    def test_creates_an_input_block_per_checkbox_and_free_text_field(self):
         page = self._build_and_save()
 
         self.assertEqual(
@@ -321,12 +319,14 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
             self.expected_checkbox_count + 2,
             msg="Every checkbox plus the availability and comments fields should become an input block",
         )
-        self.assertEqual(
-            InputField.objects.count(),
-            starting_input_field_count + self.expected_checkbox_count + 2,
-            msg="Each distinct field description should create exactly one InputField snippet",
+        question_html = " ".join(
+            block.value for block in list(page.body) if block.block_type == "html"
         )
-        self.assertTrue(InputField.objects.filter(description_en="Doorknocking").exists())
+        self.assertIn(
+            "Doorknocking",
+            question_html,
+            msg="Each legacy question's text should be kept as an html block beside its input block",
+        )
 
     def test_form_html_is_removed_from_the_html_block(self):
         page = self._build_and_save()
@@ -339,10 +339,9 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
             msg="The raw <form> markup must not be duplicated alongside the input blocks",
         )
 
-    def test_reimporting_does_not_duplicate_input_fields(self):
-        """A --replace re-import must reuse existing InputField snippets, not create duplicates."""
-        self._build_and_save()
-        starting_input_field_count = InputField.objects.count()
+    def test_reimporting_builds_the_same_input_blocks(self):
+        """A --replace re-import must extract the same set of inputs each time."""
+        first_page = self._build_and_save()
 
         second_page = build_form_page(
             document_soup=self.document_soup,
@@ -353,11 +352,12 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
         )
         Page.objects.get(id=1).add_child(instance=second_page)
         second_page.save()
+        second_page.refresh_from_db()
 
         self.assertEqual(
-            InputField.objects.count(),
-            starting_input_field_count,
-            msg="Re-running the importer against the same source page must not create duplicate InputFields",
+            [block.block_type for block in first_page.inputs],
+            [block.block_type for block in second_page.inputs],
+            msg="Re-running the importer against the same source page must extract identical inputs",
         )
 
     def test_volunteer_signup_page_applies_the_volunteer_tag(self):

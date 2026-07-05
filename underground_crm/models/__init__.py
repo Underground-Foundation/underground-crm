@@ -7,7 +7,7 @@ from .membership import Membership, MembershipType
 from .note import PersonNote
 from .pages import BasicPage, Blog, FormPage, UndergroundBasicPage
 from .person import Person, Tag
-from .input_field import FormSubmission, InputField, SubmittedField
+from .form_submission import FormSubmission, SubmittedField
 
 __all__ = [
     "Address",
@@ -25,6 +25,5 @@ __all__ = [
     "Person",
     "Tag",
     "FormSubmission",
-    "InputField",
     "SubmittedField",
 ]

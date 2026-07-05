@@ -10,7 +10,7 @@ from wagtail.contrib.redirects.permissions import permission_policy as redirects
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 
-from .models import Engagement, InputField, Tag
+from .models import Engagement, Tag
 
 
 @hooks.register("register_admin_menu_item")
@@ -40,19 +40,6 @@ class TagViewSet(SnippetViewSet):
 
 
 register_snippet(TagViewSet)
-
-
-class InputFieldViewSet(SnippetViewSet):
-    model = InputField
-    icon = "tasks"
-    menu_label = _("Input fields")
-    menu_order = 310
-    list_display = ["description_en", "name", "input_type"]
-    list_filter = ["input_type"]
-    search_fields = ["description_en", "name"]
-
-
-register_snippet(InputFieldViewSet)
 
 
 class BuzzViewSet(SnippetViewSet):

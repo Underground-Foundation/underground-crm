@@ -18,7 +18,7 @@ def delete_volunteer_tag(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("underground_crm", "0007_inputfield_remove_historicalperson_is_volunteer_and_more"),
+        ("underground_crm", "0007_formpage_formsubmission_and_more"),
     ]
 
     operations = [

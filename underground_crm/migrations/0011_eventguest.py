@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("underground_crm", "0011_submittedfield_value"),
+        ("underground_crm", "0010_eventpage_extends_formpage"),
     ]
 
     operations = [
@@ -35,16 +35,5 @@ class Migration(migrations.Migration):
                 ),
             ],
             bases=("underground_crm.formsubmission",),
-        ),
-        migrations.AlterField(
-            model_name="inputfield",
-            name="name",
-            field=models.CharField(
-                blank=True,
-                help_text="Leave blank to auto-generate from the English description, or specify one explicitly to override it.",
-                max_length=200,
-                unique=True,
-                verbose_name="Name",
-            ),
         ),
     ]

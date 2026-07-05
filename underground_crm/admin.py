@@ -10,7 +10,6 @@ from .models import (
     Donation,
     Engagement,
     FormSubmission,
-    InputField,
     Interaction,
     Membership,
     MembershipType,
@@ -255,17 +254,11 @@ class TagAdmin(admin.ModelAdmin):
         return super().has_delete_permission(request, obj)
 
 
-@admin.register(InputField)
-class InputFieldAdmin(admin.ModelAdmin):
-    list_display = ["description_en", "name", "input_type"]
-    list_filter = ["input_type"]
-    search_fields = ["description_en", "name"]
-
-
 class SubmittedFieldInline(admin.TabularInline):
     model = SubmittedField
     extra = 0
-    fields = ["input_field", "has_value"]
+    fields = ["label", "name", "block_id", "has_value", "value"]
+    readonly_fields = ["label", "name", "block_id"]
 
 
 @admin.register(FormSubmission)

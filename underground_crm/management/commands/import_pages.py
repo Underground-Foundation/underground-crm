@@ -21,12 +21,12 @@ Supported page types:
   "Redirect"         -> Redirect
   "Volunteer Signup",
   "Feedback",
-  "Suggestion Box"   -> FormPage (the <form>'s fields become InputField
-                        snippets wired up as "input" StreamField blocks; see
-                        build_form_page)
+  "Suggestion Box"   -> FormPage (the <form>'s fields become input
+                        StreamField blocks; see build_form_page)
 """
 
 import datetime
+import html
 import json
 
 import phonenumbers
@@ -52,7 +52,6 @@ from underground_crm.contactability import (
 from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
 from underground_crm.models import Tag as CrmTag
 from underground_crm.models.pages import EventPage, BlogPost, FormPage, FormPageTag
-from underground_crm.models.input_field import InputField
 from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
 
@@ -588,16 +587,9 @@ def extract_form_inputs(form_tag: Tag) -> List[Tuple[str, str]]:
         if not description:
             continue
 
-        input_type = InputField.CHECKBOX if field_type == "checkbox" else InputField.TEXT
+        input_type = "checkbox" if field_type == "checkbox" else "text"
         inputs.append((description, input_type))
     return inputs
-
-
-def get_or_create_input_field(description: str, input_type: str) -> InputField:
-    input_field, _created = InputField.objects.get_or_create(
-        description_en=description, defaults={"input_type": input_type}
-    )
-    return input_field
 
 
 # Only "Volunteer Signup" submissions should tag the submitting Person as a
@@ -625,14 +617,16 @@ def build_form_page(
     """
     Build a FormPage from a legacy form-bearing page ("Volunteer Signup",
     "Feedback", or "Suggestion Box"). The <form>'s checkbox/text/textarea
-    fields become InputField snippets wired up as "input" StreamField blocks
-    (see underground_crm.blocks.InputBlock); everything else in #content
-    becomes an ordinary "html" block ahead of them, so the page's intro copy
-    is preserved.
+    fields become "checkbox"/"text" input StreamField blocks (see
+    FORM_INPUT_BLOCKS in models/pages.py), each preceded by an "html" block
+    carrying the legacy question text, since a bare input block has no
+    per-question label of its own; everything else in #content becomes an
+    ordinary "html" block ahead of them, so the page's intro copy is
+    preserved.
 
     The source page snapshot may reflect one already-signed-up member's
     current answers (checked boxes, filled-in text) — only the field
-    descriptions are imported as InputFields, never that member's answers.
+    descriptions are imported, never that member's answers.
 
     Only "Volunteer Signup" pages get the "Volunteer" tag wired up as
     tags_to_apply, so that authenticated submitters are tagged as
@@ -654,7 +648,8 @@ def build_form_page(
         body_blocks.append(("html", remaining_html))
     if form_tag is not None:
         for description, input_type in extract_form_inputs(form_tag):
-            body_blocks.append(("input", get_or_create_input_field(description, input_type)))
+            body_blocks.append(("html", f"<p>{html.escape(description)}</p>"))
+            body_blocks.append((input_type, False if input_type == "checkbox" else ""))
 
     kwargs = get_page_args(
         document_soup=document_soup,

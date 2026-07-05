@@ -1,11 +1,8 @@
-import copy
-
 from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from colorfield.widgets import ColorWidget
 from wagtail.blocks import CharBlock, ChoiceBlock, FieldBlock, StructBlock
-from wagtail.snippets.blocks import SnippetChooserBlock
 
 
 class ColorBlock(FieldBlock):
@@ -66,41 +63,6 @@ class PageURLBlock(FieldBlock):
 
     def value_from_form(self, value: str) -> str:
         return value or ""
-
-
-class InputBlock(SnippetChooserBlock):
-    """A chooser referencing an InputField snippet, for use in FormPage's body StreamField."""
-
-    def __init__(self, **kwargs):
-        from underground_crm.models.input_field import InputField
-
-        super().__init__(InputField, **kwargs)
-
-    def bulk_to_python(self, values):
-        # ChooserBlock.bulk_to_python() keys its lookup dict by QuerySet.in_bulk(),
-        # whose keys are uuid.UUID instances for a UUIDField PK — but `values` here
-        # are the raw strings straight out of the stream's JSON, so a plain dict.get()
-        # never matches and every input field silently resolves to None.
-        # InputField's PK (like every model in this library) is a UUID, so
-        # normalise both sides to str.
-        objects = {str(pk): obj for pk, obj in self.model_class.objects.in_bulk(values).items()}
-        seen_ids = set()
-        result = []
-        for id in values:
-            obj = objects.get(str(id))
-            if obj is not None and id in seen_ids:
-                obj = copy.copy(obj)
-            result.append(obj)
-            seen_ids.add(id)
-        return result
-
-    class Meta:
-        icon = "tasks"
-        label = "Input"
-        # Rendered as an actual <input> by FormSubmissionForm/form.as_p instead —
-        # this template intentionally stays blank so the field's question text
-        # doesn't also print as plain, non-interactive text inline in the body.
-        template = "underground_crm/blocks/input_block.html"
 
 
 class ButtonBlock(StructBlock):

@@ -10,7 +10,6 @@ from wagtail.models import Page
 
 from underground_crm.forms.event_guest import EventGuestForm
 from underground_crm.models.pages import EventGuest, EventPage
-from underground_crm.models.input_field import InputField
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +20,13 @@ class EventGuestFormTest(django.test.TestCase):
     """
     EventPage extends FormPage, but its form always asks a baseline
     "how many guests are you bringing" question (a real EventGuest field,
-    not a generic InputField) on top of any admin-added inputs — and
+    not a generic input block answer) on top of any admin-added inputs — and
     submitting it creates an EventGuest (a FormSubmission subclass), not a
     plain FormSubmission.
     """
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.parking_spot = InputField.objects.create(
-            description_en="Do you need a parking spot?", input_type=InputField.CHECKBOX
-        )
 
         root = Page.objects.get(id=1)
         event_start = datetime(2026, 8, 15, 18, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
@@ -39,12 +35,15 @@ class EventGuestFormTest(django.test.TestCase):
             slug="fundraising-dinner",
             start_time=event_start,
             end_time=event_start + timedelta(hours=3),
-            body=[("input", self.parking_spot)],
+            # A "Do you need a parking spot?" checkbox, staff-added via the CMS
+            body=[("checkbox", False)],
         )
         root.add_child(instance=self.event_page)
+        self.event_page.refresh_from_db()
+        (self.parking_spot,) = self.event_page.inputs
 
-    def _field_name(self, input_field: InputField) -> str:
-        return f"input_{input_field.name}"
+    def _field_name(self, input_block) -> str:
+        return f"input_{input_block.id}"
 
     def test_baseline_extra_guests_field_is_always_present(self):
         request = self.factory.post("/fundraising-dinner/", {})
@@ -75,7 +74,7 @@ class EventGuestFormTest(django.test.TestCase):
 
         # Admin-added inputs still work as ordinary SubmittedField rows against
         # the same EventGuest (which is itself a FormSubmission).
-        submitted_field = submission.submitted_fields.get(input_field=self.parking_spot)
+        submitted_field = submission.submitted_fields.get(block_id=str(self.parking_spot.id))
         self.assertTrue(submitted_field.has_value)
 
     def test_anonymous_rsvp_creates_placeholder_person_but_leaves_fk_unset(self):

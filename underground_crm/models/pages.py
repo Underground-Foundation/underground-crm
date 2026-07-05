@@ -11,20 +11,30 @@ from django.utils.cache import patch_cache_control
 from wagtail.models import Page, PageViewRestriction
 from wagtail.fields import StreamField
 from wagtail.blocks import (
+    BooleanBlock,
     CharBlock,
+    DateBlock,
+    DateTimeBlock,
+    DecimalBlock,
+    EmailBlock,
+    FloatBlock,
+    IntegerBlock,
     RichTextBlock,
     RawHTMLBlock,
     BlockQuoteBlock,
     StructBlock,
     ChoiceBlock,
+    TextBlock,
+    TimeBlock,
+    URLBlock,
 )
 from modelcluster.fields import ParentalKey
-from underground_crm.blocks import ButtonBlock, InputBlock
+from underground_crm.blocks import ButtonBlock
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.admin.panels import FieldPanel, InlinePanel, ObjectList, TabbedInterface
 from wagtail.admin.forms import WagtailAdminPageForm
 from .address import Address
-from .input_field import FormSubmission
+from .form_submission import FormSubmission
 from .person import Tag
 from underground_crm.panels import ReadOnlyPanel
 
@@ -270,17 +280,57 @@ class BasicPage(PageWithMetadata):
         verbose_name = _("Basic Page")
 
 
-FORM_PAGE_BLOCKS = BASIC_PAGE_BLOCKS + [
-    ("input", InputBlock(label=_("Input"))),
+def _input_block_kwargs(**extra) -> dict:
+    """
+    Shared configuration for the visitor-input blocks below. required=False
+    keeps both sides optional: the editor may leave the block's value (the
+    input's pre-filled default) blank, and the visitor may leave the rendered
+    form field blank. The blank in-place template stops the block's default
+    value from also printing as plain, non-interactive text inline in the
+    body — the actual <input> is rendered by FormSubmissionForm/form.as_p.
+    """
+    return {
+        "required": False,
+        "template": "underground_crm/blocks/input_block.html",
+        "group": _("Form inputs"),
+        **extra,
+    }
+
+
+# One entry per built-in Wagtail FieldBlock that makes sense as a visitor
+# input. The remaining FieldBlock variations are deliberately absent:
+# RichTextBlock/RawHTMLBlock/BlockQuoteBlock are already content blocks in
+# BASIC_PAGE_BLOCKS; chooser and embed blocks aren't form inputs; and
+# ChoiceBlock/MultipleChoiceBlock/RegexBlock need their choices/pattern
+# supplied in code, so they only appear on pages that define specific named
+# inputs (e.g. RegistrationPage's Person-field blocks).
+FORM_INPUT_BLOCKS = [
+    ("checkbox", BooleanBlock(**_input_block_kwargs(label=_("Checkbox"), icon="tick-inverse"))),
+    ("text", CharBlock(**_input_block_kwargs(label=_("Text"), icon="pilcrow"))),
+    ("multiline_text", TextBlock(**_input_block_kwargs(label=_("Multi-line text")))),
+    ("email", EmailBlock(**_input_block_kwargs(label=_("Email"), icon="mail"))),
+    ("integer", IntegerBlock(**_input_block_kwargs(label=_("Integer")))),
+    ("decimal", DecimalBlock(**_input_block_kwargs(label=_("Decimal")))),
+    ("float", FloatBlock(**_input_block_kwargs(label=_("Float")))),
+    ("url", URLBlock(**_input_block_kwargs(label=_("URL"), icon="link"))),
+    ("date", DateBlock(**_input_block_kwargs(label=_("Date"), icon="date"))),
+    ("time", TimeBlock(**_input_block_kwargs(label=_("Time"), icon="time"))),
+    ("datetime", DateTimeBlock(**_input_block_kwargs(label=_("Date and time"), icon="date"))),
 ]
+
+FORM_INPUT_BLOCK_NAMES = frozenset(name for name, _block in FORM_INPUT_BLOCKS)
+
+FORM_PAGE_BLOCKS = BASIC_PAGE_BLOCKS + FORM_INPUT_BLOCKS
 
 
 class FormPage(PageWithMetadata):
     """
     A page built on StreamField that can host a form. Extends BasicPage's
-    block set with an "input" block (a chooser referencing an Input snippet),
-    so editors can interleave checkbox/date/datetime/text questions with
-    ordinary rich content.
+    block set with one block per built-in Wagtail FieldBlock variation
+    (checkbox, text, date, ...), so editors can interleave questions with
+    ordinary rich content. The value an editor types into an input block is
+    the pre-filled default shown to visitors (usually left blank); the
+    question text itself is authored as ordinary content around the input.
 
     Not a BasicPage subclass: BasicPage's body field is fixed to
     BASIC_PAGE_BLOCKS, and Django's multi-table inheritance doesn't allow a
@@ -329,10 +379,12 @@ class FormPage(PageWithMetadata):
 
     @property
     def inputs(self):
+        """The body's input blocks, as bound blocks (each carries the stream
+        child's stable .id plus .block_type, .block, and .value)."""
         return [
-            block.value
+            block
             for block in self.body  # pylint: disable=not-an-iterable
-            if block.block_type == "input"
+            if block.block_type in FORM_INPUT_BLOCK_NAMES
         ]
 
     def get_submission_form_class(self):
@@ -501,7 +553,7 @@ class EventPage(FormPage):
 class EventGuest(FormSubmission):
     """
     An RSVP to an EventPage. Extends FormSubmission (rather than adding a
-    generic InputField/SubmittedField for guest count) so that, for a bare
+    generic SubmittedField for guest count) so that, for a bare
     event page with no admin-added extra questions, this row alone fully
     describes the RSVP: is_authenticated/person/email_address (inherited)
     identify who's coming, and extra_guests says how many people they're

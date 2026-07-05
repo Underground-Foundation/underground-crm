@@ -10,7 +10,7 @@ from .form_submission import FormSubmissionForm
 class EventGuestForm(FormSubmissionForm):
     """
     FormSubmissionForm for EventPage: always asks how many extra guests are
-    coming (a real EventGuest field, not a generic InputField/SubmittedField
+    coming (a real EventGuest field, not a generic SubmittedField
     answer), on top of any admin-added inputs the base class already renders.
     """
 

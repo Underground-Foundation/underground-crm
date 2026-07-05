@@ -1,23 +1,28 @@
+import copy
 from typing import Any
 
 from django import forms
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
+from wagtail.blocks.stream_block import StreamValue
 
-from ..models.input_field import FormSubmission, InputField, SubmittedField
+from ..models.form_submission import FormSubmission, SubmittedField
 
 Person = get_user_model()
 
 
-def _field_name(input_field: InputField) -> str:
-    return f"input_{input_field.name}"
+def _field_name(input_block: StreamValue.StreamChild) -> str:
+    # Keyed by the stream child's UUID, which is stable across reordering and
+    # editing of the page body — the same key SubmittedField.block_id records.
+    return f"input_{input_block.id}"
 
 
 class FormSubmissionForm(forms.Form):
     """
-    Renders one form field per InputField block placed on a FormPage's body,
-    plus identity fields for anonymous visitors.
+    Renders one form field per input block placed on a FormPage's body (see
+    FORM_INPUT_BLOCKS in models/pages.py), plus identity fields for anonymous
+    visitors.
 
     Authenticated visitors are identified by their session — no email/name
     fields are shown, and their submission is tied straight to their Person
@@ -56,18 +61,23 @@ class FormSubmissionForm(forms.Form):
             del self.fields["first_name"]
             del self.fields["last_name"]
 
-        for input_field in page.inputs:
-            self.fields[_field_name(input_field)] = self._field_for_input(input_field)
+        for input_block in page.inputs:
+            self.fields[_field_name(input_block)] = self._field_for_input(input_block)
 
     @staticmethod
-    def _field_for_input(input_field: InputField) -> forms.Field:
-        if input_field.input_type == InputField.CHECKBOX:
-            return forms.BooleanField(required=False, label=input_field.description_en)
-        if input_field.input_type == InputField.DATE:
-            return forms.DateField(required=False, label=input_field.description_en)
-        if input_field.input_type == InputField.DATETIME:
-            return forms.DateTimeField(required=False, label=input_field.description_en)
-        return forms.CharField(required=False, label=input_field.description_en)
+    def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:
+        """
+        Every input block wraps a built-in Wagtail FieldBlock, and a FieldBlock
+        is itself defined by a Django form field — so reuse that field directly
+        rather than re-mapping block types by hand. Deep-copied because the
+        block definition (and its field) is module-level shared state, and the
+        editor-supplied block value becomes this visitor's pre-filled initial.
+        """
+        field = copy.deepcopy(input_block.block.field)
+        field.required = False
+        field.label = input_block.block.label
+        field.initial = input_block.value
+        return field
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
@@ -142,17 +152,22 @@ class FormSubmissionForm(forms.Form):
         submission.full_clean()
         submission.save()
 
-        for input_field in self.page.inputs:
-            field_value = self.cleaned_data.get(_field_name(input_field))
+        for input_block in self.page.inputs:
+            field_value = self.cleaned_data.get(_field_name(input_block))
+            if isinstance(field_value, bool):
+                # A checkbox's answer is has_value alone; str(True) in value
+                # would just duplicate it.
+                has_value, value = field_value, ""
+            else:
+                has_value = field_value is not None and field_value != ""
+                value = str(field_value) if has_value else ""
             SubmittedField.objects.create(
                 submission=submission,
-                input_field=input_field,
-                has_value=bool(field_value),
-                value=(
-                    str(field_value)
-                    if field_value and input_field.input_type != InputField.CHECKBOX
-                    else ""
-                ),
+                block_id=str(input_block.id),
+                name=input_block.block_type,
+                label=str(input_block.block.label),
+                has_value=has_value,
+                value=value,
             )
 
         # Tags (and, for EventPage RSVPs, engagement — see tasks.record_rsvp_engagement)

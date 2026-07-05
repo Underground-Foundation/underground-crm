@@ -17,51 +17,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name="InputField",
-            fields=[
-                (
-                    "id",
-                    models.UUIDField(
-                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
-                    ),
-                ),
-                (
-                    "description_en",
-                    models.CharField(max_length=200, verbose_name="Description (English)"),
-                ),
-                (
-                    "name",
-                    models.CharField(
-                        blank=True,
-                        editable=False,
-                        help_text="Auto-generated from the English description — not directly editable.",
-                        max_length=200,
-                        unique=True,
-                        verbose_name="Name",
-                    ),
-                ),
-                (
-                    "input_type",
-                    models.CharField(
-                        choices=[
-                            ("checkbox", "Checkbox"),
-                            ("date", "Date"),
-                            ("datetime", "Date and time"),
-                            ("text", "Text"),
-                        ],
-                        default="checkbox",
-                        max_length=20,
-                        verbose_name="Input type",
-                    ),
-                ),
-            ],
-            options={
-                "verbose_name": "Input field",
-                "verbose_name_plural": "Input fields",
-                "ordering": ["description_en"],
-            },
-        ),
         migrations.RemoveField(
             model_name="historicalperson",
             name="is_volunteer",
@@ -132,7 +87,17 @@ class Migration(migrations.Migration):
                             ("image", 5),
                             ("blockquote", 6),
                             ("button", 11),
-                            ("input", 12),
+                            ("checkbox", 12),
+                            ("text", 13),
+                            ("multiline_text", 14),
+                            ("email", 15),
+                            ("integer", 16),
+                            ("decimal", 17),
+                            ("float", 18),
+                            ("url", 19),
+                            ("date", 20),
+                            ("time", 21),
+                            ("datetime", 22),
                         ],
                         blank=True,
                         block_lookup={
@@ -218,7 +183,123 @@ class Migration(migrations.Migration):
                                 [[("text", 7), ("url", 8), ("background_color", 9), ("width", 10)]],
                                 {},
                             ),
-                            12: ("underground_crm.blocks.InputBlock", (), {"label": "Input"}),
+                            12: (
+                                "wagtail.blocks.BooleanBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "tick-inverse",
+                                    "label": "Checkbox",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            13: (
+                                "wagtail.blocks.CharBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "pilcrow",
+                                    "label": "Text",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            14: (
+                                "wagtail.blocks.TextBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "label": "Multi-line text",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            15: (
+                                "wagtail.blocks.EmailBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "mail",
+                                    "label": "Email",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            16: (
+                                "wagtail.blocks.IntegerBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "label": "Integer",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            17: (
+                                "wagtail.blocks.DecimalBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "label": "Decimal",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            18: (
+                                "wagtail.blocks.FloatBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "label": "Float",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            19: (
+                                "wagtail.blocks.URLBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "link",
+                                    "label": "URL",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            20: (
+                                "wagtail.blocks.DateBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "date",
+                                    "label": "Date",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            21: (
+                                "wagtail.blocks.TimeBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "time",
+                                    "label": "Time",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
+                            22: (
+                                "wagtail.blocks.DateTimeBlock",
+                                (),
+                                {
+                                    "group": "Form inputs",
+                                    "icon": "date",
+                                    "label": "Date and time",
+                                    "required": False,
+                                    "template": "underground_crm/blocks/input_block.html",
+                                },
+                            ),
                         },
                     ),
                 ),
@@ -360,15 +441,34 @@ class Migration(migrations.Migration):
                         default=uuid.uuid4, editable=False, primary_key=True, serialize=False
                     ),
                 ),
-                ("has_value", models.BooleanField(verbose_name="Has value")),
                 (
-                    "input_field",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="submitted_fields",
-                        to="underground_crm.inputfield",
+                    "block_id",
+                    models.CharField(
+                        help_text="UUID of the input block within the page body's StreamField.",
+                        max_length=36,
+                        verbose_name="Block ID",
                     ),
                 ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text='The input block\'s type name at submission time, e.g. "checkbox".',
+                        max_length=255,
+                        verbose_name="Name",
+                    ),
+                ),
+                (
+                    "label",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="The label shown to the visitor at submission time.",
+                        max_length=255,
+                        verbose_name="Label",
+                    ),
+                ),
+                ("has_value", models.BooleanField(verbose_name="Has value")),
+                ("value", models.TextField(blank=True, default="", verbose_name="Value")),
                 (
                     "submission",
                     models.ForeignKey(
@@ -381,7 +481,7 @@ class Migration(migrations.Migration):
             options={
                 "verbose_name": "Submitted field",
                 "verbose_name_plural": "Submitted fields",
-                "unique_together": {("submission", "input_field")},
+                "unique_together": {("submission", "block_id")},
             },
         ),
     ]

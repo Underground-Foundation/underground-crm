@@ -15,51 +15,11 @@ from wagtail.models import Page
 from underground_crm.forms.form_submission import FormSubmissionForm
 from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
-from underground_crm.models.input_field import FormSubmission, InputField
+from underground_crm.models.form_submission import FormSubmission
 
 logger = logging.getLogger(__name__)
 
 Person = get_user_model()
-
-
-class InputFieldTest(django.test.TestCase):
-    def test_name_is_lowercased_with_spaces_as_underscores(self):
-        description = "Can help with Calling Members"
-        input_field = InputField.objects.create(description_en=description)
-        self.assertEqual(
-            input_field.name,
-            "can_help_with_calling_members",
-            msg="Name generation should lowercase the description and join its words with underscores",
-        )
-
-    def test_name_replaces_spaces_with_underscores(self):
-        input_field = InputField.objects.create(description_en="Writing articles")
-        self.assertEqual(input_field.name, "writing_articles")
-
-    def test_name_strips_punctuation(self):
-        description = "How would you rate your graphic-design skills?"
-        input_field = InputField.objects.create(description_en=description)
-        self.assertEqual(
-            input_field.name,
-            "how_would_you_rate_your_graphicdesign_skills",
-            msg=(
-                "Punctuation (the hyphen in 'graphic-design' and the trailing "
-                "question mark) should be stripped entirely before the remaining "
-                "words are lowercased and underscore-joined"
-            ),
-        )
-
-    def test_explicit_name_overrides_generation(self):
-        explicit_name = "calling_members"
-        input_field = InputField.objects.create(
-            description_en="Can help with Calling Members",
-            name=explicit_name,
-        )
-        self.assertEqual(
-            input_field.name,
-            explicit_name,
-            msg="Staff-supplied names must be kept as-is, not overwritten by auto-generation",
-        )
 
 
 class FormSubmissionValidationTest(django.test.TestCase):
@@ -89,15 +49,6 @@ class FormSubmissionFormTest(django.test.TestCase):
         self.factory = RequestFactory()
         root = Page.objects.get(id=1)
 
-        self.calling_members = InputField.objects.create(
-            description_en="Calling members", input_type=InputField.CHECKBOX
-        )
-        self.videography = InputField.objects.create(
-            description_en="Videography", input_type=InputField.CHECKBOX
-        )
-        self.availability = InputField.objects.create(
-            description_en="Availability notes", input_type=InputField.TEXT
-        )
         self.caller_tag = Tag.objects.create(name="Caller")
         self.videographer_tag = Tag.objects.create(name="Videographer")
 
@@ -105,16 +56,21 @@ class FormSubmissionFormTest(django.test.TestCase):
             title="Get involved",
             slug="get-involved",
             body=[
-                ("input", self.calling_members),
-                ("input", self.videography),
-                ("input", self.availability),
+                ("checkbox", False),
+                ("checkbox", False),
+                ("text", ""),
             ],
         )
         root.add_child(instance=self.page)
         self.page.tags_to_apply.set([self.caller_tag, self.videographer_tag])
+        # Reload so the body's stream children carry their persisted UUIDs —
+        # the ids that both the form's field names and SubmittedField.block_id
+        # are keyed by.
+        self.page.refresh_from_db()
+        self.calling_members, self.videography, self.availability = self.page.inputs
 
-    def _field_name(self, input_field: InputField) -> str:
-        return f"input_{input_field.name}"
+    def _field_name(self, input_block) -> str:
+        return f"input_{input_block.id}"
 
     def _post_request(self, data, user):
         request = self.factory.post("/get-involved/", data)
@@ -145,15 +101,23 @@ class FormSubmissionFormTest(django.test.TestCase):
         self.assertIsNone(submission.email_address)
         self.assertIsNone(submission.ip_address)
 
-        submitted = {row.input_field_id: row.has_value for row in submission.submitted_fields.all()}
+        submitted = {row.block_id: row.has_value for row in submission.submitted_fields.all()}
         self.assertEqual(
             submitted,
             {
-                self.calling_members.pk: True,
-                self.videography.pk: False,
-                self.availability.pk: True,
+                str(self.calling_members.id): True,
+                str(self.videography.id): False,
+                str(self.availability.id): True,
             },
-            msg="Every input field on the page should get a row, even the ones left unchecked/blank",
+            msg="Every input block on the page should get a row, even the ones left unchecked/blank",
+        )
+
+        availability_row = submission.submitted_fields.get(block_id=str(self.availability.id))
+        self.assertEqual(availability_row.value, "Weekday evenings")
+        self.assertEqual(
+            (availability_row.name, availability_row.label),
+            ("text", "Text"),
+            msg="SubmittedField should snapshot the block's type name and visitor-facing label",
         )
 
         member_tag_names = set(member.tags.values_list("name", flat=True))
@@ -305,19 +269,18 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
     def setUp(self):
         self.factory = RequestFactory()
         root = Page.objects.get(id=1)
-        self.calling_members = InputField.objects.create(
-            description_en="Calling members", input_type=InputField.CHECKBOX
-        )
         self.page = FormPage(
             title="Get involved",
             slug="get-involved",
-            body=[("input", self.calling_members)],
+            body=[("checkbox", False)],
         )
         root.add_child(instance=self.page)
+        self.page.refresh_from_db()
+        (self.calling_members,) = self.page.inputs
 
     def _submit(self, user, checked: bool):
         request = self.factory.post(
-            "/get-involved/", {f"input_{self.calling_members.name}": "on" if checked else ""}
+            "/get-involved/", {f"input_{self.calling_members.id}": "on" if checked else ""}
         )
         request.user = user
         form = FormSubmissionForm(request.POST, request=request, page=self.page)
@@ -334,7 +297,7 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
         anonymous_email = "anon@example.com"
         request = self.factory.post(
             "/get-involved/",
-            {f"input_{self.calling_members.name}": "on", "email": anonymous_email},
+            {f"input_{self.calling_members.id}": "on", "email": anonymous_email},
         )
         request.user = AnonymousUser()
         form = FormSubmissionForm(request.POST, request=request, page=self.page)
@@ -345,7 +308,7 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
             output_path = Path(tmp_dir) / "callers.csv"
             call_command(
                 "get_volunteers_with_field",
-                field="Calling members",
+                field="Checkbox",  # the label snapshotted from the block definition
                 output=str(output_path),
             )
             with open(output_path, newline="", encoding="utf-8") as csv_file:
