@@ -2,6 +2,8 @@ import uuid
 
 from django.db import models
 
+from underground_crm import addressr
+
 
 class Address(models.Model):
     """A physical or postal address, reusable across multiple person address roles."""
@@ -39,3 +41,38 @@ class Address(models.Model):
         """True if both addresses describe the same physical location."""
         fields = ("line1", "line2", "line3", "city", "state", "postcode", "country_code")
         return all((getattr(self, f) or "") == (getattr(other, f) or "") for f in fields)
+
+    @classmethod
+    def from_one_line(cls, one_line: str) -> "Address":
+        """
+        Build an unsaved Address from a single-line address string, as typed
+        into (or picked from) an Addressr-backed autocomplete input.
+
+        The string is resolved through Addressr so the returned record carries
+        the structured components and geocode of the match. When Addressr is
+        unavailable or finds no match, the raw string is kept in line1 on an
+        unverified record — the geocode_addresses command (with
+        --correct-address-fields) repairs such records once Addressr can
+        resolve them.
+        """
+        match = addressr.geocode(one_line)
+        if match is None:
+            return cls(line1=one_line)
+
+        structured = match.address
+        if structured is None:
+            return cls(
+                line1=one_line,
+                latitude=match.latitude,
+                longitude=match.longitude,
+                geocode_reliability=match.reliability,
+            )
+        return cls(
+            line1=structured.line1,
+            city=structured.city,
+            state=structured.state,
+            postcode=structured.postcode,
+            latitude=match.latitude,
+            longitude=match.longitude,
+            geocode_reliability=match.reliability,
+        )

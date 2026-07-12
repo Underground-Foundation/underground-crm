@@ -11,6 +11,7 @@ from underground_crm.contactability import get_validated_email_address
 from underground_crm.management.commands.import_pages import (
     PAGE_BUILDING_MAP,
     build_form_page,
+    build_registration_page,
     extract_donation_frequency,
     extract_event_population,
     extract_event_time,
@@ -23,7 +24,7 @@ from underground_crm.management.commands.import_pages import (
     get_host_by_email_address,
     parse_event_datetime,
 )
-from underground_crm.models.pages import FormPage
+from underground_crm.models.pages import FormPage, RegistrationPage
 
 
 class TestParseEventDatetime(unittest.TestCase):
@@ -237,8 +238,8 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
 
     def test_extracts_one_entry_per_checkbox_plus_two_free_text_fields(self):
         inputs = extract_form_inputs(self.form_tag)
-        checkbox_count = sum(1 for _, input_type in inputs if input_type == "checkbox")
-        text_count = sum(1 for _, input_type in inputs if input_type == "text")
+        checkbox_count = sum(1 for i in inputs if i.input_type == "checkbox")
+        text_count = sum(1 for i in inputs if i.input_type == "text")
         self.assertEqual(
             checkbox_count,
             self.expected_checkbox_count,
@@ -252,17 +253,17 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
 
     def test_extracts_expected_checkbox_label(self):
         inputs = extract_form_inputs(self.form_tag)
-        descriptions = [description for description, _ in inputs]
+        descriptions = [i.description for i in inputs]
         self.assertIn("Party engagement (calling members)", descriptions)
 
     def test_extracts_expected_text_field_labels(self):
         inputs = extract_form_inputs(self.form_tag)
-        descriptions = [description for description, _ in inputs]
+        descriptions = [i.description for i in inputs]
         self.assertIn("When are you available? (optional)", descriptions)
         self.assertIn("Comments, other ideas, etc. (optional)", descriptions)
 
     def test_hidden_bookkeeping_fields_are_excluded(self):
-        descriptions = [description for description, _ in extract_form_inputs(self.form_tag)]
+        descriptions = [i.description for i in extract_form_inputs(self.form_tag)]
         # authenticity_token, page_id, return_to, activity_is_private, and the
         # Rails-style empty-array fallback are all type="hidden" — none of them
         # are real questions.
@@ -275,7 +276,7 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
         aria-hidden="true" and style="display:none" — it's used to recognise
         an already-logged-in visitor via a code, not a real question.
         """
-        descriptions = [description for description, _ in extract_form_inputs(self.form_tag)]
+        descriptions = [i.description for i in extract_form_inputs(self.form_tag)]
         self.assertNotIn("Optional email code", descriptions)
 
 
@@ -371,6 +372,87 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
                 "A 'Volunteer Signup' page should tag authenticated submitters as "
                 f"'{volunteer_tag_name}' via tags_to_apply"
             ),
+        )
+
+
+class TestBuildSignupPage(django.test.TestCase):
+    """
+    signup_sample.html models the legacy "Signup" page type: a <form> whose
+    fields address the visitor's own record. build_registration_page() must
+    turn it into a RegistrationPage of person_field blocks — mapping legacy
+    field names onto whitelisted Person fields, keeping the legacy question
+    text as each block's label, and dropping identity fields (which
+    RegistrationForm renders by itself) plus anything unmappable.
+    """
+
+    signup_html_file = Path(__file__).parent / "signup_sample.html"
+
+    def setUp(self):
+        self.document_soup, self.importable_html = extract_importable_html(
+            self.signup_html_file, importable_dir=None
+        )
+        self.attributes = {
+            "slug": "join",
+            "name": "Join",
+            "headline": "Join Fusion and make a difference!",
+            "title": "Join Fusion and make a difference!",
+            "excerpt": "Fusion is dedicated to thinking of long-term solutions.",
+            "page_type_name": "Signup",
+            "published_at": "2017-04-09T07:30:00+10:00",
+        }
+        self.site = Site.objects.first()
+
+    def _build_and_save(self) -> RegistrationPage:
+        page = build_registration_page(
+            document_soup=self.document_soup,
+            importable_html=self.importable_html,
+            attributes=self.attributes,
+            slug="join",
+            site=self.site,
+        )
+        Page.objects.get(id=1).add_child(instance=page)
+        page.save()
+        page.refresh_from_db()
+        return page
+
+    def test_signup_page_type_maps_to_registration_page(self):
+        self.assertIs(PAGE_BUILDING_MAP["Signup"], build_registration_page)
+
+    def test_whitelisted_fields_become_person_field_blocks_with_legacy_labels(self):
+        page = self._build_and_save()
+        blocks_by_person_field = {
+            block.value["field"]: block.value["label_override"] for block in page.inputs
+        }
+        self.assertEqual(
+            blocks_by_person_field,
+            {
+                "mobile_number": "Mobile phone",
+                "home_address": "Address",
+                "email_opt_in": "Send me email updates",
+            },
+            msg=(
+                "Each legacy signup field whose name matches a whitelisted Person "
+                "field should become a person_field block labelled with the legacy "
+                "question text; the legacy submitted_address question maps to the "
+                "home-address role; identity fields (first/last name, email) are "
+                "rendered by RegistrationForm itself, and the employer field has "
+                "no Person counterpart to write to"
+            ),
+        )
+
+    def test_intro_copy_is_kept_without_the_form_markup(self):
+        page = self._build_and_save()
+        html_blocks = [block.value for block in page.body if block.block_type == "html"]
+        combined_html = " ".join(html_blocks)
+        self.assertIn(
+            "long-term solutions",
+            combined_html,
+            msg="The intro copy ahead of the form should still be kept",
+        )
+        self.assertNotIn(
+            "<form",
+            combined_html,
+            msg="The raw <form> markup must not be duplicated alongside the person_field blocks",
         )
 
 

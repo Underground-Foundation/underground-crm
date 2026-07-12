@@ -9,6 +9,8 @@ from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext_lazy as _
 from simple_history.models import HistoricalRecords
+from taggit.managers import TaggableManager
+from taggit.models import TagBase, TaggedItemBase
 
 from .address import Address
 from ..contactability import (
@@ -17,11 +19,10 @@ from ..contactability import (
 )
 
 
-class Tag(models.Model):
+class Tag(TagBase):
     """A free-form label that can be applied to any person."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100, unique=True)
     is_protected = models.BooleanField(
         default=False,
         verbose_name=_("Is protected"),
@@ -30,9 +31,6 @@ class Tag(models.Model):
 
     class Meta:
         ordering = ["name"]
-
-    def __str__(self):
-        return self.name
 
 
 class PersonManager(BaseUserManager):
@@ -178,14 +176,6 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Submitted address"),
         help_text=_("Raw address string as submitted by the person, before geocoding."),
     )
-    primary_address = models.OneToOneField(
-        Address,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="primary_for",
-        verbose_name=_("Primary address"),
-    )
     home_address = models.OneToOneField(
         Address,
         null=True,
@@ -221,7 +211,6 @@ class Person(AbstractBaseUser, PermissionsMixin):
         related_name="billing_for",
         verbose_name=_("Billing address"),
     )
-
     # --- Professional ---
     website = models.URLField(
         null=True,
@@ -254,7 +243,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Tags ---
-    tags = models.ManyToManyField(Tag, through="PersonTag", blank=True, related_name="people")
+    tags = TaggableManager(through="PersonTag", blank=True, related_name="people")
 
     # --- Auth M2M (explicit through models so the PK is UUID, not bigint) ---
     groups = models.ManyToManyField(
@@ -531,18 +520,26 @@ class Person(AbstractBaseUser, PermissionsMixin):
         return self.engagements.first()  # pylint: disable=no-member
 
 
-class PersonTag(models.Model):
+class PersonTag(TaggedItemBase):
     """Explicit through model for Person.tags, carrying a UUID PK for federation support."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    person = models.ForeignKey(Person, on_delete=models.CASCADE)
-    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+    content_object = models.ForeignKey(Person, on_delete=models.CASCADE)
+    tag = models.ForeignKey(Tag, related_name="tagged_people", on_delete=models.CASCADE)
+    was_authenticated = models.BooleanField(
+        default=True,
+        verbose_name=_("Was authenticated"),
+        help_text=_(
+            "Whether this tag was applied as a result of an authenticated action, "
+            "rather than an anonymous form submission."
+        ),
+    )
 
     class Meta:
         verbose_name = "tag"
         verbose_name_plural = "tags"
         db_table = "underground_crm_person_tags"
-        unique_together = [("person", "tag")]
+        unique_together = [("content_object", "tag")]
 
 
 class PersonGroup(models.Model):

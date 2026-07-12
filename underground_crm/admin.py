@@ -244,6 +244,9 @@ class TagAdmin(admin.ModelAdmin):
     list_display = ["name", "is_protected"]
     list_filter = ["is_protected"]
     search_fields = ["name"]
+    # slug is auto-generated from name (see taggit.models.TagBase.save); it isn't
+    # meant to be hand-edited.
+    exclude = ["slug"]
 
     def has_delete_permission(self, request, obj=None):
         # The pre_delete signal (signals.py) is the actual enforcement — this just

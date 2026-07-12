@@ -31,12 +31,18 @@ def register_redirects_menu_item():
 
 
 class TagViewSet(SnippetViewSet):
+    # Tags are now django-taggit-backed (see underground_crm.models.person.Tag);
+    # wherever a page has a "tags to apply" field, editors get a native
+    # autocomplete/create-in-place input for free (FieldPanel on a TagBase
+    # field), so this listing exists only for browsing/renaming/deleting tags
+    # directly. slug is excluded since it's auto-generated from name.
     model = Tag
     icon = "tag"
     menu_label = _("Tags")
     menu_order = 300
-    list_display = ["name"]
+    list_display = ["name", "is_protected"]
     search_fields = ["name"]
+    panels = [FieldPanel("name"), FieldPanel("is_protected")]
 
 
 register_snippet(TagViewSet)

@@ -18,6 +18,48 @@ def _field_name(input_block: StreamValue.StreamChild) -> str:
     return f"input_{input_block.id}"
 
 
+def find_identity_conflict(email: str, first_name: str, last_name: str) -> str | None:
+    """
+    Returns an error message if a Person already exists for this email address
+    and the supplied names don't match it, else None. This stops an anonymous
+    visitor from typing in an existing member's email to attach tags/engagement
+    to their account without proving they own it (matching by name is a weak
+    proof, but stronger than nothing, and consistent with never touching
+    FormSubmission.person for anonymous submissions in the first place).
+    """
+    existing = Person.objects.filter(email=Person.objects.normalize_email(email)).first()
+    if existing is None:
+        return None
+    if (first_name or "").strip().casefold() != (existing.first_name or "").strip().casefold() or (
+        last_name or ""
+    ).strip().casefold() != (existing.last_name or "").strip().casefold():
+        return _("An account already exists for this email address. Please log in to continue.")
+    return None
+
+
+def get_or_create_person(email: str, first_name: str, last_name: str) -> Any:
+    """
+    Resolves the Person an anonymous submission's tags and engagement should
+    apply to. Never attached to FormSubmission.person (see that field's
+    comment) — this is a read model for downstream effects, not a claim that
+    the visitor authenticated as this Person.
+
+    A newly created placeholder has no usable password and has never logged
+    in (empty password, empty last_login — both are simply left at their
+    model defaults here, not explicitly set), and is_active=True so it
+    behaves like any other Person record for filtering/lookup purposes.
+    """
+    person, _created = Person.objects.get_or_create(
+        email=Person.objects.normalize_email(email),
+        defaults={
+            "first_name": first_name or "",
+            "last_name": last_name or "",
+            "is_active": True,
+        },
+    )
+    return person
+
+
 class FormSubmissionForm(forms.Form):
     """
     Renders one form field per input block placed on a FormPage's body (see
@@ -89,44 +131,12 @@ class FormSubmissionForm(forms.Form):
             self.add_error("email", _("Email address is required."))
             return cleaned
 
-        existing = Person.objects.filter(email=Person.objects.normalize_email(email)).first()
-        if existing is not None:
-            first_name = (cleaned.get("first_name") or "").strip().casefold()
-            last_name = (cleaned.get("last_name") or "").strip().casefold()
-            if (
-                first_name != (existing.first_name or "").strip().casefold()
-                or last_name != (existing.last_name or "").strip().casefold()
-            ):
-                self.add_error(
-                    None,
-                    _(
-                        "An account already exists for this email address. "
-                        "Please log in to continue."
-                    ),
-                )
-        return cleaned
-
-    def _get_or_create_person(self, email: str) -> Any:
-        """
-        Resolves the Person a placeholder/matched anonymous submission's tags
-        and engagement should apply to. Never attached to FormSubmission.person
-        (see that field's comment) — this is a read model for downstream
-        effects, not a claim that the visitor authenticated as this Person.
-
-        A newly created placeholder has no usable password and has never
-        logged in (empty password, empty last_login — both are simply left at
-        their model defaults here, not explicitly set), and is_active=True so
-        it behaves like any other Person record for filtering/lookup purposes.
-        """
-        person, _created = Person.objects.get_or_create(
-            email=Person.objects.normalize_email(email),
-            defaults={
-                "first_name": self.cleaned_data.get("first_name") or "",
-                "last_name": self.cleaned_data.get("last_name") or "",
-                "is_active": True,
-            },
+        conflict = find_identity_conflict(
+            email, cleaned.get("first_name") or "", cleaned.get("last_name") or ""
         )
-        return person
+        if conflict:
+            self.add_error(None, conflict)
+        return cleaned
 
     def _build_submission(self) -> FormSubmission:
         """Returns an unsaved FormSubmission (or subclass) with only
@@ -147,7 +157,11 @@ class FormSubmissionForm(forms.Form):
             submission.email_address = email
             submission.ip_address = self.request.META.get("REMOTE_ADDR") or None
             submission.language_preferences = self.request.META.get("HTTP_ACCEPT_LANGUAGE", "")
-            target_person = self._get_or_create_person(email)
+            target_person = get_or_create_person(
+                email,
+                self.cleaned_data.get("first_name") or "",
+                self.cleaned_data.get("last_name") or "",
+            )
 
         submission.full_clean()
         submission.save()
@@ -174,10 +188,13 @@ class FormSubmissionForm(forms.Form):
         # apply to target_person regardless of authentication status: a
         # placeholder/matched Person from an anonymous submission still gets
         # them. FormSubmission.person itself stays unset for anonymous
-        # submissions either way (see that field's comment). TODO: once we
-        # have a UI for this, surface whether a given tag/engagement came from
-        # an authenticated or anonymous submission — right now that
-        # distinction is only visible by looking at the FormSubmission itself.
-        target_person.tags.add(*self.page.tags_to_apply.all())
+        # submissions either way (see that field's comment). PersonTag.was_authenticated
+        # records which of those two cases applied — only used for a newly-created
+        # relation, so an existing tag's recorded value is never downgraded by a
+        # later anonymous submission.
+        target_person.tags.add(
+            *self.page.tags_to_apply.all(),
+            through_defaults={"was_authenticated": is_authenticated},
+        )
 
         return submission

@@ -1,0 +1,59 @@
+{% extends "underground_crm/basic_page.html" %}
+{% load i18n wagtailcore_tags wagtailroutablepage_tags %}
+
+{% block extra_head %}
+  <link rel="alternate"
+        type="application/rss+xml"
+        title="{% blocktranslate with title=page.title %}{{ title }} (RSS){% endblocktranslate %}"
+        href="{% routablepageurl page 'rss_feed' %}">
+  <link rel="alternate"
+        type="application/atom+xml"
+        title="{% blocktranslate with title=page.title %}{{ title }} (Atom){% endblocktranslate %}"
+        href="{% routablepageurl page 'atom_feed' %}">
+{% endblock %}
+
+{% block extra_body_content %}
+  {% if has_subscriptions %}
+    <nav class="feed-source-filter my-3" aria-label="{% translate 'Item sources' %}">
+      {% if source == "local" %}
+        <a href="?">{% translate "All sources" %}</a>
+        <strong>{% blocktranslate %}{{ site_name }} only{% endblocktranslate %}</strong>
+      {% else %}
+        <strong>{% translate "All sources" %}</strong>
+        <a href="?source=local">{% blocktranslate %}{{ site_name }} only{% endblocktranslate %}</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+  <section class="feed-item-list">
+    {% for item in feed_items %}
+      <article class="feed-item my-3">
+        <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+        <p class="text-muted">
+          {% if page.ordering == "soonest_first" %}
+            {{ item.date|date:"DATETIME_FORMAT" }}
+          {% else %}
+            {{ item.date|date }}
+          {% endif %}
+          {% if item.is_external %}&mdash; {{ item.source_title }}{% endif %}
+        </p>
+        {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+      </article>
+    {% empty %}
+      <p>{% translate "There is nothing to show here yet." %}</p>
+    {% endfor %}
+  </section>
+  {% if feed_items.has_other_pages %}
+    <nav class="feed-pagination" aria-label="{% translate 'Listing pages' %}">
+      {% if feed_items.has_previous %}
+        <a href="?page={{ feed_items.previous_page_number }}{% if source %}&amp;source={{ source }}{% endif %}">
+          {% translate "Previous page" %}
+        </a>
+      {% endif %}
+      {% if feed_items.has_next %}
+        <a href="?page={{ feed_items.next_page_number }}{% if source %}&amp;source={{ source }}{% endif %}">
+          {% translate "Next page" %}
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

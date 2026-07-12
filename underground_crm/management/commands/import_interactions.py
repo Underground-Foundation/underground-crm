@@ -1,100 +1,34 @@
 """
-Management command to import interactions (contacts) from the legacy CRM into Interaction.
+Management command to import interactions from the legacy CRM into Interaction.
 
 Usage:
-    python manage.py import_legacy_interactions [<legacy_person_id>]
+    python manage.py import_interactions --from-file interactions.jsonl
+    python manage.py import_interactions --legacy-person-id <id>
+    python manage.py import_interactions
 
-Without a person ID, imports interactions for all people in the legacy CRM.
-With a person ID, imports only that person's interactions.
+With --from-file, reads interactions from a file previously written by
+export_legacy_interactions. Without it, interactions are fetched directly from
+the legacy CRM — for one person with --legacy-person-id, or for everyone if
+that is omitted too.
 
 Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, and LEGACY_USER_AGENT from
-the environment (see .env.example).
+the environment (see .env.example). Not required when --from-file is given.
 """
-
-import json
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.dateparse import parse_datetime
 
+from underground_crm.management.commands.importing import (
+    fetch_interactions_via_api,
+    make_legacy_api_headers,
+    read_jsonl,
+)
 from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import Interaction, Person
 
 LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
 LEGACY_API_TOKEN = require_env("LEGACY_API_TOKEN")
 LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
-
-
-def _make_headers():
-    return {
-        "Authorization": f"Bearer {LEGACY_API_TOKEN}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": LEGACY_USER_AGENT,
-    }
-
-
-def _get(path, params=None):
-    url = f"{LEGACY_ADMIN_URL}{path}"
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers=_make_headers())
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read()), resp.status
-
-
-def _normalize(contact):
-    return {
-        "contact_id": contact.get("contact_id"),
-        "person_legacy_id": contact.get("person_id") or contact.get("recipient_id"),
-        "author_legacy_id": contact.get("author_id") or contact.get("sender_id"),
-        "method": contact.get("method", "") or "",
-        "note": contact.get("note", "") or "",
-        "status": contact.get("status", "") or "",
-        "created_at": contact.get("created_at", ""),
-    }
-
-
-def fetch_interactions_for_person(person_id):
-    data, status = _get(f"/api/v1/people/{person_id}/contacts", {"limit": 100})
-    if status != 200:
-        return None, status
-    return [_normalize(c) for c in data.get("results", [])], status
-
-
-def fetch_all_interactions(stdout):
-    interactions = []
-    next_cursor = None
-    page = 0
-
-    while True:
-        params = {"limit": 100}
-        if next_cursor:
-            params["next"] = next_cursor
-
-        data, status = _get("/api/v1/contacts", params)
-        if status != 200:
-            raise CommandError(f"Legacy CRM request failed on page {page + 1}: HTTP {status}")
-
-        results = data.get("results", [])
-        next_cursor = data.get("next")
-        page += 1
-
-        for contact in results:
-            interactions.append(_normalize(contact))
-
-        if page % 5 == 0:
-            stdout.write(f"  Fetched {len(interactions)} interactions so far (page {page})...")
-
-        if not results or not next_cursor:
-            break
-
-        time.sleep(0.1)
-
-    return interactions
 
 
 class Command(BaseCommand):
@@ -104,11 +38,17 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "legacy_person_id",
+            "--legacy-person-id",
             type=int,
-            nargs="?",
             default=None,
-            help="Legacy CRM person ID to import interactions for. Omit to import all.",
+            help="Legacy CRM person ID to import interactions for. Omit to import all. "
+            "Ignored when --from-file is given.",
+        )
+        parser.add_argument(
+            "--from-file",
+            default=None,
+            help="Path to a .jsonl file previously written by export_legacy_interactions. "
+            "If omitted, interactions are fetched directly from the legacy CRM.",
         )
         parser.add_argument(
             "--dry-run",
@@ -118,42 +58,33 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         legacy_person_id = options["legacy_person_id"]
+        from_file = options["from_file"]
         dry_run = options["dry_run"]
 
-        if legacy_person_id:
-            self.stdout.write(f"Importing interactions for legacy ID {legacy_person_id}...")
+        if from_file:
+            self.stdout.write(f"Reading interactions from {from_file}...")
+            try:
+                raw = read_jsonl(from_file)
+            except FileNotFoundError as exc:
+                raise CommandError(f"File not found: {from_file}") from exc
         else:
-            self.stdout.write("Importing interactions for all people...")
+            if legacy_person_id:
+                self.stdout.write(f"Importing interactions for legacy ID {legacy_person_id}...")
+            else:
+                self.stdout.write("Importing interactions for all people...")
+            self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
+            api_headers = make_legacy_api_headers(LEGACY_API_TOKEN, LEGACY_USER_AGENT)
+            raw = fetch_interactions_via_api(
+                legacy_admin_url=LEGACY_ADMIN_URL,
+                api_headers=api_headers,
+                legacy_person_id=legacy_person_id,
+                stdout=self.stdout,
+            )
+
         if dry_run:
             self.stdout.write(self.style.WARNING("Dry run — nothing will be written."))
 
-        for var, val in [
-            ("LEGACY_ADMIN_URL", LEGACY_ADMIN_URL),
-            ("LEGACY_API_TOKEN", LEGACY_API_TOKEN),
-            ("LEGACY_USER_AGENT", LEGACY_USER_AGENT),
-        ]:
-            if not val:
-                raise CommandError(f"{var} is not set. Add it to .env.")
-
-        self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
-
-        # --- Fetch raw interactions from legacy CRM ---
-        try:
-            if legacy_person_id:
-                raw, status = fetch_interactions_for_person(legacy_person_id)
-                if raw is None:
-                    raise CommandError(
-                        f"Legacy CRM returned HTTP {status} for person {legacy_person_id}."
-                    )
-                self.stdout.write(f"  Fetched {len(raw)} interaction(s) from legacy CRM.")
-            else:
-                self.stdout.write("  Fetching all interactions (this may take a while)...")
-                raw = fetch_all_interactions(self.stdout)
-                self.stdout.write(f"  Fetched {len(raw)} interaction(s) total.")
-        except urllib.error.HTTPError as e:
-            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
-        except urllib.error.URLError as e:
-            raise CommandError(f"Network error reaching legacy CRM: {e.reason}") from e
+        self.stdout.write(f"  Found {len(raw)} interaction(s).")
 
         if not raw:
             self.stdout.write("No interactions found.")

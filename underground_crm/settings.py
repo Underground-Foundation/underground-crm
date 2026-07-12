@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     # Wagtail
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
+    "wagtail.contrib.routable_page",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -189,6 +190,14 @@ else:
 
 # Wagtail
 WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
+
+# Sender for transactional email (e.g. subscription confirmations), dispatched
+# through SMTP2Go — the domain must be registered there.
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "webmaster@localhost")
+
+# Allow users to query these tags in calls to /me (?has-tag=<slug>). Every
+# other tag on a Person is internal CRM data and is never exposed to them.
+SELF_QUERYABLE_TAGS = ["Newsletter", "Press releases"]
 
 WAGTAIL_SITE_NAME = "Underground CRM"
 

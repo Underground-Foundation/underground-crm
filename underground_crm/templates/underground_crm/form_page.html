@@ -13,5 +13,7 @@
       {{ form.as_p }}
       <button type="submit" class="btn btn-primary">{% trans "Submit" %}</button>
     </form>
+    {# Widget assets, e.g. the address autocomplete script. #}
+    {{ form.media }}
   </div>
 {% endblock %}

@@ -1,28 +1,31 @@
 """
-Management command to import private notes from the legacy CRM into PersonNote.
+Management command to import private notes into PersonNote for a given legacy person ID.
 
 Usage:
-    python manage.py import_legacy_private_notes --legacy-person-id <id>
-    python manage.py import_legacy_private_notes --legacy-person-id <id> --cookie-file <path>
+    python manage.py import_private_notes --legacy-person-id <id> --from-file notes.jsonl
+    python manage.py import_private_notes --legacy-person-id <id>
+    python manage.py import_private_notes --legacy-person-id <id> --cookie-file <path>
 
-Requires an admin session cookie file (Netscape format) for the legacy CRM.
-Export your cookies from the browser using a cookie export extension,
-then point --cookie-file at the file.
+With --from-file, notes are read from a JSON Lines file previously written by
+export_legacy_private_notes. Without it, notes are fetched directly from the
+legacy CRM using the same cookie-based authentication as that command —
+requires an admin session cookie file (Netscape format); export your cookies
+from the browser using a cookie export extension, then point --cookie-file
+at the file.
 
 Reads LEGACY_ADMIN_URL, LEGACY_USER_AGENT, and LEGACY_ADMIN_COOKIE_FILE from
 the environment (see .env.example). The cookie file path can be overridden
-with --cookie-file.
-
-# TODO: Accept a pre-exported CSV file as an alternative input source,
-#       for bulk import without requiring live legacy CRM access.
+with --cookie-file. Neither is required when --from-file is given.
 """
-
-import urllib.error
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
-from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
+from underground_crm.management.commands.importing import (
+    fetch_private_notes_via_cookie,
+    read_jsonl,
+    require_legacy_admin_env,
+)
 from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import PersonNote
 
@@ -41,10 +44,16 @@ class Command(BaseCommand):
             help="Legacy CRM person ID to import notes for.",
         )
         parser.add_argument(
+            "--from-file",
+            default=None,
+            help="Path to a .jsonl file previously written by export_legacy_private_notes. "
+            "If omitted, notes are fetched directly from the legacy CRM.",
+        )
+        parser.add_argument(
             "--cookie-file",
             default=None,
             help="Path to a Netscape-format cookie file for the legacy CRM. "
-            "Defaults to LEGACY_ADMIN_COOKIE_FILE env var.",
+            "Defaults to LEGACY_ADMIN_COOKIE_FILE env var. Ignored when --from-file is given.",
         )
         parser.add_argument(
             "--dry-run",
@@ -54,22 +63,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         legacy_person_id = options["legacy_person_id"]
-        cookie_file = options["cookie_file"] or LEGACY_ADMIN_COOKIE_FILE
+        from_file = options["from_file"]
         dry_run = options["dry_run"]
 
         self.stdout.write(f"Importing private notes for legacy ID {legacy_person_id}...")
         if dry_run:
             self.stdout.write(self.style.WARNING("Dry run — nothing will be written."))
 
-        for var, val in [
-            ("LEGACY_ADMIN_URL", LEGACY_ADMIN_URL),
-            ("LEGACY_ADMIN_COOKIE_FILE", cookie_file),
-        ]:
-            if not val:
-                raise CommandError(f"{var} is not set. Add it to .env or pass --cookie-file.")
-
-        self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
-        self.stdout.write(f"  Cookie file: {cookie_file}")
         User = get_user_model()
 
         try:
@@ -82,19 +82,23 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  Local user: {user} (pk={user.pk})")
 
-        try:
-            opener = build_cookie_opener(cookie_file)
-        except FileNotFoundError as exc:
-            raise CommandError(f"Cookie file not found: {cookie_file}") from exc
-
-        self.stdout.write("  Cookie file loaded. Fetching activities...")
-
-        try:
-            raw_notes = fetch_private_notes(opener, LEGACY_ADMIN_URL, legacy_person_id, self.stdout)
-        except urllib.error.HTTPError as e:
-            raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
-        except urllib.error.URLError as e:
-            raise CommandError(f"Network error reaching legacy CRM: {e.reason}") from e
+        if from_file:
+            self.stdout.write(f"  Reading notes from {from_file}...")
+            try:
+                raw_notes = read_jsonl(from_file)
+            except FileNotFoundError as exc:
+                raise CommandError(f"File not found: {from_file}") from exc
+        else:
+            cookie_file = options["cookie_file"] or LEGACY_ADMIN_COOKIE_FILE
+            require_legacy_admin_env(cookie_file, LEGACY_ADMIN_URL)
+            self.stdout.write(f"  Legacy CRM: {LEGACY_ADMIN_URL}")
+            self.stdout.write(f"  Cookie file: {cookie_file}")
+            raw_notes = fetch_private_notes_via_cookie(
+                cookie_file=cookie_file,
+                legacy_admin_url=LEGACY_ADMIN_URL,
+                legacy_person_id=legacy_person_id,
+                stdout=self.stdout,
+            )
 
         self.stdout.write(f"  Found {len(raw_notes)} private note(s).")
 

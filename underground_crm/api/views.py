@@ -1,6 +1,7 @@
 from typing import cast
 
 from django.conf import settings
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -77,6 +78,12 @@ class AddressViewSet(CRMStaffModelViewSet):
     serializer_class = AddressSerializer
 
 
+# ensure_csrf_cookie: the islands that call this endpoint (profile dropdown,
+# donation form, subscription form) follow up with fetch() POSTs that send
+# X-CSRFToken from the csrftoken cookie — but their pages are cacheable and
+# never render a {% csrf_token %}, so this auth-discovery GET is what plants
+# the cookie.
+@ensure_csrf_cookie
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def me(request):
@@ -85,6 +92,21 @@ def me(request):
 
     user = cast(settings.AUTH_USER_MODEL, request.user)
     data: dict = {"authenticated": True, "name": user.full_name, "email_address": user.email}
+
+    # ?has-tag=<slug> (repeatable) lets subscription UI ask whether the
+    # visitor already carries specific mailing-list tags without a page render
+    # leaking user-specific state. Only tags whitelisted in
+    # SELF_QUERYABLE_TAGS may be asked about — the rest of a person's tags are
+    # internal CRM data and must never be exposed to them. The response lists
+    # the slugs of the queried, whitelisted tags the visitor carries;
+    # anything else (not carried, not whitelisted, misspelt) is simply absent.
+    queried_slugs = request.GET.getlist("has-tag")
+    if queried_slugs:
+        data["tags"] = sorted(
+            user.tags.filter(
+                slug__in=queried_slugs, name__in=settings.SELF_QUERYABLE_TAGS
+            ).values_list("slug", flat=True)
+        )
 
     if request.GET.get("context") == "billing":
         billing = user.billing_address

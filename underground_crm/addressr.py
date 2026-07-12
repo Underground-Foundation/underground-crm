@@ -19,6 +19,21 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# Queries shorter than this return far too many low-quality matches to be
+# useful, so both the autocomplete widget and the suggestion view refuse to
+# search until the visitor has typed at least this many characters.
+MINIMUM_QUERY_LENGTH: int = 5
+
+
+class StructuredAddress(NamedTuple):
+    """The structured address components of an Addressr match, suitable for
+    overwriting the free-text fields on our own Address model."""
+
+    line1: str | None
+    city: str | None
+    state: str | None
+    postcode: str | None
+
 
 class Geocode(NamedTuple):
     latitude: Decimal
@@ -28,6 +43,9 @@ class Geocode(NamedTuple):
     # Number of source databases that contain this address, minus one.
     # 0 means one database; higher values mean more sources corroborate the address.
     confidence: int | None
+    # The matched address's own structured components, or None if Addressr
+    # returned no structured breakdown for it.
+    address: StructuredAddress | None
 
 
 def _get(path: str) -> dict | None:
@@ -48,6 +66,30 @@ def search(query: str) -> list[dict]:
     encoded = urllib.parse.urlencode({"q": query})
     result = _get(f"/addresses?{encoded}")
     return result if isinstance(result, list) else []
+
+
+def _extract_structured_address(detail: dict) -> StructuredAddress | None:
+    """
+    Build a StructuredAddress from an Addressr address detail response.
+
+    ``mla`` (multi-line address) always ends with a "LOCALITY STATE POSTCODE"
+    line preceded by a "NUMBER STREET" line — a leading flat/unit line, if
+    present, comes before that — so the street line is always the second-last
+    entry regardless of whether a flat/unit is present.
+    """
+    structured = detail.get("structured")
+    mla = detail.get("mla")
+    if not structured or not isinstance(mla, list) or len(mla) < 2:
+        return None
+
+    state = structured.get("state") or {}
+    locality = structured.get("locality") or {}
+    return StructuredAddress(
+        line1=mla[-2] or None,
+        city=locality.get("name"),
+        state=state.get("abbreviation"),
+        postcode=structured.get("postcode"),
+    )
 
 
 def geocode(query: str) -> Geocode | None:
@@ -79,11 +121,14 @@ def geocode(query: str) -> Geocode | None:
     best = next((g for g in geocodes if g.get("default")), geocodes[0])
     try:
         reliability = best.get("reliability", {}).get("code")
+        # Addressr nests confidence under "structured", not at the top level.
+        confidence = (detail.get("structured") or {}).get("confidence")
         return Geocode(
             latitude=Decimal(str(best["latitude"])),
             longitude=Decimal(str(best["longitude"])),
             reliability=int(reliability) if reliability is not None else None,
-            confidence=detail.get("confidence"),
+            confidence=confidence,
+            address=_extract_structured_address(detail),
         )
     except (KeyError, ValueError) as exc:
         logger.warning("Addressr returned unexpected geocode shape: %s", exc)

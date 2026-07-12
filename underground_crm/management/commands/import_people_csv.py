@@ -26,6 +26,7 @@ The legacy CRM connection is configured via environment variables (see .env.exam
 
 import csv
 import json
+import logging
 from typing import Optional, Tuple
 
 import re
@@ -52,6 +53,8 @@ from underground_crm.contactability import (
     parse_verified_phone_number,
     parse_phone_number_with_verified_type,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -138,6 +141,14 @@ def _build_address(row, prefix):
     """
     Create and return an Address from CSV columns like {prefix}_address1, {prefix}_city, etc.
     Returns None if all address fields are blank.
+
+    The structured columns are the legacy system's own parse of whatever the
+    person typed, which it keeps in {prefix}_submitted_address. When that
+    parse failed and every structured column is blank, the raw string is kept
+    as line1 on an unverified record — the same recovery path the
+    registration form uses — so the address survives the import and the
+    geocoding backlog (geocode_addresses --correct-address-fields) can repair
+    it later.
     """
     line1 = row.get(f"{prefix}_address1", "").strip() or None
     line2 = row.get(f"{prefix}_address2", "").strip() or None
@@ -146,10 +157,14 @@ def _build_address(row, prefix):
     state = row.get(f"{prefix}_state", "").strip() or None
     postcode = row.get(f"{prefix}_zip", "").strip() or None
     country_code = (row.get(f"{prefix}_country_code", "") or "AU").strip() or None
-    _submitted = row.get(f"{prefix}_submitted_address", "").strip() or None
+    submitted = row.get(f"{prefix}_submitted_address", "").strip() or None
 
     if not any([line1, line2, city, postcode]):
-        return None
+        if not submitted:
+            return None
+        address = Address(line1=submitted)
+        address._skip_geocoding = True
+        return address
 
     address = Address(
         line1=line1,
@@ -162,6 +177,72 @@ def _build_address(row, prefix):
     )
     address._skip_geocoding = True
     return address
+
+
+# Legacy CSV address prefixes and the Person field each maps to. The legacy
+# system exports its home address under the bare "address" prefix. Its "work"
+# addresses are deliberately not imported: Person carries no work-address
+# role, because collecting more of a person's data than the movement needs
+# erodes their trust.
+ADDRESS_PREFIX_TO_PERSON_FIELD: list[tuple[str, str]] = [
+    ("address", "home_address"),
+    ("mailing", "mailing_address"),
+    ("registered", "registered_address"),
+    ("billing", "billing_address"),
+]
+
+# Order in which the legacy "primary" address claims a Person field when it
+# matches none of the addresses imported through the mapping above.
+PRIMARY_ADDRESS_FALLBACK_FIELDS: tuple[str, ...] = (
+    "home_address",
+    "registered_address",
+    "mailing_address",
+    "billing_address",
+)
+
+
+def assign_addresses(person: Person, row: dict) -> None:
+    """
+    Set the person's address fields from a legacy CSV row, without saving the
+    person. Addresses the person already holds are preserved.
+
+    The legacy "primary" address is not a role of its own — it duplicates
+    whichever of the other addresses the legacy system considered primary — so
+    it is only placed when it matches none of the person's addresses: it then
+    claims the first open field of home, registered, mailing, billing. When
+    every one of those is taken, it overrides the home address, with a
+    warning.
+    """
+    for prefix, field_name in ADDRESS_PREFIX_TO_PERSON_FIELD:
+        address = _build_address(row, prefix)
+        if address is not None and getattr(person, field_name) is None:
+            address.save()
+            setattr(person, field_name, address)
+
+    primary = _build_address(row, "primary")
+    if primary is None:
+        return
+    held_addresses = (
+        getattr(person, field_name) for _, field_name in ADDRESS_PREFIX_TO_PERSON_FIELD
+    )
+    if any(held is not None and held.is_equivalent(primary) for held in held_addresses):
+        return
+
+    for field_name in PRIMARY_ADDRESS_FALLBACK_FIELDS:
+        if getattr(person, field_name) is None:
+            primary.save()
+            setattr(person, field_name, primary)
+            return
+
+    logger.warning(
+        "Legacy primary address %r of person %s (legacy ID %s) matches none of their "
+        "other addresses, and every address field is taken; overriding their home address.",
+        str(primary),
+        person.pk,
+        person.legacy_id,
+    )
+    primary.save()
+    person.home_address = primary
 
 
 def _get_email_with_is_bad(row: dict) -> Tuple[Optional[str], Optional[bool]]:
@@ -507,16 +588,7 @@ class Command(BaseCommand):
                         person.email = email
 
                 # Addresses: create new ones; preserve existing if they already exist.
-                for attr, prefix in [
-                    ("primary_address", "primary"),
-                    ("mailing_address", "mailing"),
-                    ("registered_address", "registered"),
-                    ("billing_address", "billing"),
-                ]:
-                    addr = _build_address(row, prefix)
-                    if addr is not None and getattr(person, attr) is None:
-                        addr.save()
-                        setattr(person, attr, addr)
+                assign_addresses(person, row)
 
                 person.save()
 

@@ -18,9 +18,10 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("state_lower_district", "State lower district", "text"),
     ("council_district", "Council district", "text"),
     ("ward", "Ward", "text"),
-    ("primary_address__postcode", "Postcode (primary)", "text"),
-    ("primary_address__state", "State (primary)", "text"),
-    ("primary_address__suburb", "Suburb (primary)", "text"),
+    ("home_address__postcode", "Postcode (home)", "text"),
+    ("home_address__state", "State (home)", "text"),
+    # The Address model calls the suburb "city", following the G-NAF locality naming.
+    ("home_address__city", "Suburb (home)", "text"),
     ("tags__name", "Tag", "text"),
     ("is_supporter", "Is supporter", "boolean"),
     ("is_prospect", "Is prospect", "boolean"),
