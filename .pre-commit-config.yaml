@@ -3,7 +3,7 @@ repos:
     rev: 25.1.0
     hooks:
       - id: black
-        files: ^(underground_crm|underground_email|underground_payments|migration)/
+        files: ^((underground_crm|underground_email|underground_payments|migration)/|pylint_wagtail\.py$)
   - repo: local
     hooks:
       - id: pylint
@@ -11,8 +11,10 @@ repos:
         entry: pylint
         language: system
         types: [python]
-        files: ^(underground_crm|underground_email|underground_payments|migration)/
+        files: ^((underground_crm|underground_email|underground_payments|migration)/|pylint_wagtail\.py$)
+        # The plugins and the Django settings module come from pyproject.toml. They
+        # cannot be passed here as well: plugins named on the command line are loaded
+        # before pyproject's init-hook has put the repo root on the import path, so
+        # pylint_wagtail would fail to import.
         args:
-          - --load-plugins=pylint_django
-          - --django-settings-module=underground_crm.settings
           - --errors-only

@@ -497,11 +497,7 @@ class FormPage(FormServingPage):
     @property
     def inputs(self):
         return with_form_field_ids(
-            [
-                block
-                for block in self.body  # pylint: disable=not-an-iterable
-                if block.block_type in FORM_INPUT_BLOCK_NAMES
-            ]
+            [block for block in self.body if block.block_type in FORM_INPUT_BLOCK_NAMES]
         )
 
 
@@ -598,7 +594,7 @@ class RegistrationPage(FormServingPage):
         return with_form_field_ids(
             [
                 block
-                for block in self.body  # pylint: disable=not-an-iterable
+                for block in self.body
                 if block.block_type == "person_field" and block.value["field"] in allowed
             ]
         )

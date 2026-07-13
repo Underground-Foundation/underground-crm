@@ -59,7 +59,11 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.pylint.main]
-load-plugins = ["pylint_django"]
+load-plugins = ["pylint_django", "pylint_wagtail"]
+# pylint_wagtail lives at the repo root rather than inside the distributed package, so
+# it has to be put on the import path before pylint loads its plugins. pre-commit and
+# CI both run pylint from the repo root.
+init-hook = "import sys; sys.path.insert(0, '.')"
 django-settings-module = "underground_crm.settings"
 # Migrations are auto-generated; the migration/ dir contains standalone scripts
 # that import a config module not on the pylint path.
