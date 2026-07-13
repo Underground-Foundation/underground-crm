@@ -47,6 +47,7 @@ dev = [
 ]
 migration = [
     "beautifulsoup4>=4.12",
+    "boto3>=1.34",
 ]
 
 [tool.setuptools.packages.find]

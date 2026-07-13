@@ -34,6 +34,7 @@ def geocode_address(address_id: str) -> None:
         latitude=result.latitude,
         longitude=result.longitude,
         geocode_reliability=result.reliability,
+        gnaf_id=result.gnaf_id,
     )
 
 

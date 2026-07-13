@@ -1,19 +1,22 @@
 from typing import cast
 
 from django.conf import settings
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
+from rest_framework import mixins
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from ..models import Address, Donation, Engagement, Interaction, PersonNote, Tag
+from ..models import Address, Donation, Engagement, Interaction, Membership, PersonNote, Tag
 from .permissions import IsCRMStaff
 from .serializers import (
     AddressSerializer,
     DonationSerializer,
     EngagementSerializer,
     InteractionSerializer,
+    MembershipSerializer,
     PersonNoteSerializer,
     TagSerializer,
     UnverifiedAddressSerializer,
@@ -76,6 +79,29 @@ class DonationViewSet(CRMStaffModelViewSet):
 class AddressViewSet(CRMStaffModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
+
+
+class MembershipViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin, GenericViewSet):
+    """
+    Self-service create/delete of the requesting visitor's own memberships —
+    unlike every other viewset in this module, this is not a CRM-staff
+    endpoint, so it carries IsAuthenticated rather than IsCRMStaff, and
+    get_queryset never lets a visitor address a membership beyond their own.
+    No list/retrieve/update: the RegistrationPage's memberships section is
+    the visitor-facing read surface, and the page's own "Cancel membership"
+    button (see views.membership.cancel_membership_view) softly expires a
+    membership rather than deleting the record, so a delete through this API
+    is a distinct, harder action from a page cancellation.
+    """
+
+    serializer_class = MembershipSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Membership.objects.filter(person=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(person=self.request.user, started_at=timezone.now())
 
 
 # ensure_csrf_cookie: the islands that call this endpoint (profile dropdown,

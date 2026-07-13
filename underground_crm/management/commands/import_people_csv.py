@@ -10,6 +10,12 @@ Each row is matched on the legacy numeric ID (nationbuilder_id column). Existing
 records are updated in place; new records are created. The command is idempotent
 and safe to run multiple times.
 
+Memberships are seeded from the membership_names column, a comma-separated list of
+MembershipType names, positionally aligned with the memberships_started_at,
+memberships_expires_on, and memberships_suspended_at columns (one entry per
+membership held by that person). Both MembershipType and Membership are looked up
+with get_or_create, so re-running the import never creates duplicates.
+
 Optional flags:
   --with-interactions   After importing each person, fetch their interactions from
                         the legacy CRM API and import them (requires LEGACY_API_TOKEN).
@@ -34,7 +40,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -45,9 +51,10 @@ from phonenumbers.phonenumber import PhoneNumber
 
 from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
 from underground_crm.management.commands.legacy_api_client import require_env
-from underground_crm.models import Interaction, Person, PersonNote, Tag
+from underground_crm.models import Interaction, Membership, MembershipType, Person, PersonNote, Tag
 from underground_crm.models.address import Address
 from underground_crm.contactability import (
+    MOBILE_CAPABLE_PHONE_TYPES,
     get_validated_domain_name,
     get_validated_email_address,
     parse_verified_phone_number,
@@ -245,6 +252,75 @@ def assign_addresses(person: Person, row: dict) -> None:
     person.home_address = primary
 
 
+# ---------------------------------------------------------------------------
+# Membership builder
+# ---------------------------------------------------------------------------
+
+
+def _parse_membership_date(value: str) -> Optional[date]:
+    """Parse a memberships_expires_on cell, which may be date-only or a full timestamp."""
+    value = value.strip()
+    if not value:
+        return None
+    parsed_date = _parse_date(value)
+    if parsed_date:
+        return parsed_date
+    parsed_datetime = _parse_datetime(value)
+    return parsed_datetime.date() if parsed_datetime else None
+
+
+def parse_memberships(row: dict) -> list[tuple[str, datetime, Optional[date], Optional[datetime]]]:
+    """
+    Return (name, started_at, expires_on, suspended_at) tuples from the legacy CSV's
+    parallel comma-separated membership_names / memberships_started_at /
+    memberships_expires_on / memberships_suspended_at columns — a person can hold
+    more than one membership (e.g. a state branch and the federal party), and the
+    legacy export lines them up positionally across the four columns rather than
+    repeating a row per membership.
+
+    An entry is dropped if it has no name or no parseable started_at: the name is
+    what seeds the MembershipType, and Membership.started_at is a required field.
+    """
+    raw_names = row.get("membership_names", "")
+    if not raw_names.strip():
+        return []
+
+    names = raw_names.split(",")
+    started_ats = row.get("memberships_started_at", "").split(",")
+    expires_ons = row.get("memberships_expires_on", "").split(",")
+    suspended_ats = row.get("memberships_suspended_at", "").split(",")
+
+    if not len(names) == len(started_ats) == len(expires_ons) == len(suspended_ats):
+        logger.warning(
+            "Legacy membership columns for nationbuilder_id %r have mismatched list "
+            "lengths (%d names, %d started_at, %d expires_on, %d suspended_at); skipping.",
+            row.get("nationbuilder_id", "?"),
+            len(names),
+            len(started_ats),
+            len(expires_ons),
+            len(suspended_ats),
+        )
+        return []
+
+    memberships = []
+    for name, started_at_raw, expires_on_raw, suspended_at_raw in zip(
+        names, started_ats, expires_ons, suspended_ats
+    ):
+        name = name.strip()
+        started_at = _parse_datetime(started_at_raw)
+        if not name or not started_at:
+            continue
+        memberships.append(
+            (
+                name,
+                started_at,
+                _parse_membership_date(expires_on_raw),
+                _parse_datetime(suspended_at_raw),
+            )
+        )
+    return memberships
+
+
 def _get_email_with_is_bad(row: dict) -> Tuple[Optional[str], Optional[bool]]:
     """Return the first valid email address with an is_bad=False flag.
 
@@ -283,11 +359,7 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
             # The input mobile_number is indeed more likely than the phone_number to really be a mobile.
             return mobile_number, phone_number
     elif phone_number:
-        if phone_type in (
-            PhoneNumberType.MOBILE,
-            PhoneNumberType.FIXED_LINE_OR_MOBILE,
-            PhoneNumberType.UNKNOWN,
-        ):
+        if phone_type in MOBILE_CAPABLE_PHONE_TYPES:
             # The input phone_number could be a mobile number
             return phone_number, None
     return mobile_number, phone_number
@@ -298,18 +370,38 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
 # ---------------------------------------------------------------------------
 
 
+def _resolve_first_and_preferred_name(row: dict) -> Tuple[Optional[str], Optional[str]]:
+    """Return (first_name, preferred_name) for Person, reconciling the legacy columns.
+
+    Person.first_name is the name used for the electoral roll, i.e. the
+    legally correct one. The legacy CSV instead exports the person's
+    colloquial name as first_name and their formal name as legal_name, with
+    no separate preferred_name of its own in that case. So when a row has
+    both a first_name and a legal_name but no preferred_name, the legacy
+    first_name becomes the preferred_name and the legal_name is promoted
+    into first_name.
+    """
+    first_name = row.get("first_name", "").strip() or None
+    legal_name = row.get("legal_name", "").strip() or None
+    preferred_name = row.get("preferred_name", "").strip() or None
+
+    if first_name and legal_name and not preferred_name:
+        return legal_name, first_name
+    return first_name, preferred_name
+
+
 def _person_fields(row, is_email_bad: bool):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
+    first_name, preferred_name = _resolve_first_and_preferred_name(row)
     return {
         "prefix": row.get("prefix", "").strip() or None,
-        "first_name": row.get("first_name", "").strip() or None,
+        "first_name": first_name,
         "middle_name": row.get("middle_name", "").strip() or None,
         "last_name": row.get("last_name", "").strip() or None,
         "suffix": row.get("suffix", "").strip() or None,
         "legal_name": row.get("legal_name", "").strip() or None,
-        "preferred_name": row.get("preferred_name", "").strip() or None,
-        "mailing_name": row.get("mailing_name", "").strip() or None,
+        "preferred_name": preferred_name,
         "phone_number": phone_number,
         "work_phone_number": parse_verified_phone_number(row.get("work_phone_number", "").strip()),
         "mobile_number": mobile_number,
@@ -626,7 +718,7 @@ class Command(BaseCommand):
                 except Person.DoesNotExist:
                     pass
 
-        # ---- Pass 3: tags ----
+        # ---- Pass 3: tags and memberships ----
 
         if not dry_run:
             volunteer_tag = None
@@ -656,6 +748,21 @@ class Command(BaseCommand):
                     if volunteer_tag is None:
                         volunteer_tag, _created = Tag.objects.get_or_create(name="Volunteer")
                     person.tags.add(volunteer_tag)
+
+                for name, started_at, expires_on, suspended_at in parse_memberships(row):
+                    membership_type, type_created = MembershipType.objects.get_or_create(name=name)
+                    self.stdout.write(
+                        f"{'Created' if type_created else 'Found'} membership type {membership_type.name} for person"
+                    )
+                    Membership.objects.get_or_create(
+                        person=person,
+                        type=membership_type,
+                        started_at=started_at,
+                        defaults={
+                            "expires_on": expires_on,
+                            "suspended_at": suspended_at,
+                        },
+                    )
 
         # ---- Pass 4: interactions and notes (optional) ----
 

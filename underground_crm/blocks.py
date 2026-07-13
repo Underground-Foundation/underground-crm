@@ -102,16 +102,23 @@ class AddressBlock(FieldBlock):
 # overridden as UNDERGROUND_REGISTRATION_PERSON_FIELDS.
 #
 # Using a whitelist prevents the inadvertent inclusion of new fields on the page.
-
-# Some fields are already included thanks to the use of FormPage: email address,
-# first_name, last_name.
+#
+# first_name and last_name are listed here even though FormSubmissionForm also
+# declares fields of those names, because it declares them only to identify an
+# anonymous visitor and deletes them again for an authenticated one. A
+# registration page requires a login, so those identity fields never reach the
+# visitors this page actually serves: without a block of its own, a naming field
+# would be one that nobody could ever see or edit. email is the exception that
+# genuinely does come from FormSubmissionForm — it identifies the visitor rather
+# than describing them, and an authenticated visitor's address is already known.
 DEFAULT_REGISTRATION_PERSON_FIELDS: tuple[str, ...] = (
     "prefix",
+    "first_name",
     "preferred_name",
     "middle_name",
+    "last_name",
     "suffix",
     "date_of_birth",
-    "gender",
     "phone_number",
     "mobile_number",
     "home_address",
@@ -133,6 +140,53 @@ DEFAULT_REGISTRATION_PERSON_FIELDS: tuple[str, ...] = (
 )
 
 
+# HTML autocomplete tokens (the WHATWG autofill field names — see
+# https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete
+# for the full, authoritative list) for the Person fields that have a
+# well-defined one. first_name/last_name/email are included even though they
+# are not in DEFAULT_REGISTRATION_PERSON_FIELDS, because FormSubmissionForm
+# renders them directly rather than through a PersonFieldBlock. gender is
+# deliberately absent: this model's field is free text for addressing people
+# in gendered languages (see its help_text), not the "sex" autofill hint's
+# meaning, so filling it from a browser's stored biological-sex value would
+# be wrong. Fields with no sensible token (bio, is_supporter, do_not_call,
+# the district/ward fields, ...) are also absent, so autocomplete is left
+# unset for them.
+PERSON_FIELD_AUTOCOMPLETE: dict[str, str] = {
+    "first_name": "given-name",
+    "last_name": "family-name",
+    "email": "email",
+    "prefix": "honorific-prefix",
+    "preferred_name": "nickname",
+    "middle_name": "additional-name",
+    "suffix": "honorific-suffix",
+    "date_of_birth": "bday",
+    "phone_number": "tel",
+    "mobile_number": "tel",
+    "website": "url",
+}
+
+
+# The Person fields that together name a person, in reading order, each mapped
+# to the Bootstrap column class setting its share of the naming grid (see
+# templates/underground_crm/includes/person_naming.html). They are laid out as
+# one grid rather than one field per row because they are short and read as a
+# single unit — stacking them vertically wastes the page and hides how they
+# relate to each other.
+#
+# Membership of this mapping is what makes a field a naming field, so a page
+# that carries no block for one of them (an editor may delete any of them)
+# simply renders a narrower grid; the widths do not have to add up.
+PERSON_NAME_FIELD_COLUMNS: dict[str, str] = {
+    "prefix": "col-4 col-md-2",
+    "first_name": "col-8 col-md-5",
+    "preferred_name": "col-12 col-md-5",
+    "middle_name": "col-12 col-md-4",
+    "last_name": "col-8 col-md-6",
+    "suffix": "col-4 col-md-2",
+}
+
+
 def registration_person_field_names() -> list[str]:
     """
     The active whitelist of Person fields that registration forms may expose,
@@ -140,9 +194,9 @@ def registration_person_field_names() -> list[str]:
     default form field would be a model chooser over the related table, which
     makes no sense on a public form — with one exception: links to Address
     (home_address, mailing_address, ...) are allowed, because the registration
-    form renders them as free-text Addressr-backed autocomplete inputs and
-    resolves the submitted string to an Address record itself (see
-    RegistrationForm).
+    form renders them as structured component inputs with an Addressr-backed
+    autocomplete on the first line, and resolves the submission to an Address
+    record itself (see RegistrationForm).
     """
     from django.conf import settings
     from django.contrib.auth import get_user_model
@@ -206,8 +260,10 @@ class PersonFieldBlock(StructBlock):
     see RegistrationForm._field_for_input), so a DateField renders a date
     input, a BooleanField a checkbox, and so on, without a hand-written
     mapping. Fields linking to Address (home_address, mailing_address, ...)
-    instead render the Addressr-backed autocomplete input, and the submitted
-    string is resolved to an Address record when the form is saved.
+    instead render the structured address inputs (address lines, suburb,
+    state, postcode) with an Addressr-backed autocomplete on the first line,
+    and the submission is resolved to an Address record when the form is
+    saved.
     """
 
     field = ChoiceBlock(
@@ -225,8 +281,12 @@ class PersonFieldBlock(StructBlock):
         icon = "user"
         label = _("Person field")
         group = _("Form inputs")
-        # Blank for the same reason as the generic input blocks — see
-        # _input_block_kwargs() in models/pages.py.
+        # This template is empty, for the same reason as the generic
+        # form-input blocks built by _input_block_kwargs() in
+        # models/pages.py: the block's stored value (the chosen Person
+        # field and label override) must not print as inert text in the
+        # page body — the actual <input> is rendered separately by
+        # FormSubmissionForm.
         template = "underground_crm/blocks/input_block.html"
 
 

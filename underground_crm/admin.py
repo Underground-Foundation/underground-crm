@@ -123,7 +123,6 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                     "suffix",
                     "legal_name",
                     "preferred_name",
-                    "mailing_name",
                 )
             },
         ),

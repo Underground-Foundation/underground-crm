@@ -58,10 +58,11 @@ def fetch_pages_json(
 
     if status != 200:
         return None, f"{url} returned HTTP {status} for page number '{page_number}': {data}"
-    records = data.get("data", [])
-    if not records:
-        return None, f"No pages found for page number '{page_number}'."
-    return records, None
+    # An empty `data` array on a 200 response is the normal, successful signal
+    # that pagination has reached the end — not a failure — so it must be
+    # distinguished from the HTTPError/non-200 cases above, both of which
+    # genuinely need to abort the crawl rather than be read as "no more pages".
+    return data.get("data", []), None
 
 
 def fetch_page_html(domain: str, slug: str, html_opener):

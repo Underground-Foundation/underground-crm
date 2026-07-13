@@ -2,7 +2,7 @@ import io
 import json
 from typing import Dict, List, Optional
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from underground_crm.management.commands.legacy_api_client import (
     MAX_PAGE_SIZE,
@@ -44,8 +44,12 @@ class Command(BaseCommand):
             last_page, error_msg = fetch_pages_json(
                 admin_url, api_headers, site_id=site_id, page_number=page_number
             )
-            if error_msg or not last_page:
-                break
+            if error_msg is not None:
+                # A real fetch failure (expired token, rate limit, HTTP error) must
+                # never be treated the same as a legitimate empty last page — doing
+                # so previously let a mid-crawl failure silently truncate all_pages.json
+                # while still reporting success.
+                raise CommandError(f"Aborting after fetching {len(all_pages)} page(s): {error_msg}")
             all_pages.extend(last_page)
             page_number += 1
         with io.open(pages_file_path, "w") as output_io:

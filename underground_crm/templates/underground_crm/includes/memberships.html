@@ -1,0 +1,35 @@
+{% load i18n %}
+{% comment %}
+  The current visitor's own memberships, with a "Cancel membership" button
+  against each one still active. Rendered only for authenticated visitors —
+  see the memberships block in registration_page.html, which is the only
+  caller.
+{% endcomment %}
+{% if memberships %}
+  <section class="memberships my-4" aria-label="{% trans 'Your memberships' %}">
+    <h2 class="h5">{% trans "Your memberships" %}</h2>
+    <ul class="list-unstyled">
+      {% for membership in memberships %}
+        <li class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
+          <span>
+            {{ membership.type.name }}
+            {% if not membership.is_active %}
+              <span class="text-muted">— {% trans "not active" %}</span>
+            {% elif membership.expires_on %}
+              <span class="text-muted">— {% blocktrans with expires_on=membership.expires_on %}expires {{ expires_on }}{% endblocktrans %}</span>
+            {% endif %}
+          </span>
+          {% if membership.is_active %}
+            <form method="post" action="{% url 'underground_crm:cancel_membership' membership_id=membership.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button type="submit" class="btn btn-outline-danger btn-sm">
+                {% trans "Cancel membership" %}
+              </button>
+            </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}

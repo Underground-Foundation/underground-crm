@@ -1,0 +1,13 @@
+{% load i18n %}
+{% comment %}
+  Renders a SameAsHomeAddressCheckbox (see underground_crm/widgets.py) as two
+  lines: the address role's own label, then the checkbox with its "Same as
+  home address" caption. Kept together so the address role stays identified
+  even while the input it collapses — and that input's own label — is hidden
+  from view (see same_as_home_address.js).
+{% endcomment %}
+<p class="same-as-home-address-label mb-1">{{ widget.address_label }}</p>
+<div class="form-check">
+  {% include "django/forms/widgets/checkbox.html" %}
+  <label class="form-check-label" for="{{ widget.attrs.id }}">{% translate "Same as home address" %}</label>
+</div>

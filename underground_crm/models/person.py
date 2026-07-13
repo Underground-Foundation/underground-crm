@@ -57,21 +57,24 @@ class PersonManager(BaseUserManager):
 class Person(AbstractBaseUser, PermissionsMixin):
     """
     Central person/contact record. Serves as both the auth user model and the
-    CRM contact. Email is the login credential; username is not used.
+    CRM contact. Email is the login credential; username is not used. Note that the verbose names
+    and help text will be visible to end users.
     """
 
     TYPE_PERSON = 0
     TYPE_ORGANISATION = 1
-    TYPE_CHOICES = [
-        (TYPE_PERSON, "Person"),
-        (TYPE_ORGANISATION, "Organisation"),
+    ENTITY_TYPES = [
+        (TYPE_PERSON, _("Person")),
+        (TYPE_ORGANISATION, _("Organisation")),
     ]
 
     SUPPORT_LEVEL_CHOICES = [(i, str(i)) for i in range(1, 6)]
     PRIORITY_LEVEL_CHOICES = [(i, str(i)) for i in range(0, 6)]
 
     # --- Identity ---
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, verbose_name=_("id"), editable=False
+    )
     email = models.EmailField(
         unique=True,
         verbose_name=_("Email address"),
@@ -81,7 +84,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
         verbose_name=_("Email address is bad"),
-        help_text=_("Can the user actually be emailed?"),
+        help_text=_("Can this address actually receive emails?"),
     )
     legacy_id = models.PositiveIntegerField(
         null=True,
@@ -93,7 +96,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
     prefix = models.CharField(max_length=10, null=True, blank=True, verbose_name=_("Name prefix"))
     first_name = models.CharField(
-        max_length=100, null=True, blank=True, verbose_name=_("First name")
+        max_length=100, null=True, blank=True, help_text=_("First name (for the electoral roll)")
     )
     middle_name = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("Middle name")
@@ -104,19 +107,15 @@ class Person(AbstractBaseUser, PermissionsMixin):
         max_length=200, null=True, blank=True, verbose_name=_("Legal name")
     )
     preferred_name = models.CharField(
-        max_length=100, null=True, blank=True, verbose_name=_("Preferred name")
-    )
-    mailing_name = models.CharField(
-        max_length=200,
+        max_length=100,
         null=True,
         blank=True,
-        verbose_name=_("Mailing name"),
-        help_text=_("Name as it should appear on postal correspondence."),
+        verbose_name=_("Preferred name / nickname"),
     )
     record_type = models.SmallIntegerField(
-        choices=TYPE_CHOICES,
+        choices=ENTITY_TYPES,
         default=TYPE_PERSON,
-        verbose_name=_("Record type"),
+        verbose_name=_("Entity type"),
         help_text=_("Whether this record represents an individual or an organisation."),
     )
 
@@ -127,7 +126,8 @@ class Person(AbstractBaseUser, PermissionsMixin):
         region=settings.PHONE_REGION,
         db_index=True,
         verbose_name=_("Phone number"),
-        help_text=_("This should only be used if the phone number is not a mobile phone."),
+        help_text=_("This should be used for landline phones"),
+        # This should only be used if the phone number is not a mobile phone
     )
     mobile_number = PhoneNumberField(
         null=True,
@@ -140,7 +140,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     mobile_opt_in = models.BooleanField(
         default=False,
         verbose_name=_("Mobile opt-in"),
-        help_text=_("Person has opted in to receive SMS updates."),
+        help_text=_("Opt into occasional SMS updates"),
     )
     is_mobile_bad = models.BooleanField(
         default=False,
@@ -218,11 +218,26 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Website"),
         validators=[validate_domain_name],
     )
-    bio = models.TextField(null=True, blank=True, verbose_name=_("Biography"))
-    description = models.TextField(null=True, blank=True, verbose_name=_("Description"))
+    bio = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name=_("Biography"),
+        help_text=_("Tell us a bit about yourself and your inspirations"),
+    )
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name=_("Description"),
+        help_text=_("Internal description of the member"),
+    )
 
     # --- Biographical ---
-    date_of_birth = models.DateField(null=True, blank=True, verbose_name=_("Date of birth"))
+    date_of_birth = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name=_("Date of birth"),
+        help_text=_("This is needed for verifying your enrollment details during an audit"),
+    )
     gender = models.CharField(
         max_length=50,
         null=True,
@@ -238,7 +253,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         blank=True,
         verbose_name=_("Language preferences"),
         help_text=_(
-            "The languages property from their web browser: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/languages"
+            "The languages property from a user's web browser: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/languages"
         ),
     )
 
@@ -272,7 +287,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     email_opt_in = models.BooleanField(
         default=False,
         verbose_name=_("Email opt-in"),
-        help_text=_("Person has opted in to receive email updates."),
+        help_text=_("Opt into receiving occasional email updates."),
     )
     unsubscribed_at = models.DateTimeField(
         null=True,
@@ -321,9 +336,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Donations amount"),
         help_text=_("Total amount donated across all time."),
     )
-    first_donated_at = models.DateTimeField(
-        null=True, blank=True, verbose_name=_("First donated at")
-    )
+    first_donated_at = models.DateTimeField(null=True, blank=True, verbose_name=_("First donation"))
     last_donated_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Last donated at"))
 
     # --- Contact preferences ---
@@ -364,7 +377,11 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     # --- Electoral districts (Australian federal system) ---
     federal_district = models.CharField(
-        max_length=100, null=True, blank=True, verbose_name=_("Federal district")
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name=_("Federal district"),
+        help_text="https://electorate.aec.gov.au/",
     )
     state_upper_district = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("State upper district")

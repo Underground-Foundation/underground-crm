@@ -52,6 +52,7 @@ from wagtail.admin.panels import FieldPanel, InlinePanel, ObjectList, TabbedInte
 from wagtail.admin.forms import WagtailAdminPageForm
 from .address import Address
 from .form_submission import FormSubmission
+from .membership import MembershipType
 from .person import Tag
 from underground_crm.panels import ReadOnlyPanel
 
@@ -185,6 +186,11 @@ class PageWithMetadata(Page):
     def serve(self, request, *args, **kwargs):
         return self._apply_cache_control(super().serve(request, *args, **kwargs))
 
+    def save(self, *args, **kwargs):
+        if not self.seo_title:
+            self.seo_title = self.title
+        super().save(*args, **kwargs)
+
     SUMMARY_WORD_LIMIT: int = 60
 
     @property
@@ -317,12 +323,20 @@ class BasicPage(PageWithMetadata):
 
 def _input_block_kwargs(**extra) -> dict:
     """
-    Shared configuration for the visitor-input blocks below. required=False
-    keeps both sides optional: the editor may leave the block's value (the
-    input's pre-filled default) blank, and the visitor may leave the rendered
-    form field blank. The blank in-place template stops the block's default
-    value from also printing as plain, non-interactive text inline in the
-    body — the actual <input> is rendered by FormSubmissionForm/form.as_p.
+    Shared Meta configuration for the visitor-input blocks below (checkbox,
+    text, email, PersonFieldBlock, and so on).
+
+    required=False keeps both sides optional: the page editor may leave the
+    block's stored value (the input's pre-filled default) blank, and the
+    site visitor may leave the rendered form field blank.
+
+    template points at underground_crm/blocks/input_block.html, which is
+    empty. These blocks live in a page's body StreamField, and Wagtail would
+    otherwise render each one's stored value as plain, non-interactive text
+    wherever that body is displayed. The actual <input> element is rendered
+    separately by FormSubmissionForm (via form.as_p or similar), so the
+    StreamField's own rendering must stay empty to avoid printing the value
+    twice.
     """
     return {
         "required": False,
@@ -360,6 +374,28 @@ FORM_INPUT_BLOCK_NAMES = frozenset(name for name, _block in FORM_INPUT_BLOCKS)
 FORM_PAGE_BLOCKS = BASIC_PAGE_BLOCKS + FORM_INPUT_BLOCKS
 
 
+def with_form_field_ids(blocks: list) -> list:
+    """
+    The given stream children, each guaranteed to carry an id.
+
+    Wagtail assigns a stream child its id when the page holding it is saved, so
+    the children of a page that has never been saved — the blocks a
+    StreamField's default puts on a freshly created page, and any block the
+    editor has just added — have none. The visitor form keys one field per input
+    block by that id (see forms.form_submission._field_name), so without one
+    every block would key the same field, and a preview of an unsaved page would
+    render (at best) a single mangled question.
+
+    The ids handed out here belong to this in-memory page alone: an unsaved page
+    is only ever previewed, and when it is saved Wagtail assigns the ids that
+    the submissions of the published page are recorded against.
+    """
+    for block in blocks:
+        if not block.id:
+            block.id = str(uuid.uuid4())
+    return blocks
+
+
 class FormServingPage(PageWithMetadata):
     """
     Abstract machinery shared by pages that serve a visitor form built from
@@ -377,7 +413,9 @@ class FormServingPage(PageWithMetadata):
     @property
     def inputs(self):
         """The body's input blocks, as bound blocks (each carries the stream
-        child's stable .id plus .block_type, .block, and .value)."""
+        child's stable .id plus .block_type, .block, and .value). Concrete
+        implementations must pass their selection through
+        with_form_field_ids()."""
         raise NotImplementedError
 
     def get_submission_form_class(self):
@@ -458,15 +496,18 @@ class FormPage(FormServingPage):
 
     @property
     def inputs(self):
-        return [
-            block
-            for block in self.body  # pylint: disable=not-an-iterable
-            if block.block_type in FORM_INPUT_BLOCK_NAMES
-        ]
+        return with_form_field_ids(
+            [
+                block
+                for block in self.body  # pylint: disable=not-an-iterable
+                if block.block_type in FORM_INPUT_BLOCK_NAMES
+            ]
+        )
 
 
 class FormPageTag(TaggedItemBase):
-    """Explicit through model for FormPage.tags_to_apply, carrying a UUID PK for federation support."""
+    """Explicit through model for FormPage.tags_to_apply, carrying a UUID PK (rather than an integer) for facilitating
+    federation."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     content_object = ParentalKey(FormPage, on_delete=models.CASCADE, related_name="tagged_items")
@@ -521,10 +562,23 @@ class RegistrationPage(FormServingPage):
         verbose_name=_("Tags to apply on registration"),
         help_text=_("Applied to the registering Person's record."),
     )
+    membership = models.ForeignKey(
+        MembershipType,
+        verbose_name=_("Membership"),
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="registration_pages",
+        help_text=_(
+            "Granted to the registering Person on submission, unless they "
+            "already hold one of this type (active or not)."
+        ),
+    )
 
     content_panels = Page.content_panels + [
         FieldPanel("body"),
         FieldPanel("tags_to_apply"),
+        FieldPanel("membership"),
     ]
 
     edit_handler = TabbedInterface(
@@ -541,11 +595,13 @@ class RegistrationPage(FormServingPage):
     @property
     def inputs(self):
         allowed = set(registration_person_field_names())
-        return [
-            block
-            for block in self.body  # pylint: disable=not-an-iterable
-            if block.block_type == "person_field" and block.value["field"] in allowed
-        ]
+        return with_form_field_ids(
+            [
+                block
+                for block in self.body  # pylint: disable=not-an-iterable
+                if block.block_type == "person_field" and block.value["field"] in allowed
+            ]
+        )
 
     def get_submission_form_class(self):
         from underground_crm.forms.registration import RegistrationForm

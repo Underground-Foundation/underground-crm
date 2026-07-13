@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class MembershipType(models.Model):
@@ -19,20 +20,24 @@ class MembershipType(models.Model):
 class Membership(models.Model):
     """A person's membership of a particular type, with its lifecycle dates."""
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True, verbose_name=_("id"), default=uuid.uuid4, editable=False
+    )
     person = models.ForeignKey(
         "underground_crm.Person",
+        verbose_name=_("Person"),
         on_delete=models.CASCADE,
         related_name="memberships",
     )
     type = models.ForeignKey(
         MembershipType,
+        verbose_name=_("Membership type"),
         on_delete=models.PROTECT,
         related_name="memberships",
     )
-    started_at = models.DateTimeField()
-    expires_on = models.DateField(null=True, blank=True)
-    suspended_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(verbose_name=_("Start date"))
+    expires_on = models.DateField(null=True, verbose_name=_("Expiration date"), blank=True)
+    suspended_at = models.DateTimeField(null=True, verbose_name=_("Suspension date"), blank=True)
 
     class Meta:
         ordering = ["-started_at"]

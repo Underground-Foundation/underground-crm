@@ -8,6 +8,7 @@ from .views import (
     DonationViewSet,
     EngagementViewSet,
     InteractionViewSet,
+    MembershipViewSet,
     PersonNoteViewSet,
     TagViewSet,
     me,
@@ -20,6 +21,7 @@ router.register("interactions", InteractionViewSet, basename="interaction")
 router.register("engagements", EngagementViewSet, basename="engagement")
 router.register("donations", DonationViewSet, basename="donation")
 router.register("addresses", AddressViewSet, basename="address")
+router.register("memberships", MembershipViewSet, basename="membership")
 
 urlpatterns = [
     path("", include(router.urls)),

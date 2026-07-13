@@ -54,7 +54,7 @@ class AddressSuggestionViewTest(django.test.SimpleTestCase):
             "produce noise.",
         )
 
-    def test_suggestions_are_single_line_addresses(self):
+    def test_suggestions_carry_address_text_and_gnaf_id(self):
         # Addressr is an external service, so this test substitutes a canned
         # response in the documented shape (see addressr.search()); the
         # companion live test below exercises the real container when it is up.
@@ -69,9 +69,11 @@ class AddressSuggestionViewTest(django.test.SimpleTestCase):
             suggestions = self._get_suggestions(KNOWN_ADDRESS_QUERY)
         self.assertEqual(
             suggestions,
-            ["1 COOK RD, LINDFIELD NSW 2070"],
-            "The view should reduce Addressr's response to the single-line "
-            "address strings that the autocomplete datalist presents.",
+            [{"sla": "1 COOK RD, LINDFIELD NSW 2070", "gnaf_id": "GANSW705239062"}],
+            "Each suggestion must pair the single-line address the datalist "
+            "presents with the G-NAF ID of that exact address, which the "
+            "autocomplete script stores in the form's hidden companion field "
+            "so the submission resolves to the address the visitor picked.",
         )
 
     def test_endpoint_rejects_post_requests(self):
@@ -88,9 +90,16 @@ class AddressSuggestionViewTest(django.test.SimpleTestCase):
     def test_live_addressr_returns_suggestions(self):
         suggestions = self._get_suggestions(KNOWN_ADDRESS_QUERY)
         self.assertTrue(
-            all(isinstance(suggestion, str) and suggestion for suggestion in suggestions),
-            "Every suggestion must be a non-empty single-line address string, "
-            f"but the live container returned: {suggestions!r}",
+            all(
+                isinstance(suggestion.get("sla"), str)
+                and suggestion["sla"]
+                and isinstance(suggestion.get("gnaf_id"), str)
+                and suggestion["gnaf_id"]
+                for suggestion in suggestions
+            ),
+            "Every suggestion must carry a non-empty single-line address and "
+            "the G-NAF ID identifying that exact address, but the live "
+            f"container returned: {suggestions!r}",
         )
 
 

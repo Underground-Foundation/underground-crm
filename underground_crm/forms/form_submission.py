@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from wagtail.blocks.stream_block import StreamValue
 
+from ..blocks import PERSON_FIELD_AUTOCOMPLETE
 from ..models.form_submission import FormSubmission, SubmittedField
 
 Person = get_user_model()
@@ -16,6 +17,33 @@ def _field_name(input_block: StreamValue.StreamChild) -> str:
     # Keyed by the stream child's UUID, which is stable across reordering and
     # editing of the page body — the same key SubmittedField.block_id records.
     return f"input_{input_block.id}"
+
+
+def apply_bootstrap_classes(widget: forms.Widget) -> None:
+    """
+    Stamp the Bootstrap form-control classes onto a widget Django built for us.
+
+    Bootstrap styles form controls by class rather than by element, so a widget
+    that carries no class renders unstyled — and, more than being merely plain,
+    an unstyled input keeps its intrinsic width instead of filling the grid
+    column it sits in, which defeats the naming grid entirely.
+
+    Idempotent, so a form that re-stamps a widget it has already stamped does
+    not accumulate duplicate classes.
+    """
+    if isinstance(widget, forms.MultiWidget):
+        for subwidget in widget.widgets:
+            apply_bootstrap_classes(subwidget)
+        return
+    if isinstance(widget, forms.HiddenInput):
+        return
+    if isinstance(widget, (forms.CheckboxInput, forms.RadioSelect, forms.CheckboxSelectMultiple)):
+        css_class = "form-check-input"
+    else:
+        css_class = "form-control"
+    existing: list[str] = widget.attrs.get("class", "").split()
+    if css_class not in existing:
+        widget.attrs["class"] = " ".join(existing + [css_class])
 
 
 def find_identity_conflict(email: str, first_name: str, last_name: str) -> str | None:
@@ -89,9 +117,23 @@ class FormSubmissionForm(forms.Form):
     below in one place.
     """
 
-    email = forms.EmailField(required=False, label=_("Email address"))
-    first_name = forms.CharField(required=False, max_length=100, label=_("First name"))
-    last_name = forms.CharField(required=False, max_length=100, label=_("Last name"))
+    email = forms.EmailField(
+        required=False,
+        label=_("Email address"),
+        widget=forms.EmailInput(attrs={"autocomplete": PERSON_FIELD_AUTOCOMPLETE["email"]}),
+    )
+    first_name = forms.CharField(
+        required=False,
+        max_length=100,
+        label=_("First name"),
+        widget=forms.TextInput(attrs={"autocomplete": PERSON_FIELD_AUTOCOMPLETE["first_name"]}),
+    )
+    last_name = forms.CharField(
+        required=False,
+        max_length=100,
+        label=_("Last name"),
+        widget=forms.TextInput(attrs={"autocomplete": PERSON_FIELD_AUTOCOMPLETE["last_name"]}),
+    )
 
     def __init__(self, *args: Any, request: HttpRequest, page: Any, **kwargs: Any) -> None:
         self.request = request
@@ -105,6 +147,20 @@ class FormSubmissionForm(forms.Form):
 
         for input_block in page.inputs:
             self.fields[_field_name(input_block)] = self._field_for_input(input_block)
+
+        for field in self.fields.values():
+            apply_bootstrap_classes(field.widget)
+
+    @property
+    def layout_fields(self) -> list[forms.BoundField]:
+        """
+        The fields form_page.html lays out one per row. Subclasses that gather
+        some of their fields into a grid of their own (see
+        RegistrationForm.naming_fields) drop those fields from here, so that a
+        field rendered by the grid is not also rendered a second time by the
+        ordinary loop.
+        """
+        return list(self.visible_fields())
 
     @staticmethod
     def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:

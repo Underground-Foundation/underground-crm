@@ -122,7 +122,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Geocoding {total} address(es) in batches of {batch_size}…")
 
-        update_fields = ["latitude", "longitude", "geocode_reliability"]
+        update_fields = ["latitude", "longitude", "geocode_reliability", "gnaf_id"]
         if correct_address_fields:
             update_fields += list(_CORRECTABLE_FIELDS)
 
@@ -146,6 +146,7 @@ class Command(BaseCommand):
                     address.latitude = result.latitude
                     address.longitude = result.longitude
                     address.geocode_reliability = result.reliability
+                    address.gnaf_id = result.gnaf_id
                     if correct_address_fields and result.address:
                         changed = _apply_corrections(address, result.address)
                         if changed:

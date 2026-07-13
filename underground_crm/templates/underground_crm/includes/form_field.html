@@ -1,0 +1,32 @@
+{% comment %}
+    One labelled form control: errors, label, widget, help text.
+
+    Shared by the ordinary one-field-per-row loop in form_page.html and by the
+    naming grid in person_naming.html, so that a field looks and behaves the
+    same wherever it is laid out. The caller owns the surrounding element (and
+    therefore the field's placement in the grid); this template renders only the
+    contents of that element.
+{% endcomment %}
+{{ field.errors }}
+{% if field.field.widget.input_type == "checkbox" and field.label %}
+  {% comment %}
+    A plain checkbox field (e.g. a BooleanField block): Bootstrap only lines
+    the checkbox up with its caption when both sit inside a .form-check
+    wrapper, checkbox first — without it the label overlaps the box (see
+    apply_bootstrap_classes in form_submission.py, which stamps the
+    form-check-input class this depends on). A field with no label, such as
+    SameAsHomeAddressCheckbox, renders its own self-contained markup instead
+    (see same_as_home_checkbox.html) and falls through to the plain branch
+    below.
+  {% endcomment %}
+  <div class="form-check">
+    {{ field }}
+    <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  </div>
+{% else %}
+  {% if field.label %}{{ field.label_tag }}{% endif %}
+  {{ field }}
+{% endif %}
+{% if field.help_text %}
+  <span class="helptext form-text text-muted"{% if field.auto_id %} id="{{ field.auto_id }}_helptext"{% endif %}>{{ field.help_text|safe }}</span>
+{% endif %}

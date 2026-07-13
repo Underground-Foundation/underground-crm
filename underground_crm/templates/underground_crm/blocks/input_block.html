@@ -1,1 +1,10 @@
-{# Intentionally blank — see _input_block_kwargs() in models/pages.py #}
+{% comment %}
+    This template intentionally renders nothing. Blocks that point their
+    Meta.template here (see _input_block_kwargs() in
+    underground_crm/models/pages.py) are visitor-input fields — checkboxes,
+    text inputs, PersonFieldBlock, and so on — whose actual <input> element
+    is rendered separately by FormSubmissionForm. Without this empty
+    template, Wagtail's default StreamField rendering would additionally
+    print each block's stored value as plain, non-interactive text in the
+    page body, alongside the real form field.
+{% endcomment %}

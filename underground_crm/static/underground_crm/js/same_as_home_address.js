@@ -17,8 +17,10 @@
     if (!controlled) {
       return null;
     }
-    // form.as_p wraps each field, label included, in its own <p>.
-    return controlled.closest("p") || controlled;
+    // form_page.html wraps each field, label included, in its own
+    // <div class="form-group"> (<p> is the fallback for templates that
+    // still render the form with form.as_p).
+    return controlled.closest(".form-group, p") || controlled;
   }
 
   function applyState(checkbox) {

@@ -1,0 +1,19 @@
+{% comment %}
+  Renders a StructuredAddressWidget (see underground_crm/widgets.py): one
+  labeled input per address component, plus the hidden G-NAF ID input. The
+  container carries the field's base id so that the "same as home address"
+  script can collapse the whole group, and the data-structured-address
+  attribute is how address_autocomplete.js recognizes the group.
+{% endcomment %}
+<div{% if widget.attrs.id %} id="{{ widget.attrs.id }}"{% endif %} class="structured-address form-row" data-structured-address>
+  {% for subwidget in widget.subwidgets %}
+    {% if subwidget.is_hidden %}
+      {% include subwidget.template_name with widget=subwidget %}
+    {% else %}
+      <div class="structured-address-component {{ subwidget.column_class }} mb-2">
+        <label for="{{ subwidget.attrs.id }}">{{ subwidget.label }}</label>
+        {% include subwidget.template_name with widget=subwidget %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>

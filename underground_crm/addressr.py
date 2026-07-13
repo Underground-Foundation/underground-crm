@@ -9,6 +9,7 @@ Notice that the API spec at http://localhost:8080/api-docs might differ from htt
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +24,12 @@ logger = logging.getLogger(__name__)
 # useful, so both the autocomplete widget and the suggestion view refuse to
 # search until the visitor has typed at least this many characters.
 MINIMUM_QUERY_LENGTH: int = 5
+
+# A G-NAF Address Detail PID, e.g. "GANSW705239062" — the stable identifier
+# G-NAF assigns to each address, which Addressr uses as its address ID.
+# Anything not matching this shape is refused before it can reach a URL path,
+# because visitor-supplied IDs flow through geocode_by_id().
+GNAF_ID_PATTERN = re.compile(r"[A-Z0-9_]{1,32}")
 
 
 class StructuredAddress(NamedTuple):
@@ -46,6 +53,10 @@ class Geocode(NamedTuple):
     # The matched address's own structured components, or None if Addressr
     # returned no structured breakdown for it.
     address: StructuredAddress | None
+    # The matched address's G-NAF Address Detail PID, e.g. "GANSW705239062".
+    gnaf_id: str | None = None
+    # The matched address's single-line form, e.g. "1 COOK RD, LINDFIELD NSW 2070".
+    sla: str | None = None
 
 
 def _get(path: str) -> dict | None:
@@ -66,6 +77,17 @@ def search(query: str) -> list[dict]:
     encoded = urllib.parse.urlencode({"q": query})
     result = _get(f"/addresses?{encoded}")
     return result if isinstance(result, list) else []
+
+
+def gnaf_id_from_search_entry(entry: dict) -> str | None:
+    """The G-NAF Address Detail PID of one search() entry, extracted from its
+    self link (e.g. "/addresses/GANSW705239062"), or None when the entry
+    carries no well-formed link."""
+    href = ((entry.get("links") or {}).get("self") or {}).get("href")
+    if not isinstance(href, str):
+        return None
+    gnaf_id = href.rsplit("/", 1)[-1]
+    return gnaf_id if GNAF_ID_PATTERN.fullmatch(gnaf_id) else None
 
 
 def _extract_structured_address(detail: dict) -> StructuredAddress | None:
@@ -92,6 +114,35 @@ def _extract_structured_address(detail: dict) -> StructuredAddress | None:
     )
 
 
+def _geocode_from_detail(detail: dict, gnaf_id: str) -> Geocode | None:
+    """Build a Geocode from an Addressr address detail response, or None when
+    the detail carries no usable geocode."""
+    geocodes = detail.get("geocoding", {}).get("geocodes", [])
+    if not geocodes:
+        logger.debug("No geocodes available for address %s", gnaf_id)
+        return None
+
+    # Prefer the entry marked as default; fall back to the first entry.
+    best = next((g for g in geocodes if g.get("default")), geocodes[0])
+    try:
+        reliability = best.get("reliability", {}).get("code")
+        # Addressr nests confidence under "structured", not at the top level.
+        confidence = (detail.get("structured") or {}).get("confidence")
+        sla = detail.get("sla")
+        return Geocode(
+            latitude=Decimal(str(best["latitude"])),
+            longitude=Decimal(str(best["longitude"])),
+            reliability=int(reliability) if reliability is not None else None,
+            confidence=confidence,
+            address=_extract_structured_address(detail),
+            gnaf_id=gnaf_id,
+            sla=sla if isinstance(sla, str) else None,
+        )
+    except (KeyError, ValueError) as exc:
+        logger.warning("Addressr returned unexpected geocode shape: %s", exc)
+        return None
+
+
 def geocode(query: str) -> Geocode | None:
     """
     Return the best geocode for a free-text address string, or None if Addressr
@@ -102,34 +153,28 @@ def geocode(query: str) -> Geocode | None:
         logger.debug("No address suggestions for %s", query)
         return None
 
-    place_link = suggestions[0].get("links", {}).get("self").get("href")
-    if not place_link:
+    gnaf_id = gnaf_id_from_search_entry(suggestions[0])
+    if not gnaf_id:
         logger.debug("No ID for the first address suggestion")
         return None
 
-    detail = _get(place_link)
+    return geocode_by_id(gnaf_id)
+
+
+def geocode_by_id(gnaf_id: str) -> Geocode | None:
+    """
+    Return the geocode of the address carrying the given G-NAF Address Detail
+    PID, or None if the PID is malformed or unknown, or Addressr is
+    unavailable. Unlike geocode(), this resolves one exact address rather than
+    the best-scoring match for a piece of text.
+    """
+    if not GNAF_ID_PATTERN.fullmatch(gnaf_id):
+        logger.warning("Refusing to look up the malformed G-NAF ID %r", gnaf_id)
+        return None
+
+    detail = _get(f"/addresses/{gnaf_id}")
     if not detail:
-        logger.debug("No detail available for address %s", place_link)
+        logger.debug("No detail available for address %s", gnaf_id)
         return None
 
-    geocodes = detail.get("geocoding", {}).get("geocodes", [])
-    if not geocodes:
-        logger.debug("No geocodes available for place %s", place_link)
-        return None
-
-    # Prefer the entry marked as default; fall back to the first entry.
-    best = next((g for g in geocodes if g.get("default")), geocodes[0])
-    try:
-        reliability = best.get("reliability", {}).get("code")
-        # Addressr nests confidence under "structured", not at the top level.
-        confidence = (detail.get("structured") or {}).get("confidence")
-        return Geocode(
-            latitude=Decimal(str(best["latitude"])),
-            longitude=Decimal(str(best["longitude"])),
-            reliability=int(reliability) if reliability is not None else None,
-            confidence=confidence,
-            address=_extract_structured_address(detail),
-        )
-    except (KeyError, ValueError) as exc:
-        logger.warning("Addressr returned unexpected geocode shape: %s", exc)
-        return None
+    return _geocode_from_detail(detail, gnaf_id)

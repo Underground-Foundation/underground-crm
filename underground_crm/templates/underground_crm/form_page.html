@@ -2,15 +2,31 @@
 {% load i18n %}
 
 {% block extra_body_content %}
+  {% block toast %}{% endblock %}
   <div class="form-page-form my-4">
     {% if submitted %}
       <p class="alert alert-success" role="status">
         {% trans "Thanks — your response has been recorded." %}
       </p>
     {% endif %}
+    {% block memberships %}{% endblock %}
     <form method="post">
       {% csrf_token %}
-      {{ form.as_p }}
+      {{ form.non_field_errors }}
+      {% comment %}
+        form.layout_fields is the form's visible fields minus any that a
+        subclass lays out in a grid of its own — see RegistrationForm, whose
+        naming fields are rendered by person_naming.html instead, and which
+        would otherwise appear twice.
+      {% endcomment %}
+      {% block form_fields %}
+        {% for field in form.layout_fields %}
+          <div class="form-group{% with classes=field.css_classes %}{% if classes %} {{ classes }}{% endif %}{% endwith %}">
+            {% include "underground_crm/includes/form_field.html" with field=field %}
+          </div>
+        {% endfor %}
+      {% endblock %}
+      {% for field in form.hidden_fields %}{{ field }}{% endfor %}
       <button type="submit" class="btn btn-primary">{% trans "Submit" %}</button>
     </form>
     {# Widget assets, e.g. the address autocomplete script. #}
