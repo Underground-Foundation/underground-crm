@@ -31,6 +31,13 @@ jobs:
       # Note: We omit PostgreSQL environment variables in order to trigger
       # the SQLite fallback defined in underground_crm/settings.py for CI/CD
       # test execution.
+      # These LEGACY values satisfy the require_env() call for some management commands
+      # which occur at import time. The test suite therefore needs these set even though
+      # it never makes a real legacy CRM API call.
+      LEGACY_ADMIN_URL: "https://legacy-not-for-loss-organisation.com/people-party"
+      LEGACY_API_TOKEN: "ci-placeholder-token"
+      LEGACY_USER_AGENT: "Mozilla"
+      LEGACY_ADMIN_COOKIE_FILE: /dev/null
 
     steps:
       - name: Checkout Code
