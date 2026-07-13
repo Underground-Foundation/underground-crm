@@ -4,12 +4,19 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+import django.test
+from wagtail.models import Page, Site
+
 from underground_crm.contactability import get_validated_email_address
 from underground_crm.management.commands.import_pages import (
+    PAGE_BUILDING_MAP,
+    build_form_page,
+    build_registration_page,
     extract_donation_frequency,
     extract_event_population,
     extract_event_time,
     extract_event_venue,
+    extract_form_inputs,
     extract_host_attributes,
     extract_importable_html,
     extract_page_size,
@@ -17,6 +24,7 @@ from underground_crm.management.commands.import_pages import (
     get_host_by_email_address,
     parse_event_datetime,
 )
+from underground_crm.models.pages import FormPage, RegistrationPage
 
 
 class TestParseEventDatetime(unittest.TestCase):
@@ -206,3 +214,314 @@ class TestDonationExtraction(unittest.TestCase):
 
         soup = BeautifulSoup(html, "html.parser")
         self.assertEqual(extract_donation_frequency(soup), (False, False))
+
+
+class TestVolunteerSignupExtraction(unittest.TestCase):
+    """
+    volunteer_sample.html is a real fetched copy of fusionparty.org.au's
+    "Volunteer Signup" page (legacy page id 3358). The fetched snapshot
+    reflects one already-signed-up member's current answers (e.g. "Blog
+    writer" is checked) — extract_form_inputs() must ignore that state and
+    only pull out the field descriptions, not that member's answers.
+    """
+
+    volunteer_html_file = Path(__file__).parent / "volunteer_sample.html"
+    expected_checkbox_count = 17
+
+    @classmethod
+    def setUpClass(cls):
+        cls.volunteer_soup, _ = extract_importable_html(
+            cls.volunteer_html_file, importable_dir=None
+        )
+        cls.form_tag = cls.volunteer_soup.find(id="content").find("form")
+        cls.assertTrue(cls, cls.form_tag)
+
+    def test_extracts_one_entry_per_checkbox_plus_two_free_text_fields(self):
+        inputs = extract_form_inputs(self.form_tag)
+        checkbox_count = sum(1 for i in inputs if i.input_type == "checkbox")
+        text_count = sum(1 for i in inputs if i.input_type == "text")
+        self.assertEqual(
+            checkbox_count,
+            self.expected_checkbox_count,
+            msg="The sample page has one checkbox per volunteer_type_ids[] option",
+        )
+        self.assertEqual(
+            text_count,
+            2,
+            msg="The sample page has one text input (availability) and one textarea (comments)",
+        )
+
+    def test_extracts_expected_checkbox_label(self):
+        inputs = extract_form_inputs(self.form_tag)
+        descriptions = [i.description for i in inputs]
+        self.assertIn("Party engagement (calling members)", descriptions)
+
+    def test_extracts_expected_text_field_labels(self):
+        inputs = extract_form_inputs(self.form_tag)
+        descriptions = [i.description for i in inputs]
+        self.assertIn("When are you available? (optional)", descriptions)
+        self.assertIn("Comments, other ideas, etc. (optional)", descriptions)
+
+    def test_hidden_bookkeeping_fields_are_excluded(self):
+        descriptions = [i.description for i in extract_form_inputs(self.form_tag)]
+        # authenticity_token, page_id, return_to, activity_is_private, and the
+        # Rails-style empty-array fallback are all type="hidden" — none of them
+        # are real questions.
+        self.assertNotIn("authenticity_token", descriptions)
+        self.assertNotIn("page_id", descriptions)
+
+    def test_honeypot_email_code_field_is_excluded(self):
+        """
+        The "Optional email code" field is wrapped in a div with
+        aria-hidden="true" and style="display:none" — it's used to recognise
+        an already-logged-in visitor via a code, not a real question.
+        """
+        descriptions = [i.description for i in extract_form_inputs(self.form_tag)]
+        self.assertNotIn("Optional email code", descriptions)
+
+
+class TestBuildVolunteerSignupPage(django.test.TestCase):
+    volunteer_html_file = Path(__file__).parent / "volunteer_sample.html"
+    expected_checkbox_count = 17
+
+    def setUp(self):
+        self.document_soup, self.importable_html = extract_importable_html(
+            self.volunteer_html_file, importable_dir=None
+        )
+        self.attributes = {
+            "slug": "volunteer",
+            "name": "Volunteer",
+            "headline": "Become a volunteer",
+            "title": "Volunteer - Fusion Party",
+            "excerpt": "Fusion is staffed entirely by volunteers.",
+            "page_type_name": "Volunteer Signup",
+            "published_at": "2024-07-29T08:49:30+10:00",
+        }
+        self.site = Site.objects.first()
+
+    def _build_and_save(self) -> FormPage:
+        page = build_form_page(
+            document_soup=self.document_soup,
+            importable_html=self.importable_html,
+            attributes=self.attributes,
+            slug="volunteer",
+            site=self.site,
+        )
+        Page.objects.get(id=1).add_child(instance=page)
+        page.save()
+        page.refresh_from_db()
+        return page
+
+    def test_creates_an_input_block_per_checkbox_and_free_text_field(self):
+        page = self._build_and_save()
+
+        self.assertEqual(
+            len(page.inputs),
+            self.expected_checkbox_count + 2,
+            msg="Every checkbox plus the availability and comments fields should become an input block",
+        )
+        question_html = " ".join(
+            block.value for block in list(page.body) if block.block_type == "html"
+        )
+        self.assertIn(
+            "Doorknocking",
+            question_html,
+            msg="Each legacy question's text should be kept as an html block beside its input block",
+        )
+
+    def test_form_html_is_removed_from_the_html_block(self):
+        page = self._build_and_save()
+        html_blocks = [block.value for block in page.body if block.block_type == "html"]
+        self.assertTrue(html_blocks, msg="The intro copy ahead of the form should still be kept")
+        combined_html = " ".join(html_blocks)
+        self.assertNotIn(
+            "<form",
+            combined_html,
+            msg="The raw <form> markup must not be duplicated alongside the input blocks",
+        )
+
+    def test_reimporting_builds_the_same_input_blocks(self):
+        """A --replace re-import must extract the same set of inputs each time."""
+        first_page = self._build_and_save()
+
+        second_page = build_form_page(
+            document_soup=self.document_soup,
+            importable_html=self.importable_html,
+            attributes=self.attributes,
+            slug="volunteer-2",
+            site=self.site,
+        )
+        Page.objects.get(id=1).add_child(instance=second_page)
+        second_page.save()
+        second_page.refresh_from_db()
+
+        self.assertEqual(
+            [block.block_type for block in first_page.inputs],
+            [block.block_type for block in second_page.inputs],
+            msg="Re-running the importer against the same source page must extract identical inputs",
+        )
+
+    def test_volunteer_signup_page_applies_the_volunteer_tag(self):
+        volunteer_tag_name = "Volunteer"
+        page = self._build_and_save()
+        tag_names = set(page.tags_to_apply.values_list("name", flat=True))
+        self.assertEqual(
+            tag_names,
+            {volunteer_tag_name},
+            msg=(
+                "A 'Volunteer Signup' page should tag authenticated submitters as "
+                f"'{volunteer_tag_name}' via tags_to_apply"
+            ),
+        )
+
+
+class TestBuildSignupPage(django.test.TestCase):
+    """
+    signup_sample.html models the legacy "Signup" page type: a <form> whose
+    fields address the visitor's own record. build_registration_page() must
+    turn it into a RegistrationPage of person_field blocks — mapping legacy
+    field names onto whitelisted Person fields, keeping the legacy question
+    text as each block's label, and dropping identity fields (which
+    RegistrationForm renders by itself) plus anything unmappable.
+    """
+
+    signup_html_file = Path(__file__).parent / "signup_sample.html"
+
+    def setUp(self):
+        self.document_soup, self.importable_html = extract_importable_html(
+            self.signup_html_file, importable_dir=None
+        )
+        self.attributes = {
+            "slug": "join",
+            "name": "Join",
+            "headline": "Join Fusion and make a difference!",
+            "title": "Join Fusion and make a difference!",
+            "excerpt": "Fusion is dedicated to thinking of long-term solutions.",
+            "page_type_name": "Signup",
+            "published_at": "2017-04-09T07:30:00+10:00",
+        }
+        self.site = Site.objects.first()
+
+    def _build_and_save(self) -> RegistrationPage:
+        page = build_registration_page(
+            document_soup=self.document_soup,
+            importable_html=self.importable_html,
+            attributes=self.attributes,
+            slug="join",
+            site=self.site,
+        )
+        Page.objects.get(id=1).add_child(instance=page)
+        page.save()
+        page.refresh_from_db()
+        return page
+
+    def test_signup_page_type_maps_to_registration_page(self):
+        self.assertIs(PAGE_BUILDING_MAP["Signup"], build_registration_page)
+
+    def test_whitelisted_fields_become_person_field_blocks_with_legacy_labels(self):
+        page = self._build_and_save()
+        blocks_by_person_field = {
+            block.value["field"]: block.value["label_override"] for block in page.inputs
+        }
+        self.assertEqual(
+            blocks_by_person_field,
+            {
+                "mobile_number": "Mobile phone",
+                "home_address": "Address",
+                "email_opt_in": "Send me email updates",
+            },
+            msg=(
+                "Each legacy signup field whose name matches a whitelisted Person "
+                "field should become a person_field block labelled with the legacy "
+                "question text; the legacy submitted_address question maps to the "
+                "home-address role; identity fields (first/last name, email) are "
+                "rendered by RegistrationForm itself, and the employer field has "
+                "no Person counterpart to write to"
+            ),
+        )
+
+    def test_intro_copy_is_kept_without_the_form_markup(self):
+        page = self._build_and_save()
+        html_blocks = [block.value for block in page.body if block.block_type == "html"]
+        combined_html = " ".join(html_blocks)
+        self.assertIn(
+            "long-term solutions",
+            combined_html,
+            msg="The intro copy ahead of the form should still be kept",
+        )
+        self.assertNotIn(
+            "<form",
+            combined_html,
+            msg="The raw <form> markup must not be duplicated alongside the person_field blocks",
+        )
+
+
+class TestBuildFormPageTagging(django.test.TestCase):
+    """
+    "Feedback" and "Suggestion Box" share build_form_page's <form>-extraction
+    logic with "Volunteer Signup", but submitting them says nothing about
+    whether the submitter volunteers, so they must not pick up the
+    "Volunteer" tag.
+    """
+
+    feedback_html_file = Path(__file__).parent / "volunteer_sample.html"
+
+    def setUp(self):
+        self.document_soup, self.importable_html = extract_importable_html(
+            self.feedback_html_file, importable_dir=None
+        )
+        self.site = Site.objects.first()
+
+    def _build_and_save(self, page_type_name: str, slug: str) -> FormPage:
+        attributes = {
+            "slug": slug,
+            "name": page_type_name,
+            "headline": page_type_name,
+            "title": f"{page_type_name} - Fusion Party",
+            "page_type_name": page_type_name,
+            "published_at": "2024-07-29T08:49:30+10:00",
+        }
+        page = build_form_page(
+            document_soup=self.document_soup,
+            importable_html=self.importable_html,
+            attributes=attributes,
+            slug=slug,
+            site=self.site,
+        )
+        Page.objects.get(id=1).add_child(instance=page)
+        page.save()
+        page.refresh_from_db()
+        return page
+
+    def test_feedback_page_has_no_tags_to_apply(self):
+        page = self._build_and_save("Feedback", slug="feedback")
+        self.assertFalse(
+            page.tags_to_apply.exists(),
+            msg="A 'Feedback' submission doesn't indicate the submitter is a volunteer",
+        )
+
+    def test_suggestion_box_page_has_no_tags_to_apply(self):
+        page = self._build_and_save("Suggestion Box", slug="suggestion-box")
+        self.assertFalse(
+            page.tags_to_apply.exists(),
+            msg="A 'Suggestion Box' submission doesn't indicate the submitter is a volunteer",
+        )
+
+
+class TestFormPageTypeMapping(unittest.TestCase):
+    """
+    "Volunteer Signup", "Feedback", and "Suggestion Box" are all legacy page
+    types backed by a plain <form>, so they must all be routed to the same
+    FormPage builder rather than being skipped as unsupported.
+    """
+
+    form_backed_legacy_types = ["Volunteer Signup", "Feedback", "Suggestion Box"]
+
+    def test_form_backed_legacy_types_map_to_build_form_page(self):
+        for legacy_type in self.form_backed_legacy_types:
+            with self.subTest(legacy_type=legacy_type):
+                self.assertEqual(
+                    PAGE_BUILDING_MAP.get(legacy_type),
+                    build_form_page,
+                    msg=f"'{legacy_type}' is a form-only legacy page type and should build a FormPage",
+                )

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!--
+  A trimmed-down legacy "Signup" page in the same markup style as
+  volunteer_sample.html (which is a real fetched snapshot): a #content main
+  element holding intro copy and a <form> whose inputs are named
+  "<record>[<field>]". The field set mirrors the legacy system's signup
+  fields: identity fields, two Person profile fields, an opt-in checkbox,
+  plus an "employer" field that has no whitelisted Person counterpart.
+-->
+<html lang="en">
+<head>
+  <title>Join Fusion and make a difference!</title>
+  <meta property="og:image" content="https://assets.example.org/pages/3360/meta_share.png"/>
+  <meta property="og:description" content="Fusion is dedicated to thinking of long-term solutions to advance our society."/>
+  <meta property="og:type" content="website"/>
+</head>
+<body>
+  <main id="content" role="main">
+    <div class="container">
+      <div id="intro" class="intro">
+        <h2><strong>Join Fusion and make a difference!</strong></h2>
+        <p>Fusion is dedicated to thinking of long-term solutions to advance our society.</p>
+      </div>
+      <div class="form">
+        <form id="page_signup_form" class="ajaxForm signup_form" method="POST" action="/forms/signups">
+          <input name="authenticity_token" type="hidden" value="S4GC1wlsI330m912bcJCJvV7oWvAND="/>
+          <input name="page_id" type="hidden" value="3360"/>
+          <div aria-hidden="true" style="display:none">
+            <label for="email_code">Optional email code</label>
+            <input id="email_code" name="email_address" type="text"/>
+          </div>
+          <label for="signup_first_name">First Name</label>
+          <input id="signup_first_name" name="signup[first_name]" type="text"/>
+          <label for="signup_last_name">Last Name</label>
+          <input id="signup_last_name" name="signup[last_name]" type="text"/>
+          <label for="signup_email">Email</label>
+          <input id="signup_email" name="signup[email]" type="text"/>
+          <label for="signup_mobile_number">Mobile phone</label>
+          <input id="signup_mobile_number" name="signup[mobile_number]" type="text"/>
+          <label for="signup_submitted_address">Address</label>
+          <input id="signup_submitted_address" name="signup[submitted_address]" type="text"/>
+          <label for="signup_employer">Employer</label>
+          <input id="signup_employer" name="signup[employer]" type="text"/>
+          <label for="signup_email_opt_in">Send me email updates</label>
+          <input id="signup_email_opt_in" name="signup[email_opt_in]" type="checkbox" value="1"/>
+          <input name="commit" type="submit" value="Join"/>
+        </form>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

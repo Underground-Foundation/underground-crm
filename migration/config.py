@@ -33,9 +33,20 @@ def _require(name):
     return val
 
 
+CLOUDFLARE_ACCOUNT_ID = _require("CLOUDFLARE_ACCOUNT_ID")
+CLOUDFLARE_SCRAPING_TOKEN = _require("CLOUDFLARE_SCRAPING_TOKEN")
+CLOUDFLARE_ASSETS_ENDPOINT = _require("CLOUDFLARE_ASSETS_ENDPOINT")
+CLOUDFLARE_ASSETS_BUCKET = _require("CLOUDFLARE_ASSETS_BUCKET")
+CLOUDFLARE_PUBLIC_ASSET_URL = _require("CLOUDFLARE_PUBLIC_ASSET_URL").rstrip("/")
 LEGACY_API_TOKEN = _require("LEGACY_API_TOKEN")
 LEGACY_ADMIN_URL = _require("LEGACY_ADMIN_URL").rstrip("/")
 LEGACY_API_URL = _require("LEGACY_API_URL").rstrip("/")
+# Every base URL that legacy-uploaded images/documents/theme assets are served from, as
+# linked in fetched HTML. A page can link assets from more than one such host (its own
+# uploads, plus shared theme/framework assets on a separate host or path) — comma-separated.
+LEGACY_ASSET_URLS = tuple(
+    url.strip().rstrip("/") for url in _require("LEGACY_ASSET_URLS").split(",") if url.strip()
+)
 LEGACY_USER_AGENT = _require("LEGACY_USER_AGENT")
 LEGACY_ADMIN_COOKIE_FILE = _require("LEGACY_ADMIN_COOKIE_FILE")
 LEGACY_VIEWER_COOKIE_FILE = _require("LEGACY_VIEWER_COOKIE_FILE")

@@ -1,0 +1,4 @@
+{% load i18n %}
+
+<h2 class="{{ h2_class }}">{% trans "Login cancelled" %}</h2>
+<p>{% blocktrans %}You decided to cancel logging in to our site using one of your existing accounts. If this was a mistake, please <a href="{{ login_url }}">sign in</a>.{% endblocktrans %}</p>

@@ -1,0 +1,17 @@
+{% extends "underground_crm/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Login Cancelled" %}{% endblock %}
+
+{% block page_body %}
+{% url 'underground_crm:login' as login_url %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-10">
+      <div class="form bg-aquamarine-transparent rounded px-3 py-4 mx-1 mt-4">
+        {% include "socialaccount/_login_cancelled.html" with h2_class="h-underline h-pink h-underline-animate" login_url=login_url %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

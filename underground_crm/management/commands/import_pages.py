@@ -13,18 +13,35 @@ For each <slug>.html found in <domain>/, the command:
      as a Raw HTML body block.
 
 Supported page types:
-  "Basic"    -> UndergroundBasicPage
-  "Donation" -> PaymentPage
+  "Basic"            -> UndergroundBasicPage
+  "Calendar"         -> FeedPage (ordered soonest first, as an events index)
+  "Donation"         -> PaymentPage
+  "Event"            -> EventPage
+  "Blog"             -> FeedPage (ordered newest first)
+  "Blog Post"        -> UndergroundBasicPage
+  "Redirect"         -> Redirect
+  "Signup"           -> RegistrationPage (the <form>'s fields become
+                        person_field StreamField blocks when they match
+                        whitelisted Person fields; see build_registration_page)
+  "Volunteer Signup",
+  "Feedback",
+  "Suggestion Box"   -> FormPage (the <form>'s fields become input
+                        StreamField blocks; see build_form_page)
 """
 
+import copy
 import datetime
+import functools
+import html
 import json
+import logging
+import re
 
 import phonenumbers
 from dataclasses import dataclass
 from dateutil import parser
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, cast
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
@@ -40,10 +57,20 @@ from underground_crm.contactability import (
     get_validated_email_address,
     parse_address,
 )
-from underground_crm.models import Address, Blog, BasicPage, UndergroundBasicPage
-from underground_crm.models.pages import EventPage, BlogPost
+from underground_crm.blocks import registration_person_field_names
+from underground_crm.models import Address, FeedPage, BasicPage, UndergroundBasicPage
+from underground_crm.models import Tag as CrmTag
+from underground_crm.models.pages import (
+    EventPage,
+    BlogPost,
+    FormPage,
+    FormPageTag,
+    RegistrationPage,
+)
 from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -363,11 +390,9 @@ def get_page_args(document_soup, importable_html, attributes, slug: str, site) -
         "seo_title": seo_title,
         "search_description": extract_og_description(head),
         "latest_revision_created_at": get_publication_date(attributes),
-        "author": author,
-        "og_type": extract_og_type(head),
+        "og_type_override": extract_og_type(head),
         "body": json.dumps([{"type": "html", "value": importable_html}]),
         "show_toc": should_show_toc(document_soup),
-        "site": site,
     }
 
 
@@ -434,14 +459,15 @@ def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
     return len(list_items)
 
 
-def build_blog_page(
+def build_feed_page(
     document_soup,
     importable_html: str,
     attributes: Dict[str, Any],
     slug: str,
     site: Site,
-    return_class=Blog,
-) -> Blog:
+    return_class=FeedPage,
+    ordering: str = FeedPage.Ordering.NEWEST_FIRST,
+) -> FeedPage:
     kwargs = get_page_args(
         document_soup=document_soup,
         importable_html=importable_html,
@@ -451,10 +477,11 @@ def build_blog_page(
     )
     kwargs.pop("show_toc")
     page = cast(
-        Blog,
+        FeedPage,
         return_class(**kwargs),
     )
     page.page_size = extract_page_size(document_soup)
+    page.ordering = ordering
     return page
 
 
@@ -532,23 +559,262 @@ def build_blog_post(
     site: Site,
     return_class=BlogPost,
 ) -> BlogPost:
-    return build_underground_basic_page(
+    page = cast(
+        BlogPost,
+        build_underground_basic_page(
+            document_soup=document_soup,
+            importable_html=importable_html,
+            attributes=attributes,
+            slug=slug,
+            site=site,
+            return_class=return_class,
+        ),
+    )
+    # BlogPost is the only page type with its own author field (distinct from
+    # the inherited "owner") — get_page_args() no longer sets it, since every
+    # other page type this is called for lacks that field entirely.
+    page.author = extract_author(document_soup)
+    return page
+
+
+# Input types that aren't real user-facing fields, so extract_form_inputs()
+# ignores them regardless of surrounding markup.
+_SKIPPED_INPUT_TYPES = {"hidden", "submit", "button", "reset"}
+
+
+class FormInput(NamedTuple):
+    """One user-facing field extracted from a legacy <form>."""
+
+    description: str
+    # "checkbox" or "text" — the FORM_INPUT_BLOCKS block type it maps to.
+    input_type: str
+    # The legacy record field this input writes to, parsed out of the input's
+    # name attribute: "signup[mobile_number]" names "mobile_number".
+    field_name: str
+
+
+def _legacy_field_name(raw_name: str) -> str:
+    """
+    The innermost bracketed segment of a legacy input name — legacy forms
+    name their inputs "<record>[<field>]", e.g. "signup[mobile_number]" or
+    "volunteer_signup[volunteer_type_ids][]" — falling back to the whole
+    name when there are no brackets (e.g. "email_address").
+    """
+    segments = re.findall(r"\[([^\]]+)\]", raw_name)
+    return segments[-1] if segments else raw_name
+
+
+def extract_form_inputs(form_tag: Tag) -> List[FormInput]:
+    """
+    Extract a FormInput for every real, user-facing field in a legacy <form>
+    — skipping hidden/CSRF/bookkeeping inputs, the submit button, and any
+    field wrapped in an aria-hidden container (e.g. the "Optional email code"
+    honeypot/identity field used to recognise a logged-in visitor). Checkbox
+    groups (e.g. volunteer_type_ids[]) yield one entry per checkbox, using
+    its <label for="..."> text as the description; text inputs and textareas
+    do the same.
+    """
+    inputs: List[FormInput] = []
+    for field in form_tag.find_all(["input", "textarea"]):
+        field_type = field.get("type", "text") if field.name == "input" else "text"
+        if field_type in _SKIPPED_INPUT_TYPES:
+            continue
+        if field.find_parent(attrs={"aria-hidden": "true"}):
+            continue
+
+        field_id = field.get("id")
+        label = form_tag.find("label", attrs={"for": field_id}) if field_id else None
+        raw_name = field.get("name", "").strip()
+        description = label.get_text(strip=True) if label else raw_name
+        if not description:
+            continue
+
+        input_type = "checkbox" if field_type == "checkbox" else "text"
+        inputs.append(FormInput(description, input_type, _legacy_field_name(raw_name)))
+    return inputs
+
+
+# Only "Volunteer Signup" submissions should tag the submitting Person as a
+# volunteer; "Feedback" and "Suggestion Box" are legacy types that share the
+# same <form>-extraction logic but must leave tags_to_apply empty.
+_VOLUNTEER_SIGNUP_PAGE_TYPE_NAME = "Volunteer Signup"
+_VOLUNTEER_TAG_NAME = "Volunteer"
+
+
+def get_tags_to_apply_for_legacy_type(page_type_name: Optional[str]) -> List[CrmTag]:
+    if page_type_name != _VOLUNTEER_SIGNUP_PAGE_TYPE_NAME:
+        return []
+    volunteer_tag, _created = CrmTag.objects.get_or_create(name=_VOLUNTEER_TAG_NAME)
+    return [volunteer_tag]
+
+
+def build_form_page(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+    return_class=FormPage,
+) -> FormPage:
+    """
+    Build a FormPage from a legacy form-bearing page ("Volunteer Signup",
+    "Feedback", or "Suggestion Box"). The <form>'s checkbox/text/textarea
+    fields become "checkbox"/"text" input StreamField blocks (see
+    FORM_INPUT_BLOCKS in models/pages.py), each preceded by an "html" block
+    carrying the legacy question text, since a bare input block has no
+    per-question label of its own; everything else in #content becomes an
+    ordinary "html" block ahead of them, so the page's intro copy is
+    preserved.
+
+    The source page snapshot may reflect one already-signed-up member's
+    current answers (checked boxes, filled-in text) — only the field
+    descriptions are imported, never that member's answers.
+
+    Only "Volunteer Signup" pages get the "Volunteer" tag wired up as
+    tags_to_apply, so that authenticated submitters are tagged as
+    volunteers (see FormPage.tags_to_apply); "Feedback" and "Suggestion Box"
+    pages get no tags_to_apply, since submitting them says nothing about
+    whether the submitter volunteers.
+    """
+    # Work on a private copy: extracting the <form> below must not mutate the
+    # caller's soup, which a --replace re-import passes in again.
+    document_soup = copy.copy(document_soup)
+    content = document_soup.find(id="content")
+    form_tag = content.find("form") if content else None
+
+    if content is not None and form_tag is not None:
+        form_tag.extract()
+        remaining_html = _prettify(content)
+    else:
+        remaining_html = importable_html
+
+    body_blocks: List[Tuple[str, Any]] = []
+    if remaining_html.strip():
+        body_blocks.append(("html", remaining_html))
+    if form_tag is not None:
+        for form_input in extract_form_inputs(form_tag):
+            body_blocks.append(("html", f"<p>{html.escape(form_input.description)}</p>"))
+            body_blocks.append(
+                (form_input.input_type, False if form_input.input_type == "checkbox" else "")
+            )
+
+    kwargs = get_page_args(
         document_soup=document_soup,
         importable_html=importable_html,
         attributes=attributes,
         slug=slug,
         site=site,
-        return_class=return_class,
     )
+    kwargs.pop("show_toc")
+    kwargs["body"] = body_blocks
+    page = cast(FormPage, return_class(**kwargs))
+    tags_to_apply = get_tags_to_apply_for_legacy_type(get_page_type_attribute(attributes))
+    page.tagged_items = [FormPageTag(tag=tag) for tag in tags_to_apply]
+    return page
+
+
+# Legacy signup fields whose values RegistrationForm collects on its own —
+# identity fields are always rendered for anonymous visitors — so no
+# person_field block is needed for them.
+_IDENTITY_FIELD_NAMES = {"email", "email_address", "first_name", "last_name"}
+
+# Legacy signup fields that write to a differently named Person field. The
+# legacy free-text address question becomes a home-address input: the
+# registration form resolves the submitted string to an Address record (see
+# RegistrationForm), so nothing lands in the import-only submitted_address.
+_LEGACY_SIGNUP_FIELD_ALIASES = {"submitted_address": "home_address"}
+
+
+def build_registration_page(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    attributes: Dict[str, Any],
+    slug: str,
+    site: Site,
+) -> RegistrationPage:
+    """
+    Build a RegistrationPage from a legacy "Signup" page. A signup <form>
+    asks for details of the visitor's own record, so each field becomes a
+    "person_field" block when its legacy field name matches a whitelisted
+    Person field — Person's field names follow the legacy system's, so they
+    usually match directly — with the legacy question text kept as the
+    block's label override. Identity fields (email/first/last name) are
+    skipped because RegistrationForm always renders them for anonymous
+    visitors, and any other unmappable field is dropped with a warning: a
+    registration submission writes to the Person record, so there is nowhere
+    to put a free-form answer.
+
+    As in build_form_page, everything in #content other than the <form>
+    becomes an "html" block ahead of the inputs, preserving the intro copy,
+    and only the field descriptions are imported — never the answers that
+    the snapshot may show for one already-signed-up member.
+    """
+    # Work on a private copy: extracting the <form> below must not mutate the
+    # caller's soup, which a --replace re-import passes in again.
+    document_soup = copy.copy(document_soup)
+    content = document_soup.find(id="content")
+    form_tag = content.find("form") if content else None
+
+    if content is not None and form_tag is not None:
+        form_tag.extract()
+        remaining_html = _prettify(content)
+    else:
+        remaining_html = importable_html
+
+    allowed_person_fields = set(registration_person_field_names())
+    body_blocks: List[Tuple[str, Any]] = []
+    if remaining_html.strip():
+        body_blocks.append(("html", remaining_html))
+    if form_tag is not None:
+        for form_input in extract_form_inputs(form_tag):
+            if form_input.field_name in _IDENTITY_FIELD_NAMES:
+                continue
+            person_field = _LEGACY_SIGNUP_FIELD_ALIASES.get(
+                form_input.field_name, form_input.field_name
+            )
+            if person_field not in allowed_person_fields:
+                logger.warning(
+                    "Skipping the legacy signup field %r (%r) on %r: it does not match "
+                    "any whitelisted Person field.",
+                    form_input.field_name,
+                    form_input.description,
+                    slug,
+                )
+                continue
+            body_blocks.append(
+                (
+                    "person_field",
+                    {"field": person_field, "label_override": form_input.description},
+                )
+            )
+
+    kwargs = get_page_args(
+        document_soup=document_soup,
+        importable_html=importable_html,
+        attributes=attributes,
+        slug=slug,
+        site=site,
+    )
+    kwargs.pop("show_toc")
+    kwargs["body"] = body_blocks
+    return RegistrationPage(**kwargs)
 
 
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
+    # A legacy calendar is a feed of events, so it becomes a FeedPage whose
+    # ordering is soonest-first rather than a blog's newest-first.
+    "Calendar": functools.partial(build_feed_page, ordering=FeedPage.Ordering.SOONEST_FIRST),
     "Donation": build_payment_page,
     "Event": build_event_page,
-    "Blog": build_blog_page,
+    "Blog": build_feed_page,
     "Blog Post": build_underground_basic_page,
     "Redirect": build_redirection,
+    "Signup": build_registration_page,
+    "Volunteer Signup": build_form_page,
+    "Feedback": build_form_page,
+    "Suggestion Box": build_form_page,
+    "Political Capital": build_underground_basic_page,
 }
 
 

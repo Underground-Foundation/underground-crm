@@ -1,0 +1,6 @@
+{% load i18n static socialaccount %}
+<a href="{% provider_login_url provider_id %}"
+   class="btn {% block login_button_class %}btn-outline-secondary{% endblock %} mb-2 d-flex align-items-center justify-content-center">
+  <img src="{% static image_src %}" alt="" aria-hidden="true" width="20" height="20" class="mr-2">
+  {% blocktrans with provider=provider_name %}Log in with {{ provider }}{% endblocktrans %}
+</a>

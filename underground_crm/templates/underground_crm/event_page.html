@@ -1,0 +1,11 @@
+{% extends "underground_crm/form_page.html" %}
+{% load i18n %}
+
+{% block extra_body_content %}
+  <div class="event-details my-4">
+    {% if page.start_time %}<p>{% trans "Starts" %}: {{ page.start_time }}</p>{% endif %}
+    {% if page.end_time %}<p>{% trans "Ends" %}: {{ page.end_time }}</p>{% endif %}
+    {% if page.venue %}<p>{% trans "Venue" %}: {{ page.venue }}</p>{% endif %}
+  </div>
+  {{ block.super }}
+{% endblock %}

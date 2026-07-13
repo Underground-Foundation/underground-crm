@@ -42,6 +42,8 @@ migration/                One-off data migration scripts (not Django management 
 | `Interaction` | Logged staff–person contact (phone call, face-to-face, email, SMS, etc.). |
 | `PersonNote` | Freetext staff notes about a person, with optional author FK. |
 | `BasicPage` | Wagtail page with StreamField body (RichText, RawHTML, Image, BlockQuote blocks). |
+| `FeedPage` | Index page listing dated items (child `BlogPost`s/`EventPage`s merged with subscribed external feed items), with RSS/Atom feeds of its local items at `rss/` and `atom/`. Ordering is a per-page choice: newest first (blog) or soonest first, upcoming only (events calendar). |
+| `FeedSubscription` | External RSS/Atom feed shown on a FeedPage (edited inline on the page). Items are fetched on demand at render time through an in-process TTL cache (`underground_crm.external_feeds`), never stored, and never re-syndicated in our own feed output (prevents subscription loops). |
 
 ## Important field conventions
 
@@ -110,9 +112,14 @@ They are intentionally CLI-only — none of them are exposed through the Wagtail
 Django admin UI.
 
 Current commands:
-- `import_legacy_private_notes <legacy_person_id>` — imports private notes for one person.
+- `export_legacy_private_notes --legacy-person-id <id> --output-file <path>` — fetches private
+  notes for one person from the legacy CRM and writes them to a JSON Lines (`.jsonl`) file.
   Requires `LEGACY_WEBSITE_URL`, `LEGACY_USER_AGENT`, and `LEGACY_ADMIN_COOKIE_FILE` env vars
-  (or `--cookie-file` override). Idempotent via `legacy_activity_id` deduplication.
+  (or `--cookie-file` override).
+- `import_private_notes --legacy-person-id <id>` — imports private notes for one person into
+  `PersonNote`. With `--from-file <path>`, reads notes from a file previously written by
+  `export_legacy_private_notes`; otherwise fetches them directly from the legacy CRM using the
+  same cookie-based auth as that command. Idempotent via `legacy_activity_id` deduplication.
 
 ## Addressr (Australian address search)
 

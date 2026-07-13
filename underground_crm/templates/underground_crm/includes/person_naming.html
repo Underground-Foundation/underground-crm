@@ -1,0 +1,25 @@
+{% comment %}
+    The visitor's name, laid out as a Bootstrap form grid instead of one field
+    per row. Prefix, first, preferred, middle, last and suffix are all short and
+    together read as a single thing — a name — so stacking them vertically both
+    wastes the page and hides how they relate to one another.
+
+    The cells come from the form (RegistrationForm.naming_fields), not from a
+    fixed list of field names, for two reasons. A registration form's fields are
+    keyed by the UUID of the page block that produced them, so they cannot be
+    addressed here by the Person field they write to; and an editor may delete
+    any of the naming blocks, so the grid has to render whichever of them the
+    page actually carries. Each cell's width comes from PERSON_NAME_FIELD_COLUMNS
+    in blocks.py, and the row simply wraps when the widths overflow it — so a
+    grid missing some of its fields still lines up, and the widths of the cells
+    that remain do not have to add up to a whole number of rows.
+{% endcomment %}
+{% if form.naming_fields %}
+  <div class="form-row">
+    {% for cell in form.naming_fields %}
+      <div class="form-group {{ cell.column_class }}{% with classes=cell.field.css_classes %}{% if classes %} {{ classes }}{% endif %}{% endwith %}">
+        {% include "underground_crm/includes/form_field.html" with field=cell.field %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

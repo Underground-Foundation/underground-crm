@@ -11,7 +11,7 @@ class PaymentPage(BasicPage):
     @property
     def og_type(self) -> str:
         # The Open Graph type for this page. See https://ogp.me/#types for the full list of valid types.
-        return "payment.link"
+        return self.og_type_override or "payment.link"
 
     allow_monthly_payments = models.BooleanField(
         default=True,

@@ -1,0 +1,41 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Confirm your subscription</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f1ff; font-family: 'Open Sans', Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 24px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border-collapse: collapse; max-width: 600px; background-color: #ffffff; border-radius: 8px;">
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 1em;">Hi {{ person.first_name_or_friend }},</p>
+              <p style="margin: 0 0 1em;">
+                Someone — hopefully you — asked to receive the
+                <strong>{{ tag.name|lower }}</strong> at this email address.
+              </p>
+              <p style="margin: 0 0 1.5em;">
+                Please confirm your subscription so we know this address is yours:
+              </p>
+              <p style="margin: 0 0 1.5em;" align="center">
+                <a href="{{ confirm_url }}"
+                   style="display: inline-block; padding: 12px 28px; background-color: #1488b9; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                  Confirm your subscription
+                </a>
+              </p>
+              <p style="margin: 0; color: #666666; font-size: 13px;">
+                If you didn't request this, you can safely ignore this email —
+                the address won't be confirmed and you can unsubscribe at any time.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

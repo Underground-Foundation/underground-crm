@@ -1,7 +1,7 @@
 from djmoney.contrib.django_rest_framework import MoneyField
 from rest_framework import serializers
 
-from ..models import Address, Donation, Engagement, Interaction, PersonNote, Tag
+from ..models import Address, Donation, Engagement, Interaction, Membership, PersonNote, Tag
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -92,13 +92,33 @@ class AddressSerializer(serializers.ModelSerializer):
             "latitude",
             "longitude",
             "geocode_reliability",
+            "gnaf_id",
         ]
         read_only_fields = [
             "id",
             "latitude",
             "longitude",
             "geocode_reliability",
+            "gnaf_id",
         ]
+
+
+class MembershipSerializer(serializers.ModelSerializer):
+    """
+    Self-service membership serializer (see api.views.MembershipViewSet):
+    a visitor may name the MembershipType they are joining, but every other
+    field is set by the server, never accepted from the client — started_at
+    to the moment of creation, expires_on/suspended_at left unset, and
+    person to the requesting visitor rather than whatever the request body
+    might claim.
+    """
+
+    type_name = serializers.CharField(source="type.name", read_only=True)
+
+    class Meta:
+        model = Membership
+        fields = ["id", "type", "type_name", "started_at", "expires_on", "suspended_at"]
+        read_only_fields = ["id", "started_at", "expires_on", "suspended_at"]
 
 
 class UnverifiedAddressSerializer(serializers.ModelSerializer):

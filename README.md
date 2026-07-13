@@ -145,11 +145,20 @@ The command is idempotent — it is safe to run multiple times.
 ### Import private notes for a single person
 
 ```bash
-python manage.py import_legacy_private_notes <legacy_person_id>
+python manage.py import_private_notes --legacy-person-id <legacy_person_id>
 ```
 
 Requires a valid cookie file pointed to by `LEGACY_ADMIN_COOKIE_FILE` (or passed
 via `--cookie-file`). The legacy admin session must still be active.
+
+To save notes to a file first (e.g. for review, or to import later without a
+live legacy admin session), use `export_legacy_private_notes` and then pass
+the file to `import_private_notes` with `--from-file`:
+
+```bash
+python manage.py export_legacy_private_notes --legacy-person-id <legacy_person_id> --output-file notes.jsonl
+python manage.py import_private_notes --legacy-person-id <legacy_person_id> --from-file notes.jsonl
+```
 
 Get the cookie file using e.g. the Chrome extension
 [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc?hl=fr&utm_source=ext_sidebar):

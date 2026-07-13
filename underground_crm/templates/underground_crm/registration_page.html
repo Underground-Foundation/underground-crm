@@ -1,0 +1,29 @@
+{% extends "underground_crm/form_page.html" %}
+{% load i18n static %}
+
+{% block form_fields %}
+  {# The name is a grid; block.super lays the remaining fields out one per row. #}
+  {% include "underground_crm/includes/person_naming.html" %}
+  {{ block.super }}
+{% endblock %}
+
+{% block memberships %}
+  {% if user.is_authenticated %}
+    {% include "underground_crm/includes/memberships.html" with memberships=user.memberships.all %}
+  {% endif %}
+{% endblock %}
+
+{% block toast %}
+  {% if messages %}
+    <link rel="stylesheet" href="{% static 'underground_crm/css/toast_notifications.css' %}">
+    <div class="toast-notification-container">
+      {% for message in messages %}
+        <div class="toast-notification alert alert-{{ message.tags|default:'success' }}" role="status" aria-live="polite">
+          <span class="toast-notification-body">{{ message }}</span>
+          <button type="button" class="toast-notification-close" aria-label="{% trans 'Dismiss' %}">&times;</button>
+        </div>
+      {% endfor %}
+    </div>
+    <script defer src="{% static 'underground_crm/js/toast_notifications.js' %}"></script>
+  {% endif %}
+{% endblock %}

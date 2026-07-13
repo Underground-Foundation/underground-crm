@@ -17,6 +17,30 @@ from underground_crm.models import Address
 logger = logging.getLogger(__name__)
 
 
+# Number types that no personal contact record should ever hold: nobody is
+# reachable on a premium-rate, shared-cost or pager number, so one of these
+# arriving in an import or on a form is bad data rather than a way of calling
+# the person.
+FORBIDDEN_PHONE_TYPES: Tuple[int, ...] = (
+    PhoneNumberType.PREMIUM_RATE,
+    PhoneNumberType.SHARED_COST,
+    PhoneNumberType.PAGER,
+)
+
+# Number types that may reach a handset, and therefore belong in
+# Person.mobile_number rather than Person.phone_number. FIXED_LINE_OR_MOBILE
+# covers the ranges libphonenumber cannot tell apart, and UNKNOWN the numbers
+# it cannot classify at all; a number that is not identifiably a landline is
+# more useful to us treated as a mobile, because the worst case is an SMS that
+# does not arrive, whereas the reverse mistake hides a reachable mobile in the
+# landline column.
+MOBILE_CAPABLE_PHONE_TYPES: Tuple[int, ...] = (
+    PhoneNumberType.MOBILE,
+    PhoneNumberType.FIXED_LINE_OR_MOBILE,
+    PhoneNumberType.UNKNOWN,
+)
+
+
 def parse_verified_phone_number(raw_number: str) -> Optional[PhoneNumber]:
     if not raw_number:
         return None
@@ -33,14 +57,22 @@ def parse_phone_number_with_verified_type(
     if not phone_number:
         return None, None
     phone_type = phonenumberutil.number_type(phone_number)
-    if phone_type in (
-        PhoneNumberType.PREMIUM_RATE,
-        PhoneNumberType.SHARED_COST,
-        PhoneNumberType.PAGER,
-    ):
+    if phone_type in FORBIDDEN_PHONE_TYPES:
         logger.warning("Phone number %s has forbidden type %s", raw_number, phone_type)
         return None, None
     return phone_number, phone_type
+
+
+def is_mobile_number(phone_number: PhoneNumber) -> bool:
+    """Whether an already-parsed number should be stored as a mobile number
+    (see MOBILE_CAPABLE_PHONE_TYPES) rather than as a landline."""
+    return phonenumberutil.number_type(phone_number) in MOBILE_CAPABLE_PHONE_TYPES
+
+
+def is_forbidden_phone_number(phone_number: PhoneNumber) -> bool:
+    """Whether an already-parsed number is of a type we refuse to store at all
+    (see FORBIDDEN_PHONE_TYPES)."""
+    return phonenumberutil.number_type(phone_number) in FORBIDDEN_PHONE_TYPES
 
 
 def validate_email_with_deliverability(email_address: str):
