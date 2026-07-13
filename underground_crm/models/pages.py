@@ -17,7 +17,6 @@ from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from wagtail.contrib.routable_page.models import RoutablePageMixin, route
 from wagtail.models import Page, PageViewRestriction
-from wagtail.fields import StreamField
 from wagtail.query import PageQuerySet
 from wagtail.blocks import (
     BooleanBlock,
@@ -54,6 +53,7 @@ from .address import Address
 from .form_submission import FormSubmission
 from .membership import MembershipType
 from .person import Tag
+from underground_crm.fields import DeclaredBlocksStreamField
 from underground_crm.panels import ReadOnlyPanel
 
 logger = logging.getLogger(__name__)
@@ -299,7 +299,7 @@ class BasicPage(PageWithMetadata):
     is_creatable = False
 
     legacy_id = models.PositiveIntegerField(blank=True, null=True)
-    body = StreamField(
+    body = DeclaredBlocksStreamField(
         BASIC_PAGE_BLOCKS,
         use_json_field=True,
         blank=True,
@@ -465,7 +465,7 @@ class FormPage(FormServingPage):
 
     is_creatable = True
 
-    body = StreamField(
+    body = DeclaredBlocksStreamField(
         FORM_PAGE_BLOCKS,
         use_json_field=True,
         blank=True,
@@ -545,7 +545,7 @@ class RegistrationPage(FormServingPage):
 
     is_creatable = True
 
-    body = StreamField(
+    body = DeclaredBlocksStreamField(
         REGISTRATION_PAGE_BLOCKS,
         use_json_field=True,
         blank=True,

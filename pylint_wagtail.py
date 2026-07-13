@@ -28,7 +28,9 @@ from astroid.context import InferenceContext
 from astroid.exceptions import AstroidError, InferenceError, UseInferenceDefault
 from pylint.lint import PyLinter
 
-STREAM_FIELD_CLASS_NAME = "StreamField"
+# Wagtail's own StreamField, plus this library's DeclaredBlocksStreamField subclass and
+# any other subclass a theme may declare: all of them hand back a StreamValue when read.
+STREAM_FIELD_CLASS_NAME_SUFFIX = "StreamField"
 
 
 @cache
@@ -41,7 +43,7 @@ def _stream_value() -> Instance:
 
 
 def _declares_stream_field(owner: nodes.ClassDef, attribute_name: str) -> bool:
-    """Whether the class, or any of its ancestors, assigns `attribute_name = StreamField(...)`."""
+    """Whether the class, or any of its ancestors, assigns `attribute_name = <a>StreamField(...)`."""
     for klass in [owner, *owner.ancestors()]:
         for assignment in klass.locals.get(attribute_name, []):
             statement = assignment.parent
@@ -54,7 +56,7 @@ def _declares_stream_field(owner: nodes.ClassDef, attribute_name: str) -> bool:
                 called_name = called.attrname
             else:
                 called_name = getattr(called, "name", "")
-            if called_name == STREAM_FIELD_CLASS_NAME:
+            if called_name.endswith(STREAM_FIELD_CLASS_NAME_SUFFIX):
                 return True
     return False
 
