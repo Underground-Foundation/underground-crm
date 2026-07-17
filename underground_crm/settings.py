@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.postgres",
     "django.contrib.sites",
     "underground_email",
     "underground_payments",
@@ -211,7 +212,16 @@ REST_FRAMEWORK = {
     ],
 }
 
+# URL of the Addressr HTTP container (only used when ADDRESSR_BACKEND is
+# "addressr" or "auto" and the G-NAF PostgreSQL table is unavailable).
 ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
+
+ADDRESSR_BACKEND = os.environ.get("ADDRESSR_BACKEND", "auto")
+# Controls which address-search backend is used:
+#   "auto" — try the PostgreSQL/G-NAF backend first; fall back to
+#            the HTTP Addressr container if no G-NAF table exists.
+#   "postgres" — use the PostgreSQL/G-NAF backend only.
+#   "addressr" — use the HTTP Addressr container only (original behaviour).
 
 # VERBOSE controls log verbosity (matches the convention used across services):
 #   0 = INFO  (default)

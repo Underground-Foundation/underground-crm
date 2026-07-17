@@ -1,10 +1,10 @@
 """
-Thin client for the Addressr geocoding API (https://github.com/mountain-pass/addressr).
+HTTP backend for the Addressr geocoding API (https://github.com/mountain-pass/addressr).
 
 Addressr must be running and seeded with GNAF data before these functions will
 return results. See docker-compose.yml for the service definition.
 
-Notice that the API spec at http://localhost:8080/api-docs might differ from https://addressr.io/api-docs/
+Imported by underground_crm.addressr as the fallback backend.
 """
 
 import json

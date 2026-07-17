@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: underground_crm
+      POSTGRES_USER: underground_crm
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U underground_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: ${ALLOWED_HOSTS:-crm.fusionparty.org.au localhost 127.0.0.1}
+      PGDATABASE: underground_crm
+      PGUSER: underground_crm
+      PGPASSWORD: ${DB_PASSWORD}
+      PGHOST: db
+      REDIS_URL: redis://redis:6379/0
+      WAGTAILADMIN_BASE_URL: ${WAGTAILADMIN_BASE_URL:-https://crm.fusionparty.org.au}
+      ADDRESSR_BACKEND: postgres
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
