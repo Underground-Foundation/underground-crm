@@ -41,8 +41,10 @@ services:
           create_host_path: false
     restart: unless-stopped
 
-  # Australian address search and geocoding. Run update-gnaf.sh to refresh G-NAF data
-  # or to load it for the first time.
+  # Australian address search and geocoding. This service only serves queries
+  # against an already-built OpenSearch index — it does not load G-NAF data
+  # itself. Run update-gnaf.sh (which drives the addressr-loader service
+  # below) to refresh G-NAF data or to load it for the first time.
   # https://addressr.io/quick-start/
   # https://github.com/mountain-pass/addressr
   addressr:
@@ -52,10 +54,6 @@ services:
       - ELASTIC_PORT=9200
       - ADDRESSR_ENABLE_GEO=1
       - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
-      # Node.js defaults to ~1.4GB heap, which OOMs on large states (NSW has 5M addresses).
-      - NODE_OPTIONS=--max-old-space-size=8192
-    volumes:
-      - ./data/addressr:/home/node/target
     ports:
       - "8080:8080"
     depends_on:
@@ -64,3 +62,38 @@ services:
       gnaf-api:
         condition: service_started
     restart: unless-stopped
+
+  # One-shot G-NAF loader, split out from `addressr` above using a separate
+  # profile so that the deployed, always-on query server doesn't need as
+  # much memory as the loader (8GB).
+  #
+  # The profile [loader] is not included in a plain `docker compose up`
+  # Only update-gnaf.sh starts it, with
+  # `docker compose --profile loader up -d addressr-loader`.
+  # It exits on its own once indexing finishes.
+  #
+  # It only talks to OpenSearch over the network (ELASTIC_HOST/ELASTIC_PORT),
+  # so it doesn't need to run on the same host as OpenSearch or the query
+  # server. To index into a remote/production OpenSearch instance from a
+  # separate, temporarily provisioned machine with spare memory — rather than
+  # permanently sizing the deployed host for this 8GB spike — override
+  # LOADER_ELASTIC_HOST/LOADER_ELASTIC_PORT (via .env or the shell
+  # environment) before running the command above. Note that `opensearch`
+  # above runs with plugins.security.disabled=true; exposing it to a remote
+  # loader requires its own network restriction (VPN, SSH tunnel, security
+  # group), since it has no authentication built in here.
+  addressr-loader:
+    image: mountainpass/addressr
+    profiles: ["loader"]
+    command: ["addressr-loader"]
+    environment:
+      - ELASTIC_HOST=${LOADER_ELASTIC_HOST:-opensearch}
+      - ELASTIC_PORT=${LOADER_ELASTIC_PORT:-9200}
+      - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
+      - ES_CLEAR_INDEX=${LOADER_ES_CLEAR_INDEX:-false}
+      - NODE_OPTIONS=--max-old-space-size=8192
+    volumes:
+      - ./data/addressr:/home/node/target
+    depends_on:
+      gnaf-api:
+        condition: service_started

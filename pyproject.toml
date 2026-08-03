@@ -17,7 +17,13 @@ dependencies = [
     "djangorestframework-simplejwt>=5.3",
     "django-colorfield",
     "django-money>=3.0",
-    "django-q2",
+    # Upper bound because underground_crm/error_reporting.py identifies a failed task by
+    # walking the worker's stack for a local variable named "task" — an internal detail of
+    # django_q/worker.py, not a public API. If a future release renames it the reporter
+    # still sends the exception but loses the task name/id/func on every event, which is a
+    # silent degradation exactly when a failure is being investigated. A major-version bump
+    # should be a deliberate step that re-runs test_error_reporting.py's canary.
+    "django-q2>=1.10,<2",
     "django-phonenumber-field[phonenumbers]",
     "dnspython>=2.0",
     "email-validator",
@@ -27,6 +33,10 @@ dependencies = [
     "python-dateutil>=2.9.0.post0,<3.0",
     "redis",
     "requests>=2.31",
+    # 2.35 promoted enable_logs to a top-level sentry_sdk.init() option; before that it
+    # lived under _experiments. Sending log records (not just error events) to GlitchTip
+    # depends on it, so an older SDK would silently forward nothing to the log view.
+    "sentry-sdk>=2.35",
     "smtp2go",
     "stripe>=8.0",
     "wagtail>=6.0,<7.0",
@@ -37,6 +47,11 @@ dependencies = [
     "csscompressor>=0.9",
     "whitenoise>=6.0",
 ]
+
+# django-q2 resolves Q_CLUSTER["error_reporter"] keys through this entry point group,
+# so the reporter has to be advertised here rather than named by import path in settings.
+[project.entry-points."djangoq.errorreporters"]
+underground_crm = "underground_crm.error_reporting:QueuedTaskReporter"
 
 [project.optional-dependencies]
 dev = [

@@ -29,6 +29,21 @@ from underground_email.unsubscription import make_unsubscription_url
 logger = logging.getLogger(__name__)
 _ACTIVITY_BATCH_SIZE = 1_000  # https://developers.SMTP2Go.com/reference/activity-search
 
+# Overrides Q_CLUSTER["timeout"] for send_emails only, which sends one SMTP2Go request
+# per recipient in a single task: at a few hundred milliseconds each, a list in the
+# thousands runs for well over the cluster's two-minute default.
+#
+# Being killed part-way through is not merely a retry away, because send_emails is not
+# idempotent. The TimeoutException would land before the campaign is marked sent, so
+# state stays "sending" and sent_count is never written, while some recipients already
+# have the email — and re-running would send to all of them again. That makes a generous
+# ceiling the safer failure mode: an hour is far longer than any realistic send, and its
+# purpose is only to stop a wedged send occupying a worker forever.
+#
+# The real fix is to chunk the send across several tasks so each is short and resumable;
+# until then this keeps a legitimately long send from being cut off mid-flight.
+CAMPAIGN_SEND_TIMEOUT_SECONDS = 3_600
+
 
 @cached({})
 def _api_key() -> str:

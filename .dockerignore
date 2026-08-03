@@ -1,0 +1,34 @@
+.venv/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.egg-info/
+.env*
+db.sqlite3
+*cookies.txt
+.claude/
+.git/
+
+fusionparty.org.au/
+progress.md
+
+*.patch
+*.log
+legacy_site*
+
+node_modules/
+# Leading slash matters: this is the local dev collectstatic/media output at repo root
+# (untracked, not the app-level underground_crm/static, underground_email/static, etc.
+# source directories, which must stay in the image for collectstatic to find them).
+/static/
+/media/
+# addressr-loader's bind-mounted G-NAF index data (./data/addressr in docker-compose.yml)
+# — multi-GB once the loader has been run locally, never needed by the Django app itself.
+/data/
+
+**/.agents/**
+
+*.csv

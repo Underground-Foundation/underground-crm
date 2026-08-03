@@ -127,17 +127,40 @@ Current commands:
 (~1.7 GB) must be loaded into OpenSearch before address search will work.
 Run `update-gnaf.sh` for the initial load and for each quarterly update —
 it fetches the latest release URL from data.gov.au, updates
-`docker/gnaf-package.json`, and runs the loader in the background. Indexing
-~15 million addresses takes 1–2 hours in total.
+`docker/gnaf-package.json`, and starts the loader in the background with
+`LOADER_ES_CLEAR_INDEX=true`, which drops the OpenSearch index before
+re-indexing so addresses removed from the new release (demolished or
+renumbered properties) don't linger. Indexing ~15 million addresses takes
+1–2 hours in total, during which address search returns no results.
 
 **Background:** Addressr's loader normally fetches the G-NAF download URL from
 data.gov.au's CKAN API (`/api/3/action/package_show`), but that API has been
 removed. The `gnaf-api` nginx service in `docker-compose.yml` serves a static
-mock of that API response from `docker/gnaf-package.json`, and the addressr
-service is pointed at it via `GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json`.
+mock of that API response from `docker/gnaf-package.json`, and the loader is
+pointed at it via `GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json`.
 
-`NODE_OPTIONS=--max-old-space-size=8192` is set on the addressr service because
-the loader OOMs with Node.js's default heap on large states (NSW has 5M addresses).
+**Loader vs. query server:** the loader (`addressr-loader`) and the query
+server (`addressr`) are separate compose services. Only the loader sets
+`NODE_OPTIONS=--max-old-space-size=8192` — it parses and bulk-indexes ~15
+million addresses in memory, and Node's default ~1.4GB heap OOMs on large
+states (NSW has 5M addresses). The query server just serves searches against
+the already-built OpenSearch index and never needs that much memory, so the
+permanently-deployed `addressr` service can be sized much smaller.
+`addressr-loader` is profile-gated (`profiles: ["loader"]`) so plain
+`docker compose up` never starts it; `update-gnaf.sh` starts it explicitly on
+demand and it exits on its own once indexing finishes.
+
+Because the loader only talks to OpenSearch over the network
+(`ELASTIC_HOST`/`ELASTIC_PORT`), it doesn't need to run on the same host as
+OpenSearch or the query server. To index into a remote/production OpenSearch
+instance from a separate, temporarily provisioned machine with spare memory —
+rather than permanently sizing the deployed host for this 8GB spike —
+override `LOADER_ELASTIC_HOST`/`LOADER_ELASTIC_PORT` (via `.env` or the shell
+environment) before running `docker compose --profile loader up -d
+addressr-loader`. Note that `opensearch` runs with
+`plugins.security.disabled=true`; exposing it to a remote loader requires its
+own network restriction (VPN, SSH tunnel, security group), since it has no
+authentication built in here.
 
 ## Running locally
 
