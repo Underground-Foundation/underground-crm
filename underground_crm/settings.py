@@ -151,11 +151,202 @@ CACHES = {
 Q_CLUSTER = {
     "name": "underground_crm",
     "redis": _REDIS_URL,
+    # Two minutes, after which a task is killed with a TimeoutException.  Left unset, a
+    # task that hangs — an outbound API call with no socket timeout of its own, say —
+    # would occupy one of the cluster's workers indefinitely, and enough of those would
+    # stall the queue with nothing in the logs to explain why.
+    #
+    # Individual tasks override this with async_task(..., timeout=N) where the work is
+    # legitimately longer; underground_email.tasks.send_emails is the one that does.  Any
+    # new task that can outlive two minutes needs the same treatment, so weigh that up
+    # before raising this ceiling for everything.
+    "timeout": 120,
+    # Only brokers that acknowledge deliveries re-queue an unacknowledged task after this
+    # many seconds, and the Redis broker above is not one of them — Broker.acknowledge()
+    # is a no-op for it, so nothing is ever redelivered and this value has no practical
+    # effect here.  django-q2 nonetheless validates the pair at startup and warns unless
+    # timeout is set and no larger than retry, so the two are kept in the documented
+    # relationship: correct if the broker is ever swapped for one that does acknowledge,
+    # and quiet in the logs either way.
+    "retry": 180,
 }
 
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
 
-# todo: configure Sentry to notify us of queued email failures:
-#  https://django-q.readthedocs.io/en/latest/configure.html#error-reporter
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    """
+    Reads a boolean environment variable, accepting the spellings people actually
+    type ("0", "no", "off", …) rather than "true" alone.
+
+    A comparison such as ``os.environ.get(name, "true") == "true"`` silently reads
+    an unrecognized value as False, which is a trap for a variable that defaults to
+    on: setting it to "1" to mean "yes" would turn the feature off.  Anything
+    unrecognized therefore keeps the default and says so, rather than quietly
+    inverting the operator's intent.
+    """
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _TRUE_VALUES:
+        return True
+    if raw in _FALSE_VALUES:
+        return False
+    _logging.getLogger(__name__).warning(
+        "Ignoring unrecognized value %r for %s; using the default of %s. Use one of %s or %s.",
+        raw,
+        name,
+        default,
+        ", ".join(sorted(_TRUE_VALUES)),
+        ", ".join(sorted(_FALSE_VALUES)),
+    )
+    return default
+
+
+# Error tracking — GlitchTip (self-hosted, Sentry-API-compatible) or Sentry itself.
+# Point SENTRY_DSN at either service; leave it unset (the default) to disable error
+# tracking entirely, e.g. in tests or local development.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+# The master switch for everything sent to the error tracker: issues, log records,
+# performance traces, the lot.  SENTRY_ENABLED=false skips sentry_sdk.init() outright,
+# so no client is ever configured and nothing can reach the network no matter what the
+# other SENTRY_* variables say.  It is a single toggle for silencing a deployment (or a
+# local session) without having to blank out a DSN you want to keep.
+SENTRY_ENABLED = _env_flag("SENTRY_ENABLED", default=True)
+# Whether a deployment actually asked for error tracking, as opposed to inheriting the
+# default above.  The two are indistinguishable from SENTRY_ENABLED alone, but they want
+# opposite treatment when no DSN is configured: an unset variable means ordinary local
+# development, where silence is correct, while SENTRY_ENABLED=true is an explicit request
+# that cannot be honoured and must not pass quietly.  See the warning below.
+_SENTRY_ENABLED_EXPLICITLY = bool(os.environ.get("SENTRY_ENABLED", "").strip())
+SENTRY_ENVIRONMENT = os.environ.get("SENTRY_ENVIRONMENT", "development" if DEBUG else "production")
+# Off by default: this CRM holds personal data about members and donors, and the error
+# tracker is a third-party service even when self-hosted, so PII (e.g. the logged-in
+# user on a request) is only attached to events once a deployment opts in explicitly.
+SENTRY_SEND_DEFAULT_PII = _env_flag("SENTRY_SEND_DEFAULT_PII", default=False)
+# Identifies which build produced an event.  Left empty by default; a deployment
+# should set it to a commit SHA or version tag so regressions can be traced to a release.
+SENTRY_RELEASE = os.environ.get("SENTRY_RELEASE", "")
+try:
+    SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0"))
+except ValueError:
+    SENTRY_TRACES_SAMPLE_RATE = 0.0
+
+# Governs which ordinary log records (not just errors) are forwarded to the tracker's
+# log view.  Such records travel in the same envelopes over the same endpoint as error
+# events, so no separate OpenTelemetry collector is needed; GlitchTip wraps them into
+# its OTel-format log store on receipt.
+#
+# Set a threshold — DEBUG, INFO, WARNING, ERROR or CRITICAL — to forward records at that
+# level and above; the default INFO is deliberately independent of VERBOSE/_LOG_LEVEL
+# below, since turning up console verbosity while debugging locally should not start
+# shipping DEBUG records to a remote service.  Set it to "off" (or "none") to forward no
+# log records at all, leaving error *events* still reported; to silence those as well,
+# use the SENTRY_ENABLED master switch above.
+_SENTRY_LOGS_OFF_VALUES = frozenset({"off", "none", "disabled"})
+SENTRY_LOGS_LEVEL = os.environ.get("SENTRY_LOGS_LEVEL", "INFO").strip().upper()
+
+
+def _resolve_sentry_logs_level(setting: str) -> int | None:
+    """
+    Translates SENTRY_LOGS_LEVEL into a numeric logging threshold, or ``None`` to
+    mean "forward no log records".  An unrecognized value keeps the INFO default
+    and warns, rather than silently forwarding nothing or everything.
+    """
+    if setting.lower() in _SENTRY_LOGS_OFF_VALUES:
+        return None
+    level = _logging.getLevelNamesMapping().get(setting)
+    if level is not None:
+        return level
+    _logging.getLogger(__name__).warning(
+        "Ignoring unrecognized value %r for SENTRY_LOGS_LEVEL; forwarding logs at "
+        "INFO and above. Use a level name (DEBUG, INFO, WARNING, ERROR, CRITICAL) "
+        "or one of %s to forward no logs.",
+        setting,
+        ", ".join(sorted(_SENTRY_LOGS_OFF_VALUES)),
+    )
+    return _logging.INFO
+
+
+_SENTRY_LOGS_LEVEL = _resolve_sentry_logs_level(SENTRY_LOGS_LEVEL)
+
+if SENTRY_DSN and SENTRY_ENABLED:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        release=SENTRY_RELEASE or None,
+        integrations=[
+            DjangoIntegration(),
+            LoggingIntegration(
+                # Breadcrumbs from INFO and above, attached to whatever event follows.
+                level=_logging.INFO,
+                # Only ERROR and above are raised as issues to be triaged.
+                event_level=_logging.ERROR,
+                # Everything from SENTRY_LOGS_LEVEL up is also forwarded verbatim to
+                # the log view, which is what makes routine INFO/WARNING records
+                # visible there rather than only as breadcrumbs on an error.  When log
+                # forwarding is switched off this is left at its INFO default and takes
+                # no effect, since enable_logs below is what gates the log envelopes.
+                sentry_logs_level=_SENTRY_LOGS_LEVEL or _logging.INFO,
+            ),
+        ],
+        # None from _resolve_sentry_logs_level() means SENTRY_LOGS_LEVEL was "off":
+        # forward no log records, while still reporting error events.
+        enable_logs=_SENTRY_LOGS_LEVEL is not None,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=SENTRY_SEND_DEFAULT_PII,
+        # GlitchTip has no session-tracking feature, so the release-health sessions the
+        # SDK uploads by default are discarded on arrival; not sending them saves the
+        # request. Sentry proper would use them, so flip this if the DSN points there.
+        auto_session_tracking=False,
+    )
+
+    from sentry_sdk.integrations.logging import ignore_logger
+
+    # django-q2's monitor logs "Failed '<task>' — <result>" at ERROR for every failed
+    # task, in addition to the exception the reporter below sends. Without this, each
+    # failure would raise two issues: the reporter's, carrying a real stack trace, and
+    # a bare duplicate from this log line. Only event creation is suppressed, so the
+    # line still reaches the log view; note the logger's name is hyphenated, unlike the
+    # "django_q" module path.
+    ignore_logger("django-q")
+
+    # django-q2 only reports queued-task exceptions (e.g. a failed queued email send)
+    # through this hook: its worker stores the exception in the task result instead of
+    # re-raising or logging it, so the integrations above cannot see it.
+    # https://django-q2.readthedocs.io/en/master/configure.html#error-reporter
+    #
+    # The reporter is resolved through the "djangoq.errorreporters" entry point group,
+    # and this library registers its own (see underground_crm/error_reporting.py) rather
+    # than using django-q-sentry, whose reporter re-runs sentry_sdk.init() and thereby
+    # replaces the client configured above.  It needs no configuration of its own.
+    Q_CLUSTER["error_reporter"] = {"underground_crm": {}}
+
+elif _SENTRY_ENABLED_EXPLICITLY and SENTRY_ENABLED:
+    # SENTRY_ENABLED=true with no SENTRY_DSN is the one combination that fails silently:
+    # sentry_sdk.init() above is skipped, so no client exists, every capture_exception()
+    # call in the codebase becomes a no-op, and the queued-task reporter is never even
+    # registered — yet nothing anywhere says so, and a deployment looks healthy precisely
+    # because no errors are arriving.  Since the operator explicitly asked for error
+    # tracking, say plainly that it is off and why.
+    _logging.getLogger(__name__).error(
+        "SENTRY_ENABLED is set but SENTRY_DSN is empty, so error tracking is OFF: "
+        "no exceptions, log records or queued-task failures will reach GlitchTip/Sentry. "
+        "Set SENTRY_DSN to your GlitchTip project DSN, or set SENTRY_ENABLED=false to "
+        "turn error tracking off deliberately and silence this message."
+    )
+
+# todo: add a Content-Security-Policy (report-only to start) so injected-script attempts
+#  (e.g. via Wagtail's RawHTML StreamField block) get reported to GlitchTip/Sentry via
+#  SENTRY_SECURITY_ENDPOINT. Needs an audit of inline <script>/<style> usage across
+#  templates first — likely via django-csp, which handles per-request nonces for those.
+#  Malicious scripts could also get in through supply-chain attacks:
+#  https://www.web3isgoinggreat.com/?id=polymarket-vendor-exploit
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

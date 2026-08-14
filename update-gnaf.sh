@@ -9,13 +9,17 @@
 #   1. Fetches the latest GDA94 download URL from data.gov.au
 #   2. Updates docker/gnaf-package.json with the new URL
 #   3. Removes the cached download and the loader's URL cache
-#   4. Runs addressr-loader in the background with ES_CLEAR_INDEX=true,
-#      which wipes the OpenSearch index before re-indexing from scratch
+#   4. Starts the addressr-loader compose service (profile: loader) in the
+#      background to re-index from scratch
+#
+# addressr-loader is a separate compose service from the always-on addressr
+# query server — see the comments in docker-compose.yml. By default it loads
+# into the local `opensearch` service, but it can be pointed at a remote
+# OpenSearch instance by setting LOADER_ELASTIC_HOST/LOADER_ELASTIC_PORT
+# before running this script.
 #
 # During re-indexing (roughly 1-2 hours) the address index is empty and
-# address searches will return no results. Once complete, the index holds
-# only addresses from the new G-NAF release — no stale records from
-# demolished or renumbered properties carry over.
+# address searches will return no results.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -24,19 +28,27 @@ ADDRESSR_VOL_DIR="data/addressr"
 GNAF_DATA_DIR="$ADDRESSR_VOL_DIR/gnaf"
 GNAF_URL_CACHE="$ADDRESSR_VOL_DIR/keyv-file.msgpack"
 
-# Check the addressr container is running
-if ! docker compose ps addressr 2>/dev/null | grep -qiE "running|up"; then
-    echo "error: the addressr container is not running. Start it with:"
-    echo "  docker compose up -d"
+# Two different users need to write here, and only one of them used to be checked.
+#
+# This script clears the download and URL caches below, and removing entries from a
+# directory needs write permission on it for the *current* user — that is what `-w`
+# tests. The loader then writes into the same directory as uid 65532, the Distroless
+# runtime's nonroot user, which is neither the owner nor in the group, so only the
+# "other" permission bits apply to it.
+#
+# Those two conditions used to coincide by accident: the pre-3.x image ran as the `node`
+# user at uid 1000, which on a typical Linux dev machine is the developer's own uid.
+# It no longer does, so a `-w` test alone would pass while the loader still fails partway
+# through indexing. Both are checked.
+if [ ! -d "$ADDRESSR_VOL_DIR" ]; then
+    echo "error: $ADDRESSR_VOL_DIR does not exist."
     exit 1
 fi
-
-# Check that the volume directory is writable. It is committed to the repo
-# so Docker will never create it as root, but guard against it just in case.
-if [ ! -w "$ADDRESSR_VOL_DIR" ]; then
-    echo "error: $ADDRESSR_VOL_DIR is not writable by the current user."
+if [ ! -w "$ADDRESSR_VOL_DIR" ] || [ -z "$(find "$ADDRESSR_VOL_DIR" -maxdepth 0 -perm -o+rwx 2>/dev/null)" ]; then
+    echo "error: $ADDRESSR_VOL_DIR must be writable both by you (this script clears the"
+    echo "cached G-NAF download) and by the loader container's uid 65532."
     echo "Fix with:"
-    echo "  sudo chmod o+rwx $(realpath "$ADDRESSR_VOL_DIR")"
+    echo "  sudo chmod -R o+rwx $(realpath "$ADDRESSR_VOL_DIR")"
     exit 1
 fi
 
@@ -120,18 +132,22 @@ PYEOF
     rm -rf "$GNAF_DATA_DIR"
 fi
 
-# Run the loader in the background.
-# ES_CLEAR_INDEX=true drops the OpenSearch index before re-indexing so that
-# addresses removed from the new G-NAF release do not linger in search results.
-# The downside is that the geocoding service would therefore be empty for hours.
+# Run the loader in the background. It exits on its own once indexing
+# finishes; check its status with `docker compose ps addressr-loader`.
+#
+# LOADER_ES_CLEAR_INDEX=true drops the OpenSearch index before re-indexing,
+# so addresses removed from the new G-NAF release (demolished or renumbered
+# properties) do not linger in search results. The downside is that address
+# search returns no results for the ~1-2 hours re-indexing takes. This is the
+# right trade-off for update-gnaf.sh's quarterly refresh; a manual, ad-hoc
+# `docker compose --profile loader up -d addressr-loader` still defaults to
+# false (see docker-compose.yml) so it doesn't blank the index unexpectedly.
 echo "Starting G-NAF data loader in the background..."
-echo "Address searches will return no results during re-indexing (~1-2 hours)."
 echo ""
-docker compose exec -d addressr \
-    sh -c 'ES_CLEAR_INDEX=false addressr-loader > /home/node/gnaf-loader.log 2>&1; echo "EXIT:$?" >> /home/node/gnaf-loader.log'
+LOADER_ES_CLEAR_INDEX=true docker compose --profile loader up -d addressr-loader
 
 echo "To watch the loader output:"
-echo "  docker compose exec addressr tail -f /home/node/gnaf-loader.log"
+echo "  docker compose logs -f addressr-loader"
 echo ""
 echo "To check how many addresses have been indexed so far:"
 echo "  curl http://localhost:9200/addressr/_count"

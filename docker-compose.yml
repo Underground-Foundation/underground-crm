@@ -41,21 +41,30 @@ services:
           create_host_path: false
     restart: unless-stopped
 
-  # Australian address search and geocoding. Run update-gnaf.sh to refresh G-NAF data
-  # or to load it for the first time.
+  # Australian address search and geocoding. This service only serves queries
+  # against an already-built OpenSearch index — it does not load G-NAF data
+  # itself. Run update-gnaf.sh (which drives the addressr-loader service
+  # below) to refresh G-NAF data or to load it for the first time.
   # https://addressr.io/quick-start/
   # https://github.com/mountain-pass/addressr
+  #
+  # GHCR, not the `mountainpass/addressr` Docker Hub name this used to carry: that name is
+  # no longer anonymously pullable (an anonymous pull token gets UNAUTHORIZED and Docker
+  # Hub search does not list the repository), so it worked only for developers holding a
+  # copy cached from when it was public. Pinned rather than floating because the 3.x images
+  # are Distroless — see addressr-loader below, whose invocation is coupled to that.
+  #
+  # These images are linux/amd64 only, which is fine for development: on an arm64 machine
+  # Docker Desktop emulates them. The deployment host cannot, and fusion-underground
+  # rebuilds this service for arm64 rather than emulating it there — see that repository's
+  # docker/addressr.Dockerfile. Nothing in this file needs that rebuild.
   addressr:
-    image: mountainpass/addressr
+    image: ghcr.io/mountain-pass/addressr:3.3.0
     environment:
       - ELASTIC_HOST=opensearch
       - ELASTIC_PORT=9200
       - ADDRESSR_ENABLE_GEO=1
       - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
-      # Node.js defaults to ~1.4GB heap, which OOMs on large states (NSW has 5M addresses).
-      - NODE_OPTIONS=--max-old-space-size=8192
-    volumes:
-      - ./data/addressr:/home/node/target
     ports:
       - "8080:8080"
     depends_on:
@@ -64,3 +73,53 @@ services:
       gnaf-api:
         condition: service_started
     restart: unless-stopped
+
+  # One-shot G-NAF loader, split out from `addressr` above using a separate
+  # profile so that the deployed, always-on query server doesn't need as
+  # much memory as the loader (8GB).
+  #
+  # The profile [loader] is not included in a plain `docker compose up`
+  # Only update-gnaf.sh starts it, with
+  # `docker compose --profile loader up -d addressr-loader`.
+  # It exits on its own once indexing finishes.
+  #
+  # It only talks to OpenSearch over the network (ELASTIC_HOST/ELASTIC_PORT),
+  # so it doesn't need to run on the same host as OpenSearch or the query
+  # server. To index into a remote/production OpenSearch instance from a
+  # separate, temporarily provisioned machine with spare memory — rather than
+  # permanently sizing the deployed host for this 8GB spike — override
+  # LOADER_ELASTIC_HOST/LOADER_ELASTIC_PORT (via .env or the shell
+  # environment) before running the command above. Note that `opensearch`
+  # above runs with plugins.security.disabled=true; exposing it to a remote
+  # loader requires its own network restriction (VPN, SSH tunnel, security
+  # group), since it has no authentication built in here.
+  #
+  # The 3.x image is Distroless, which changes how this service is invoked. There is no
+  # shell and no /usr/bin/env in it, so the `addressr-loader` bin shim cannot be resolved
+  # by name — the entrypoint is `/tini -- /nodejs/bin/node` and `command` has to be the
+  # script path in full. That path is internal to the npm package (it moved from lib/bin/
+  # to bin/ when upstream retired its Babel build), so re-check it against the image on a
+  # version bump rather than assuming it held.
+  #
+  # The container also runs as uid 65532 with a home of /home/nonroot, not the old node
+  # user at /home/node — hence the changed mount target below. ./data/addressr has to be
+  # writable by that uid or the loader fails partway through indexing; update-gnaf.sh
+  # checks for it and prints the `chmod -R o+rwx` to fix it.
+  addressr-loader:
+    image: ghcr.io/mountain-pass/addressr:3.3.0
+    profiles: ["loader"]
+    command: ["/opt/addressr/lib/node_modules/@mountainpass/addressr/bin/addressr-loader.js"]
+    environment:
+      - ELASTIC_HOST=${LOADER_ELASTIC_HOST:-opensearch}
+      - ELASTIC_PORT=${LOADER_ELASTIC_PORT:-9200}
+      - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
+      - ES_CLEAR_INDEX=${LOADER_ES_CLEAR_INDEX:-false}
+      - NODE_OPTIONS=--max-old-space-size=8192
+    volumes:
+      # The whole target directory, not just GNAF_DIR: the CKAN package cache the loader
+      # writes to target/keyv-file.msgpack has no environment override, so a narrower mount
+      # would leave it inside the container and re-download on every run.
+      - ./data/addressr:/home/nonroot/target
+    depends_on:
+      gnaf-api:
+        condition: service_started

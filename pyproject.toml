@@ -17,7 +17,13 @@ dependencies = [
     "djangorestframework-simplejwt>=5.3",
     "django-colorfield",
     "django-money>=3.0",
-    "django-q2",
+    # Upper bound because underground_crm/error_reporting.py identifies a failed task by
+    # walking the worker's stack for a local variable named "task" — an internal detail of
+    # django_q/worker.py, not a public API. If a future release renames it the reporter
+    # still sends the exception but loses the task name/id/func on every event, which is a
+    # silent degradation exactly when a failure is being investigated. A major-version bump
+    # should be a deliberate step that re-runs test_error_reporting.py's canary.
+    "django-q2>=1.10,<2",
     "django-phonenumber-field[phonenumbers]",
     "dnspython>=2.0",
     "email-validator",
@@ -27,6 +33,10 @@ dependencies = [
     "python-dateutil>=2.9.0.post0,<3.0",
     "redis",
     "requests>=2.31",
+    # 2.35 promoted enable_logs to a top-level sentry_sdk.init() option; before that it
+    # lived under _experiments. Sending log records (not just error events) to GlitchTip
+    # depends on it, so an older SDK would silently forward nothing to the log view.
+    "sentry-sdk>=2.35",
     "smtp2go",
     "stripe>=8.0",
     "wagtail>=6.0,<7.0",
@@ -37,6 +47,11 @@ dependencies = [
     "csscompressor>=0.9",
     "whitenoise>=6.0",
 ]
+
+# django-q2 resolves Q_CLUSTER["error_reporter"] keys through this entry point group,
+# so the reporter has to be advertised here rather than named by import path in settings.
+[project.entry-points."djangoq.errorreporters"]
+underground_crm = "underground_crm.error_reporting:QueuedTaskReporter"
 
 [project.optional-dependencies]
 dev = [
@@ -53,6 +68,29 @@ migration = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["underground_crm*", "underground_email*", "underground_payments*"]
+
+# Without this, a *non-editable* install of this package ships Python modules only: the
+# built wheel contained 145 entries and zero templates. That is invisible during local
+# development, where `pip install -e ../underground-crm` puts the working tree itself on
+# the path so every file is reachable regardless of packaging — but it means a consumer
+# installing from a git URL (fusion-underground's requirements-production.txt, which the
+# production Docker image builds from) would get a Django app whose every
+# TemplateDoesNotExist is raised at the first request.
+#
+# `include-package-data` defaults to true for pyproject.toml-based builds, but that only
+# admits files a MANIFEST.in or a setuptools VCS plugin already selected, and this project
+# has neither — so the paths must be named explicitly here.
+#
+# Test fixtures (underground_crm/management/commands/test/*.html,
+# underground_email/test/click_sample.json) are deliberately left out: they are only read
+# by the test suite, which runs from a checkout, never from an installed wheel.
+[tool.setuptools.package-data]
+"*" = [
+    "templates/**/*.html",
+    "static/**/*",
+    "locale/**/*.po",
+    "locale/**/*.mo",
+]
 
 [tool.black]
 line-length = 100
