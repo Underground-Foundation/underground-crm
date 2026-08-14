@@ -69,6 +69,29 @@ migration = [
 where = ["."]
 include = ["underground_crm*", "underground_email*", "underground_payments*"]
 
+# Without this, a *non-editable* install of this package ships Python modules only: the
+# built wheel contained 145 entries and zero templates. That is invisible during local
+# development, where `pip install -e ../underground-crm` puts the working tree itself on
+# the path so every file is reachable regardless of packaging — but it means a consumer
+# installing from a git URL (fusion-underground's requirements-production.txt, which the
+# production Docker image builds from) would get a Django app whose every
+# TemplateDoesNotExist is raised at the first request.
+#
+# `include-package-data` defaults to true for pyproject.toml-based builds, but that only
+# admits files a MANIFEST.in or a setuptools VCS plugin already selected, and this project
+# has neither — so the paths must be named explicitly here.
+#
+# Test fixtures (underground_crm/management/commands/test/*.html,
+# underground_email/test/click_sample.json) are deliberately left out: they are only read
+# by the test suite, which runs from a checkout, never from an installed wheel.
+[tool.setuptools.package-data]
+"*" = [
+    "templates/**/*.html",
+    "static/**/*",
+    "locale/**/*.po",
+    "locale/**/*.mo",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

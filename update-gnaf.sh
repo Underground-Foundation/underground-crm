@@ -28,12 +28,27 @@ ADDRESSR_VOL_DIR="data/addressr"
 GNAF_DATA_DIR="$ADDRESSR_VOL_DIR/gnaf"
 GNAF_URL_CACHE="$ADDRESSR_VOL_DIR/keyv-file.msgpack"
 
-# Check that the volume directory is writable. It is committed to the repo
-# so Docker will never create it as root, but guard against it just in case.
-if [ ! -w "$ADDRESSR_VOL_DIR" ]; then
-    echo "error: $ADDRESSR_VOL_DIR is not writable by the current user."
+# Two different users need to write here, and only one of them used to be checked.
+#
+# This script clears the download and URL caches below, and removing entries from a
+# directory needs write permission on it for the *current* user — that is what `-w`
+# tests. The loader then writes into the same directory as uid 65532, the Distroless
+# runtime's nonroot user, which is neither the owner nor in the group, so only the
+# "other" permission bits apply to it.
+#
+# Those two conditions used to coincide by accident: the pre-3.x image ran as the `node`
+# user at uid 1000, which on a typical Linux dev machine is the developer's own uid.
+# It no longer does, so a `-w` test alone would pass while the loader still fails partway
+# through indexing. Both are checked.
+if [ ! -d "$ADDRESSR_VOL_DIR" ]; then
+    echo "error: $ADDRESSR_VOL_DIR does not exist."
+    exit 1
+fi
+if [ ! -w "$ADDRESSR_VOL_DIR" ] || [ -z "$(find "$ADDRESSR_VOL_DIR" -maxdepth 0 -perm -o+rwx 2>/dev/null)" ]; then
+    echo "error: $ADDRESSR_VOL_DIR must be writable both by you (this script clears the"
+    echo "cached G-NAF download) and by the loader container's uid 65532."
     echo "Fix with:"
-    echo "  sudo chmod o+rwx $(realpath "$ADDRESSR_VOL_DIR")"
+    echo "  sudo chmod -R o+rwx $(realpath "$ADDRESSR_VOL_DIR")"
     exit 1
 fi
 
