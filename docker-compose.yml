@@ -94,6 +94,19 @@ services:
   # loader requires its own network restriction (VPN, SSH tunnel, security
   # group), since it has no authentication built in here.
   #
+  # When that restriction is an SSH tunnel, LOADER_ELASTIC_HOST must be
+  # `host.docker.internal` and never `localhost`: this service resolves the name from
+  # inside its own network namespace, where `localhost` is the container itself and the
+  # tunnel's listener — bound on the machine running ssh — is unreachable. The extra_hosts
+  # entry below maps that name to the host gateway; Docker Desktop provides it for free,
+  # Linux does not. The tunnel then has to accept connections arriving at that gateway and
+  # not only at 127.0.0.1, so give ssh an explicit bind address:
+  #   ssh -L 172.17.0.1:9200:localhost:9200 user@deployment-host
+  # Note that address is the `docker0` gateway, which is what Docker's `host-gateway` alias
+  # resolves to — *not* this project's own network gateway, which is a different subnet
+  # and where a listener would not be reached. Confirm it rather than assuming:
+  #   docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
+  #
   # The 3.x image is Distroless, which changes how this service is invoked. There is no
   # shell and no /usr/bin/env in it, so the `addressr-loader` bin shim cannot be resolved
   # by name — the entrypoint is `/tini -- /nodejs/bin/node` and `command` has to be the
@@ -115,6 +128,11 @@ services:
       - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
       - ES_CLEAR_INDEX=${LOADER_ES_CLEAR_INDEX:-false}
       - NODE_OPTIONS=--max-old-space-size=8192
+    extra_hosts:
+      # Resolves LOADER_ELASTIC_HOST=host.docker.internal to the bridge gateway, for the
+      # SSH-tunnelled remote-indexing case described above. Inert otherwise: the default
+      # LOADER_ELASTIC_HOST=opensearch never looks this name up.
+      - "host.docker.internal:host-gateway"
     volumes:
       # The whole target directory, not just GNAF_DIR: the CKAN package cache the loader
       # writes to target/keyv-file.msgpack has no environment override, so a narrower mount
