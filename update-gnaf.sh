@@ -142,12 +142,44 @@ fi
 # right trade-off for update-gnaf.sh's quarterly refresh; a manual, ad-hoc
 # `docker compose --profile loader up -d addressr-loader` still defaults to
 # false (see docker-compose.yml) so it doesn't blank the index unexpectedly.
+# The loader runs in a container, so a loopback LOADER_ELASTIC_HOST names the container
+# itself — never an SSH tunnel's listener, which is bound on this machine. Silently, too:
+# the loader just retries "trying to reach elastic search on localhost:9200" forever while
+# appearing to have started fine. Catch it here instead, since the value is usually left
+# exported in a shell from an earlier attempt.
+case "${LOADER_ELASTIC_HOST:-}" in
+    localhost | 127.0.0.1 | ::1)
+        echo "error: LOADER_ELASTIC_HOST=$LOADER_ELASTIC_HOST can never work."
+        echo "The loader runs inside a container, where that address is the container"
+        echo "itself. To index into a tunnelled remote OpenSearch, use:"
+        echo "  LOADER_ELASTIC_HOST=host.docker.internal $0"
+        echo "and bind the tunnel where the container can reach it — see the"
+        echo "addressr-loader comments in docker-compose.yml."
+        echo ""
+        echo "To index into the local opensearch service instead, unset it:"
+        echo "  unset LOADER_ELASTIC_HOST"
+        exit 1
+        ;;
+esac
+
 echo "Starting G-NAF data loader in the background..."
 echo ""
 LOADER_ES_CLEAR_INDEX=true docker compose --profile loader up -d addressr-loader
+
+# Where to reach the index *from this machine*, which is not where the loader reaches it:
+# host.docker.internal only resolves inside a container, so report the gateway address it
+# maps to. The local-opensearch default is published on localhost by docker-compose.yml.
+CHECK_HOST="${LOADER_ELASTIC_HOST:-localhost}"
+CHECK_PORT="${LOADER_ELASTIC_PORT:-9200}"
+if [ "$CHECK_HOST" = "host.docker.internal" ]; then
+    CHECK_HOST=$(
+        docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' \
+        2>/dev/null || echo "host.docker.internal"
+    )
+fi
 
 echo "To watch the loader output:"
 echo "  docker compose logs -f addressr-loader"
 echo ""
 echo "To check how many addresses have been indexed so far:"
-echo "  curl http://localhost:9200/addressr/_count"
+echo "  curl http://$CHECK_HOST:$CHECK_PORT/addressr/_count"
