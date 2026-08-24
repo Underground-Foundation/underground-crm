@@ -100,7 +100,46 @@ For the first time you run the containers, you'll need to explicitly load the g-
 ```
 You'll also need to run this script when data.gov.au releases new data (every [3 months](https://github.com/mountain-pass/addressr#self-hosted))
 
-Address searches will not return any results until the indexing completes (roughly 1–2 hours).
+The run has three phases: a ~1.9 GB download from data.gov.au, an unzip and parse, then
+the indexing itself. Only the third writes to OpenSearch, so
+
+```shell
+curl -sS localhost:9200/addressr/_count
+```
+
+answers `index_not_found_exception` for the first several minutes. That is the expected
+state, not a failure; the count then climbs toward ~14 million. Address searches return
+nothing until it completes, roughly 1–2 hours. Watch the phases with
+`docker compose logs -f addressr-loader`.
+
+Budget the disk as well as the RAM noted under
+["Infrastructure requirements"](#infrastructure-requirements): the download and the
+extracted PSV files land in `./data/addressr` and want tens of GB between them.
+
+#### Indexing into a remote OpenSearch
+
+The loader only talks to OpenSearch over the network, so it does not have to run where
+OpenSearch does. A deployment that cannot spare 8 GB for a quarterly reindex can leave the
+always-on query service in place and drive the load from a laptop, over an SSH tunnel:
+
+```shell
+LOADER_ELASTIC_HOST=host.docker.internal ./update-gnaf.sh
+```
+
+`host.docker.internal`, **never** `localhost` — the loader runs inside a container, where
+a loopback address is the container itself and a tunnel's listener, bound on the machine
+running `ssh`, is unreachable. The failure is silent: compose reports the loader
+`Started`, and it then retries `trying to reach elastic search on localhost:9200` forever
+without indexing anything. `update-gnaf.sh` rejects a loopback value up front for that
+reason. The name is mapped to the host gateway by an `extra_hosts` entry on the
+`addressr-loader` service; Docker Desktop supplies it automatically, Linux does not.
+
+The tunnel must then listen where the container can reach it — the `docker0` gateway
+rather than `127.0.0.1` — and stay up for the whole run, as the loader has no reconnect
+logic. See the `addressr-loader` comments in `docker-compose.yml` for the exact `ssh`
+invocation, and
+[fusion-underground's README](https://github.com/owen9825/fusion-underground#day-to-day-operations)
+for the procedure written out against a real deployment.
 
 ### Running the tests
 
