@@ -56,6 +56,10 @@ INSTALLED_APPS = [
     # Django REST framework
     "rest_framework",
     "rest_framework_simplejwt",
+    # https://pypi.org/project/Collectfast/
+    # Collectfast compares checksums locally with S3/R2. It must come before
+    # django.contrib.staticfiles.
+    "collectfast",
     # Django
     "django.contrib.admin",
     "django.contrib.auth",
@@ -144,7 +148,18 @@ CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": _REDIS_URL,
-    }
+    },
+    # A dedicated cache holding collectfast's record of the checksum each static file
+    # currently has in the remote bucket. With a warm cache, a deployment without any changed
+    # assets will avoid any S3 round trips − collectfast falls back to one HEAD per file.
+    #
+    # The cache only takes effect for COLLECTFAST_ENABLED=true, see below.
+    "collectfast": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _REDIS_URL,
+        "KEY_PREFIX": "collectfast",
+        "TIMEOUT": None,
+    },
 }
 
 # https://django-q2.readthedocs.io/en/master/brokers.html#redis
@@ -203,6 +218,21 @@ def _env_flag(name: str, *, default: bool) -> bool:
     )
     return default
 
+
+# collectfast — https://github.com/antonagestam/collectfast
+#
+# Only needed when we're using remote caching (S3/R2).
+#
+# This covers only the copying phase. The ManifestStaticFilesStorage post-processing is Django's
+# own and still runs in full on every deployment.
+COLLECTFAST_ENABLED = _env_flag("COLLECTFAST_ENABLED", default=False)
+# django-storages' S3 backend, which also drives Cloudflare R2. Named here rather than left
+# to each theme project because it is the only strategy any current deployment uses; a
+# deployment on a different backend can still override it. Read only when enabled.
+COLLECTFAST_STRATEGY = os.environ.get(
+    "COLLECTFAST_STRATEGY", "collectfast.strategies.boto3.Boto3Strategy"
+)
+COLLECTFAST_CACHE = "collectfast"
 
 # Error tracking — GlitchTip (self-hosted, Sentry-API-compatible) or Sentry itself.
 # Point SENTRY_DSN at either service; leave it unset (the default) to disable error

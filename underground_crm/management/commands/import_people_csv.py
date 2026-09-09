@@ -55,6 +55,7 @@ from underground_crm.models import Interaction, Membership, MembershipType, Pers
 from underground_crm.models.address import Address
 from underground_crm.contactability import (
     MOBILE_CAPABLE_PHONE_TYPES,
+    InvalidPhoneNumberError,
     get_validated_domain_name,
     get_validated_email_address,
     parse_verified_phone_number,
@@ -342,13 +343,38 @@ def _get_email_with_is_bad(row: dict) -> Tuple[Optional[str], Optional[bool]]:
     return fallback
 
 
+def _row_label(row) -> str:
+    """A short "Row <legacy id> (<name>)" tag for error messages about a CSV row."""
+    legacy_id = row.get("nationbuilder_id", "").strip() or "?"
+    name = (
+        row.get("full_name", "").strip()
+        or f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        or "?"
+    )
+    return f"Row {legacy_id} ({name})"
+
+
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
-    mobile_number, mobile_type = parse_phone_number_with_verified_type(
-        row.get("mobile_number", "").strip() or None
-    )
-    phone_number, phone_type = parse_phone_number_with_verified_type(
-        row.get("phone_number", "").strip() or None
-    )
+    try:
+        mobile_number, mobile_type = parse_phone_number_with_verified_type(
+            row.get("mobile_number", "").strip() or None
+        )
+    except InvalidPhoneNumberError as exc:
+        logger.warning(
+            "Skipping invalid mobile phone number for %s: %s",
+            _row_label(row),
+            row.get("mobile_number"),
+        )
+        mobile_number, mobile_type = (None, None)
+    try:
+        phone_number, phone_type = parse_phone_number_with_verified_type(
+            row.get("phone_number", "").strip() or None
+        )
+    except InvalidPhoneNumberError as exc:
+        phone_number, phone_type = (None, None)
+        logger.warning(
+            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("phone_number")
+        )
 
     if mobile_number:
         if mobile_type == PhoneNumberType.MOBILE:
@@ -393,6 +419,13 @@ def _resolve_first_and_preferred_name(row: dict) -> Tuple[Optional[str], Optiona
 def _person_fields(row, is_email_bad: bool):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
+    try:
+        work_phone_number = parse_verified_phone_number(row.get("work_phone_number", "").strip())
+    except InvalidPhoneNumberError as exc:
+        work_phone_number = None
+        logger.warning(
+            "Skipping invalid work number for %s: %s", _row_label(row), row.get("work_phone_number")
+        )
     first_name, preferred_name = _resolve_first_and_preferred_name(row)
     return {
         "prefix": row.get("prefix", "").strip() or None,
@@ -403,7 +436,7 @@ def _person_fields(row, is_email_bad: bool):
         "legal_name": row.get("legal_name", "").strip() or None,
         "preferred_name": preferred_name,
         "phone_number": phone_number,
-        "work_phone_number": parse_verified_phone_number(row.get("work_phone_number", "").strip()),
+        "work_phone_number": work_phone_number,
         "mobile_number": mobile_number,
         "mobile_opt_in": _bool(row.get("mobile_opt_in", "")),
         "is_mobile_bad": _bool(row.get("is_mobile_bad", "")) or not mobile_number,

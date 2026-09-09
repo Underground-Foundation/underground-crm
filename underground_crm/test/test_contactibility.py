@@ -3,9 +3,12 @@ from unittest import skipUnless
 import django.test
 
 import dns.resolver
+import phonenumbers
+from django.conf import settings
 from email_validator import EmailUndeliverableError, EmailSyntaxError
 
 from underground_crm.contactability import (
+    InvalidPhoneNumberError,
     get_ambiguous_admin_by_full_name,
     get_full_name_options,
     get_validated_domain_name,
@@ -85,23 +88,48 @@ class DomainValidationTest(unittest.TestCase):
 
 class PhoneNumberTest(unittest.TestCase):
 
+    # A valid Australian mobile, written the local way and the international way;
+    # the two spellings denote the same number.
+    VALID_MOBILE_LOCAL = "0412 345 678"
+    VALID_MOBILE_INTERNATIONAL = "+61 412 345 678"
+    # Parses as a phone number but is a digit group short, so libphonenumber
+    # rejects it as invalid.
+    PARSEABLE_BUT_INVALID = "0412 345"
+    # Cannot be read as a phone number at all — libphonenumber raises rather than
+    # returning something invalid.
+    UNREADABLE_AS_A_NUMBER = "not a number"
+    # Country calling code for the configured default region (AU -> 61).
+    EXPECTED_COUNTRY_CODE = phonenumbers.country_code_for_region(settings.PHONE_REGION)
+
     def test_parse_verified_phone_number_with_valid_au_mobile(self):
-        result = parse_verified_phone_number("0412 345 678")
+        result = parse_verified_phone_number(self.VALID_MOBILE_LOCAL)
         self.assertIsNotNone(result)
-        self.assertEqual(result.country_code, 61)
+        self.assertEqual(result.country_code, self.EXPECTED_COUNTRY_CODE)
 
     def test_parse_verified_phone_number_with_valid_international(self):
-        result = parse_verified_phone_number("+61 412 345 678")
+        result = parse_verified_phone_number(self.VALID_MOBILE_INTERNATIONAL)
         self.assertIsNotNone(result)
-        self.assertEqual(result.country_code, 61)
-
-    def test_parse_verified_phone_number_returns_none_for_non_number(self):
-        result = parse_verified_phone_number("not a number")
-        self.assertIsNone(result)
+        self.assertEqual(result.country_code, self.EXPECTED_COUNTRY_CODE)
 
     def test_parse_verified_phone_number_returns_none_for_empty_string(self):
-        result = parse_verified_phone_number("")
-        self.assertIsNone(result)
+        self.assertIsNone(parse_verified_phone_number(""))
+
+    def test_parse_verified_phone_number_raises_for_unreadable_value(self):
+        with self.assertRaises(InvalidPhoneNumberError):
+            parse_verified_phone_number(self.UNREADABLE_AS_A_NUMBER)
+
+    def test_parse_verified_phone_number_raises_for_parseable_but_invalid(self):
+        with self.assertRaises(InvalidPhoneNumberError):
+            parse_verified_phone_number(self.PARSEABLE_BUT_INVALID)
+
+    def test_invalid_phone_number_error_names_the_offending_value(self):
+        with self.assertRaises(InvalidPhoneNumberError) as ctx:
+            parse_verified_phone_number(self.PARSEABLE_BUT_INVALID)
+        self.assertIn(self.PARSEABLE_BUT_INVALID, str(ctx.exception))
+
+    def test_parse_verified_phone_number_keeps_raw_input(self):
+        result = parse_verified_phone_number(self.VALID_MOBILE_LOCAL)
+        self.assertEqual(result.raw_input, self.VALID_MOBILE_LOCAL)
 
 
 class NamingTest(django.test.TestCase):

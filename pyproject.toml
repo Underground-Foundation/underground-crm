@@ -46,6 +46,13 @@ dependencies = [
     "django-compressor>=4.0",
     "csscompressor>=0.9",
     "whitenoise>=6.0",
+    # Faster collectstatic against a remote (S3/R2) staticfiles bucket: skips a file whose
+    # checksum already matches the stored object. Unmaintained upstream (last release 2021)
+    # but small and self-contained, and it works by subclassing Django's own collectstatic
+    # command — so a Django upgrade is what to re-test it against. Pulls in django-storages,
+    # which until now only the theme project depended on. Does nothing unless the deployment
+    # sets COLLECTFAST_ENABLED — see underground_crm/settings.py.
+    "Collectfast>=2.2,<3",
 ]
 
 # django-q2 resolves Q_CLUSTER["error_reporter"] keys through this entry point group,

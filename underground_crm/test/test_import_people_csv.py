@@ -7,8 +7,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import django.test
+import phonenumbers
 from django.core.management import call_command
 
+from underground_crm.contactability import InvalidPhoneNumberError, parse_verified_phone_number
 from underground_crm.management.commands.import_people_csv import (
     _resolve_first_and_preferred_name,
     parse_memberships,
@@ -302,4 +304,18 @@ class ImportPeopleCsvMembershipTest(django.test.TestCase):
             MembershipType.objects.filter(name=_SCIENCE_MEMBERSHIP_NAME).count(),
             1,
             msg="Two people who both belong to 'Science' should share a single MembershipType row",
+        )
+
+    def test_invalid_phone_number_continues(self):
+        # "0412 345" parses as a phone number but is too short to be valid.
+        phone_number = "0412 345"
+        with self.assertRaises(InvalidPhoneNumberError):
+            # Our test was relying on this number being invalid
+            parse_verified_phone_number(phone_number)
+        csv_path = self._write_csv(phone_number=phone_number)
+        call_command("import_people_csv", csv_path)
+        retrieved = Person.objects.get(legacy_id=int(self._LEGACY_ID))
+        self.assertFalse(
+            retrieved.phone_number,
+            msg="The phone number should have been skipped",
         )
