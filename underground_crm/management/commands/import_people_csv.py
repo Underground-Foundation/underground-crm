@@ -373,7 +373,7 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
     except InvalidPhoneNumberError as exc:
         phone_number, phone_type = (None, None)
         logger.warning(
-            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("mobile_number")
+            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("phone_number")
         )
 
     if mobile_number:
@@ -424,7 +424,7 @@ def _person_fields(row, is_email_bad: bool):
     except InvalidPhoneNumberError as exc:
         work_phone_number = None
         logger.warning(
-            "Skipping invalid work number for %s: %s", _row_label(row), row.get("mobile_number")
+            "Skipping invalid work number for %s: %s", _row_label(row), row.get("work_phone_number")
         )
     first_name, preferred_name = _resolve_first_and_preferred_name(row)
     return {
