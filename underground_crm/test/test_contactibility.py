@@ -9,12 +9,14 @@ from email_validator import EmailUndeliverableError, EmailSyntaxError
 
 from underground_crm.contactability import (
     InvalidPhoneNumberError,
+    au_area_code_for_state,
     get_ambiguous_admin_by_full_name,
     get_full_name_options,
     get_validated_domain_name,
     get_validated_email_address,
     parse_address,
     parse_verified_phone_number,
+    recover_landline_with_missing_area_code,
     validate_domain_name,
     validate_email_with_deliverability,
 )
@@ -130,6 +132,55 @@ class PhoneNumberTest(unittest.TestCase):
     def test_parse_verified_phone_number_keeps_raw_input(self):
         result = parse_verified_phone_number(self.VALID_MOBILE_LOCAL)
         self.assertEqual(result.raw_input, self.VALID_MOBILE_LOCAL)
+
+
+class LandlineAreaCodeRecoveryTest(unittest.TestCase):
+
+    # An eight-digit subscriber number with no area code. It is a real
+    # fixed-line range under the 03 (VIC/TAS) and 07 (QLD) codes, but not
+    # under 02 or 08 — so on its own it is ambiguous, and with the wrong
+    # state it is unrecoverable.
+    BARE_LOCAL = "5499 3656"
+
+    def test_bare_number_is_invalid_on_its_own(self):
+        with self.assertRaises(InvalidPhoneNumberError):
+            parse_verified_phone_number(self.BARE_LOCAL)
+
+    def test_state_picks_the_covering_area_code(self):
+        recovered = recover_landline_with_missing_area_code(self.BARE_LOCAL, "VIC")
+        self.assertIsNotNone(recovered)
+        self.assertEqual(
+            phonenumbers.format_number(recovered, phonenumbers.PhoneNumberFormat.E164),
+            "+61354993656",
+        )
+
+    def test_state_full_name_is_accepted(self):
+        recovered = recover_landline_with_missing_area_code(self.BARE_LOCAL, "Queensland")
+        self.assertEqual(
+            phonenumbers.format_number(recovered, phonenumbers.PhoneNumberFormat.E164),
+            "+61754993656",
+        )
+
+    def test_ambiguous_without_state_is_left_alone(self):
+        self.assertIsNone(recover_landline_with_missing_area_code(self.BARE_LOCAL))
+
+    def test_state_without_a_matching_range_is_left_alone(self):
+        # 02 5499 xxxx is not an allocated range, so a NSW person with this
+        # bare number cannot be repaired.
+        self.assertIsNone(recover_landline_with_missing_area_code(self.BARE_LOCAL, "NSW"))
+
+    def test_non_eight_digit_input_is_rejected(self):
+        self.assertIsNone(recover_landline_with_missing_area_code("5499 365", "VIC"))
+        self.assertIsNone(recover_landline_with_missing_area_code("03 5499 3656", "VIC"))
+        self.assertIsNone(recover_landline_with_missing_area_code("", "VIC"))
+
+    def test_au_area_code_for_state(self):
+        self.assertEqual(au_area_code_for_state("vic"), "03")
+        self.assertEqual(au_area_code_for_state("Western Australia"), "08")
+        self.assertEqual(au_area_code_for_state("ACT"), "02")
+        self.assertIsNone(au_area_code_for_state(""))
+        self.assertIsNone(au_area_code_for_state(None))
+        self.assertIsNone(au_area_code_for_state("Aotearoa"))
 
 
 class NamingTest(django.test.TestCase):

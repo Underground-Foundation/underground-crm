@@ -319,3 +319,29 @@ class ImportPeopleCsvMembershipTest(django.test.TestCase):
             retrieved.phone_number,
             msg="The phone number should have been skipped",
         )
+
+    def test_bare_landline_is_repaired_using_the_row_state(self):
+        # An 8-digit subscriber number with no area code is invalid alone...
+        phone_number = "5499 3656"
+        with self.assertRaises(InvalidPhoneNumberError):
+            parse_verified_phone_number(phone_number)
+        # ...but the person's state pins it to the Victorian (03) area code.
+        csv_path = self._write_csv(phone_number=phone_number, address_state="VIC")
+        call_command("import_people_csv", csv_path)
+        retrieved = Person.objects.get(legacy_id=int(self._LEGACY_ID))
+        self.assertEqual(
+            str(retrieved.phone_number),
+            "+61354993656",
+            msg="The bare landline should have been repaired with the VIC area code",
+        )
+
+    def test_bare_landline_without_a_state_is_still_skipped(self):
+        # Same number, no state: ambiguous between the 03 and 07 codes, so it
+        # is left out rather than guessed.
+        csv_path = self._write_csv(phone_number="5499 3656")
+        call_command("import_people_csv", csv_path)
+        retrieved = Person.objects.get(legacy_id=int(self._LEGACY_ID))
+        self.assertFalse(
+            retrieved.phone_number,
+            msg="An ambiguous bare landline should not be guessed",
+        )

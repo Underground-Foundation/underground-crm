@@ -17,6 +17,7 @@ from ..contactability import (
     validate_domain_name,
     validate_email_with_deliverability,
 )
+from ..person_titles import clean_name_prefix
 
 
 class Tag(TagBase):
@@ -94,7 +95,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Legacy ID"),
         help_text=_("Person ID from the previous CRM, used for data migration."),
     )
-    prefix = models.CharField(max_length=10, null=True, blank=True, verbose_name=_("Name prefix"))
+    prefix = models.CharField(max_length=25, null=True, blank=True, verbose_name=_("Name prefix"))
     first_name = models.CharField(
         max_length=100, null=True, blank=True, help_text=_("First name (for the electoral roll)")
     )
@@ -469,6 +470,19 @@ class Person(AbstractBaseUser, PermissionsMixin):
             raise ValidationError(
                 f"Admins should always be staff members. This is not the case for {self}"
             )
+
+    def save(self, *args, **kwargs):
+        # Normalise / validate the name title on every write path — admin,
+        # shell, API, import. clean_name_prefix raises InvalidNamePrefixError
+        # (a ValueError) for a non-empty value that is not one or more
+        # recognised titles, or one that will not fit this field. Callers that
+        # must tolerate messy legacy data (the CSV importer) clean the value
+        # themselves first and downgrade the error to a warning; here it is
+        # deliberately left to propagate. See underground_crm.person_titles.
+        self.prefix = clean_name_prefix(
+            self.prefix, max_length=self._meta.get_field("prefix").max_length
+        )
+        super().save(*args, **kwargs)
 
     @property
     def full_name(self):

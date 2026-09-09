@@ -46,7 +46,8 @@ from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from phonenumbers import PhoneNumberType
+import phonenumbers
+from phonenumbers import PhoneNumberFormat, PhoneNumberType, phonenumberutil
 from phonenumbers.phonenumber import PhoneNumber
 
 from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
@@ -60,7 +61,10 @@ from underground_crm.contactability import (
     get_validated_email_address,
     parse_verified_phone_number,
     parse_phone_number_with_verified_type,
+    clean_phone_number,
+    recover_landline_with_missing_area_code,
 )
+from underground_crm.person_titles import InvalidNamePrefixError, clean_name_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -354,10 +358,42 @@ def _row_label(row) -> str:
     return f"Row {legacy_id} ({name})"
 
 
+def _clean_prefix(row) -> Optional[str]:
+    """Return the row's name title, normalised, or None.
+
+    A prefix that is not one or more recognised titles — or that will not fit
+    Person.prefix — is logged and dropped rather than aborting the person's
+    import, the same policy as an unparseable phone number. Person.save()
+    re-validates whatever is returned here, so it is already known to be clean.
+    """
+    raw = row.get("prefix", "").strip()
+    if not raw:
+        return None
+    try:
+        return clean_name_prefix(raw, max_length=Person._meta.get_field("prefix").max_length)
+    except InvalidNamePrefixError:
+        logger.warning("Skipping unrecognised name title for %s: %r", _row_label(row), raw)
+        return None
+
+
+def _row_state(row) -> Optional[str]:
+    """The person's state or territory, for disambiguating a bare landline.
+
+    Falls through the address roles in the same order of preference the
+    address importer uses: home, then mailing, then registered.
+    """
+    for prefix in ("primary", "address", "registered", "billing", "mailing"):
+        # Notice that this order matches the `location` property of Person.
+        state = row.get(f"{prefix}_state", "").strip()
+        if state:
+            return state
+    return None
+
+
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
     try:
         mobile_number, mobile_type = parse_phone_number_with_verified_type(
-            row.get("mobile_number", "").strip() or None
+            clean_phone_number(row.get("mobile_number", ""))
         )
     except InvalidPhoneNumberError as exc:
         logger.warning(
@@ -366,15 +402,29 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
             row.get("mobile_number"),
         )
         mobile_number, mobile_type = (None, None)
+    clean_phone = clean_phone_number(row.get("phone_number", ""))
     try:
-        phone_number, phone_type = parse_phone_number_with_verified_type(
-            row.get("phone_number", "").strip() or None
-        )
+        phone_number, phone_type = parse_phone_number_with_verified_type(clean_phone)
     except InvalidPhoneNumberError as exc:
         phone_number, phone_type = (None, None)
-        logger.warning(
-            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("phone_number")
-        )
+        # Legacy landlines are sometimes transcribed as the 8-digit subscriber number
+        # with no area code. Try to infer the correct code, using the person's address.
+        recovered = recover_landline_with_missing_area_code(clean_phone, _row_state(row))
+        if recovered is not None:
+            phone_number = recovered
+            phone_type = phonenumberutil.number_type(recovered)
+            logger.info(
+                "Recovered a phone number for %s by adding an area code: %s -> %s",
+                _row_label(row),
+                row.get("phone_number"),
+                phonenumbers.format_number(recovered, PhoneNumberFormat.NATIONAL),
+            )
+        else:
+            logger.warning(
+                "Skipping invalid phone number for %s: %s",
+                _row_label(row),
+                row.get("phone_number"),
+            )
 
     if mobile_number:
         if mobile_type == PhoneNumberType.MOBILE:
@@ -420,7 +470,9 @@ def _person_fields(row, is_email_bad: bool):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
     try:
-        work_phone_number = parse_verified_phone_number(row.get("work_phone_number", "").strip())
+        work_phone_number = parse_verified_phone_number(
+            clean_phone_number(row.get("work_phone_number", ""))
+        )
     except InvalidPhoneNumberError as exc:
         work_phone_number = None
         logger.warning(
@@ -428,7 +480,7 @@ def _person_fields(row, is_email_bad: bool):
         )
     first_name, preferred_name = _resolve_first_and_preferred_name(row)
     return {
-        "prefix": row.get("prefix", "").strip() or None,
+        "prefix": _clean_prefix(row),
         "first_name": first_name,
         "middle_name": row.get("middle_name", "").strip() or None,
         "last_name": row.get("last_name", "").strip() or None,
