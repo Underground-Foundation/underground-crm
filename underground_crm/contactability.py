@@ -41,13 +41,30 @@ MOBILE_CAPABLE_PHONE_TYPES: Tuple[int, ...] = (
 )
 
 
+class InvalidPhoneNumberError(ValueError):
+    # A non-empty value that is not a valid phone number.
+    def __init__(self, raw_number: str):
+        self.raw_number = raw_number
+        super().__init__(f"{raw_number!r} is not a valid phone number")
+
+
 def parse_verified_phone_number(raw_number: str) -> Optional[PhoneNumber]:
+    """Parse ``raw_number`` into a valid :class:`PhoneNumber`.
+
+    Returns ``None`` only for an empty ``raw_number`` (no number supplied). Any
+    non-empty value that is not a valid phone number raises
+    :class:`InvalidPhoneNumberError` rather than being discarded — see that
+    class for why.
+    """
     if not raw_number:
         return None
     try:
-        return phonenumbers.parse(raw_number, region=settings.PHONE_REGION)
-    except phonenumbers.NumberParseException:
-        return None
+        parsed = phonenumbers.parse(raw_number, region=settings.PHONE_REGION, keep_raw_input=True)
+    except phonenumbers.NumberParseException as exc:
+        raise InvalidPhoneNumberError(raw_number) from exc
+    if not phonenumbers.is_valid_number(parsed):
+        raise InvalidPhoneNumberError(raw_number)
+    return parsed
 
 
 def parse_phone_number_with_verified_type(

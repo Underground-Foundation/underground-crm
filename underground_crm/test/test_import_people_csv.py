@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import django.test
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from underground_crm.management.commands.import_people_csv import (
     _resolve_first_and_preferred_name,
@@ -302,4 +303,19 @@ class ImportPeopleCsvMembershipTest(django.test.TestCase):
             MembershipType.objects.filter(name=_SCIENCE_MEMBERSHIP_NAME).count(),
             1,
             msg="Two people who both belong to 'Science' should share a single MembershipType row",
+        )
+
+    def test_invalid_phone_number_aborts_and_names_the_row(self):
+        # "0412 345" parses as a phone number but is too short to be valid.
+        csv_path = self._write_csv(phone_number="0412 345")
+
+        with self.assertRaises(CommandError) as ctx:
+            call_command("import_people_csv", csv_path)
+
+        message = str(ctx.exception)
+        self.assertIn(self._LEGACY_ID, message)
+        self.assertIn("0412 345", message)
+        self.assertFalse(
+            Person.objects.filter(legacy_id=int(self._LEGACY_ID)).exists(),
+            msg="The row must not be half-imported when its phone number is rejected",
         )

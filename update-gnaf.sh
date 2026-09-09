@@ -52,6 +52,40 @@ if [ ! -w "$ADDRESSR_VOL_DIR" ] || [ -z "$(find "$ADDRESSR_VOL_DIR" -maxdepth 0 
     exit 1
 fi
 
+# The loader runs in a container, so a loopback LOADER_ELASTIC_HOST names the container
+# itself — never an SSH tunnel's listener, which is bound on this machine. Silently, too:
+# the loader just retries "trying to reach elastic search on localhost:9200" forever while
+# appearing to have started fine. Catch it here instead, since the value is usually left
+# exported in a shell from an earlier attempt.
+case "${LOADER_ELASTIC_HOST:-}" in
+    localhost | 127.0.0.1 | ::1)
+        echo "error: LOADER_ELASTIC_HOST=$LOADER_ELASTIC_HOST can never work."
+        echo "The loader runs inside a container, where that address is the container"
+        echo "itself. To index into a tunnelled remote OpenSearch, use:"
+        echo "  LOADER_ELASTIC_HOST=host.docker.internal $0"
+        echo "and bind the tunnel where the container can reach it — see the"
+        echo "addressr-loader comments in docker-compose.yml."
+        echo ""
+        echo "To index into the local opensearch service instead, unset it:"
+        echo "  unset LOADER_ELASTIC_HOST"
+        exit 1
+        ;;
+esac
+
+# Where to reach the target index *from this machine*, which is not where the loader
+# reaches it: host.docker.internal only resolves inside a container, so use the docker0
+# gateway address it maps to. The local-opensearch default is published on localhost by
+# docker-compose.yml. Used both to decide whether a load is needed (below) and to print
+# the progress-check command at the end.
+CHECK_HOST="${LOADER_ELASTIC_HOST:-localhost}"
+CHECK_PORT="${LOADER_ELASTIC_PORT:-9200}"
+if [ "$CHECK_HOST" = "host.docker.internal" ]; then
+    CHECK_HOST=$(
+        docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' \
+        2>/dev/null || echo "host.docker.internal"
+    )
+fi
+
 # Fetch the latest GDA94 download URL from the data.gov.au dataset page
 echo "Checking data.gov.au for the latest G-NAF release..."
 NEW_URL=$(
@@ -81,14 +115,56 @@ with open('$GNAF_JSON') as f:
     if [ "$NEW_URL" = "$CURRENT_URL" ]; then
         URL_CHANGED=false
         echo "G-NAF is already at the latest release: $(basename "$NEW_URL")"
-        # Still run the loader if the G-NAF data has never been downloaded — this
-        # happens when a previous load attempt failed before any data was indexed.
-        if [ ! -d "$GNAF_DATA_DIR" ] || [ -z "$(ls -A "$GNAF_DATA_DIR" 2>/dev/null)" ]; then
-            echo "G-NAF data not yet downloaded; running the loader."
-        else
-            echo "No update needed."
-            exit 0
-        fi
+    fi
+fi
+
+# When the release URL hasn't changed, decide whether the loader still needs to run.
+# A current URL only means *this checkout* has the latest download; it says nothing
+# about whether the OpenSearch index the loader targets actually holds the data. That
+# target is the local `opensearch` service by default, but a remote instance when
+# LOADER_ELASTIC_HOST is set — and a freshly provisioned remote index is empty even
+# while the local download cache here is fully populated from an earlier load.
+if [ "$URL_CHANGED" = false ]; then
+    LOAD_REASON=""
+
+    if [ "${FORCE_LOAD:-}" = true ]; then
+        LOAD_REASON="FORCE_LOAD=true"
+    elif [ ! -d "$GNAF_DATA_DIR" ] || [ -z "$(ls -A "$GNAF_DATA_DIR" 2>/dev/null)" ]; then
+        # A previous load attempt failed before any data was downloaded.
+        LOAD_REASON="G-NAF data not yet downloaded"
+    else
+        # Ask the target index directly. `curl -f` is deliberately not used: a 404
+        # (index absent) is a positive "needs loading" answer, distinct from an
+        # unreachable host, which is not.
+        PROBE_URL="http://$CHECK_HOST:$CHECK_PORT/addressr/_count"
+        PROBE_STATUS=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$PROBE_URL" 2>/dev/null) \
+            || PROBE_STATUS=000
+        case "$PROBE_STATUS" in
+            404)
+                LOAD_REASON="target index $PROBE_URL does not exist"
+                ;;
+            200)
+                PROBE_COUNT=$(curl -s --max-time 5 "$PROBE_URL" \
+                    | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null \
+                    || echo -1)
+                if [ "$PROBE_COUNT" = 0 ]; then
+                    LOAD_REASON="target index $PROBE_URL is empty"
+                fi
+                ;;
+            *)
+                echo "note: could not reach OpenSearch at $PROBE_URL (HTTP $PROBE_STATUS) to check"
+                echo "      whether it already holds the index; assuming it does."
+                ;;
+        esac
+    fi
+
+    if [ -n "$LOAD_REASON" ]; then
+        echo "Loading anyway: $LOAD_REASON."
+    else
+        echo "No update needed."
+        echo "Re-run with FORCE_LOAD=true to index regardless of what this checkout holds:"
+        echo "  FORCE_LOAD=true ${LOADER_ELASTIC_HOST:+LOADER_ELASTIC_HOST=$LOADER_ELASTIC_HOST }$0"
+        exit 0
     fi
 fi
 
@@ -142,41 +218,11 @@ fi
 # right trade-off for update-gnaf.sh's quarterly refresh; a manual, ad-hoc
 # `docker compose --profile loader up -d addressr-loader` still defaults to
 # false (see docker-compose.yml) so it doesn't blank the index unexpectedly.
-# The loader runs in a container, so a loopback LOADER_ELASTIC_HOST names the container
-# itself — never an SSH tunnel's listener, which is bound on this machine. Silently, too:
-# the loader just retries "trying to reach elastic search on localhost:9200" forever while
-# appearing to have started fine. Catch it here instead, since the value is usually left
-# exported in a shell from an earlier attempt.
-case "${LOADER_ELASTIC_HOST:-}" in
-    localhost | 127.0.0.1 | ::1)
-        echo "error: LOADER_ELASTIC_HOST=$LOADER_ELASTIC_HOST can never work."
-        echo "The loader runs inside a container, where that address is the container"
-        echo "itself. To index into a tunnelled remote OpenSearch, use:"
-        echo "  LOADER_ELASTIC_HOST=host.docker.internal $0"
-        echo "and bind the tunnel where the container can reach it — see the"
-        echo "addressr-loader comments in docker-compose.yml."
-        echo ""
-        echo "To index into the local opensearch service instead, unset it:"
-        echo "  unset LOADER_ELASTIC_HOST"
-        exit 1
-        ;;
-esac
+# (A loopback LOADER_ELASTIC_HOST was already rejected near the top of this script.)
 
 echo "Starting G-NAF data loader in the background..."
 echo ""
 LOADER_ES_CLEAR_INDEX=true docker compose --profile loader up -d addressr-loader
-
-# Where to reach the index *from this machine*, which is not where the loader reaches it:
-# host.docker.internal only resolves inside a container, so report the gateway address it
-# maps to. The local-opensearch default is published on localhost by docker-compose.yml.
-CHECK_HOST="${LOADER_ELASTIC_HOST:-localhost}"
-CHECK_PORT="${LOADER_ELASTIC_PORT:-9200}"
-if [ "$CHECK_HOST" = "host.docker.internal" ]; then
-    CHECK_HOST=$(
-        docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' \
-        2>/dev/null || echo "host.docker.internal"
-    )
-fi
 
 echo "To watch the loader output:"
 echo "  docker compose logs -f addressr-loader"

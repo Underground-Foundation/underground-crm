@@ -127,6 +127,12 @@ services:
       - ELASTIC_PORT=${LOADER_ELASTIC_PORT:-9200}
       - GNAF_PACKAGE_URL=http://gnaf-api/gnaf-package.json
       - ES_CLEAR_INDEX=${LOADER_ES_CLEAR_INDEX:-false}
+      # Geocoding is a property of what gets *written*, so it belongs here and not only on
+      # the query service above — that one reads an index it did not build. Set on one but
+      # not the other, the pair is quietly incoherent: the server advertises geo and every
+      # result comes back without coordinates, with `Skipping geos` buried in a loader log
+      # nobody reads until the reindex is hours old. Both, or neither.
+      - ADDRESSR_ENABLE_GEO=1
       - NODE_OPTIONS=--max-old-space-size=8192
     extra_hosts:
       # Resolves LOADER_ELASTIC_HOST=host.docker.internal to the bridge gateway, for the
