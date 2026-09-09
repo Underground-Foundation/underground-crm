@@ -354,26 +354,27 @@ def _row_label(row) -> str:
     return f"Row {legacy_id} ({name})"
 
 
-def _phone_error(row, column: str, exc: InvalidPhoneNumberError) -> CommandError:
-    """Turn an InvalidPhoneNumberError into a CommandError that names the row and
-    column, so one bad number aborts the import with a legible message pointing
-    at the record to fix rather than a bare traceback."""
-    return CommandError(f"{_row_label(row)}: {column} {exc}. Fix it in the CSV and re-run.")
-
-
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
     try:
         mobile_number, mobile_type = parse_phone_number_with_verified_type(
             row.get("mobile_number", "").strip() or None
         )
     except InvalidPhoneNumberError as exc:
-        raise _phone_error(row, "mobile_number", exc) from exc
+        logger.warning(
+            "Skipping invalid mobile phone number for %s: %s",
+            _row_label(row),
+            row.get("mobile_number"),
+        )
+        mobile_number, mobile_type = (None, None)
     try:
         phone_number, phone_type = parse_phone_number_with_verified_type(
             row.get("phone_number", "").strip() or None
         )
     except InvalidPhoneNumberError as exc:
-        raise _phone_error(row, "phone_number", exc) from exc
+        phone_number, phone_type = (None, None)
+        logger.warning(
+            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("mobile_number")
+        )
 
     if mobile_number:
         if mobile_type == PhoneNumberType.MOBILE:
@@ -421,7 +422,10 @@ def _person_fields(row, is_email_bad: bool):
     try:
         work_phone_number = parse_verified_phone_number(row.get("work_phone_number", "").strip())
     except InvalidPhoneNumberError as exc:
-        raise _phone_error(row, "work_phone_number", exc) from exc
+        work_phone_number = None
+        logger.warning(
+            "Skipping invalid work number for %s: %s", _row_label(row), row.get("mobile_number")
+        )
     first_name, preferred_name = _resolve_first_and_preferred_name(row)
     return {
         "prefix": row.get("prefix", "").strip() or None,
