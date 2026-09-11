@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext_lazy as _
@@ -437,7 +438,16 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Timestamps ---
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+    # Not auto_now_add: that unconditionally overwrites whatever is assigned before
+    # save() on every INSERT, which import_people_csv relies on setting explicitly
+    # to the legacy CRM's own join date. A plain default only fills the field in
+    # when nothing else was assigned, so an ordinary signup still gets "now" while
+    # an explicit value survives a single save() like any other field. Both the
+    # Django admin and the API serializers already mark this field read-only in
+    # their own layer, so dropping auto_now_add opens no new way to spoof it.
+    created_at = models.DateTimeField(
+        default=timezone.now, editable=False, verbose_name=_("Created at")
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated at"))
 
     objects = PersonManager()
@@ -449,6 +459,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     class Meta:
         verbose_name = _("person")
         verbose_name_plural = _("people")
+        ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["last_name", "first_name"]),
             models.Index(fields=["email_opt_in"]),
