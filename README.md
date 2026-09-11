@@ -144,6 +144,7 @@ for the procedure written out against a real deployment.
 ### Running the tests
 
 ```shell
+pip install -e '.[dev,migration]'
 python manage.py test -v 3 --keepdb underground_crm.test underground_email.test underground_crm.management.commands.test
 ```
 

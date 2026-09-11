@@ -1,8 +1,13 @@
 import logging
 import unittest
+from datetime import datetime, timedelta
 from string import whitespace, punctuation
+from zoneinfo import ZoneInfo
 
 import django.test
+from django.utils import timezone
+
+from underground_crm.models import Person
 
 logger = logging.getLogger(__name__)
 
@@ -126,3 +131,48 @@ class PersonLocationTest(django.test.TestCase):
         self._person(email="first@example.com", home_address=home)
         with self.assertRaises(IntegrityError):
             self._person(email="second@example.com", home_address=home)
+
+
+class PersonCreatedAtTest(django.test.TestCase):
+    """Person.created_at defaults to the moment of creation, like an ordinary
+    signup, but — unlike an auto_now_add field — an explicit value assigned
+    before save() is kept rather than being overwritten. import_people_csv
+    relies on this to record a member's real legacy join date in the same
+    save() that writes every other imported field."""
+
+    # How close a created_at left to its default must land to the moment the
+    # test itself observed, to allow for the time save() takes to run without
+    # letting a genuine bug (e.g. a stale or null timestamp) pass unnoticed.
+    CLOCK_TOLERANCE = timedelta(seconds=5)
+
+    def test_defaults_to_now_when_not_supplied(self):
+        before_save = timezone.now()
+        person = Person.objects.create(email="new.signup@example.com")
+        after_save = timezone.now()
+
+        self.assertTrue(
+            before_save - self.CLOCK_TOLERANCE
+            <= person.created_at
+            <= after_save + self.CLOCK_TOLERANCE,
+            msg=f"A Person created with no created_at must be stamped with the current "
+            f"time (between {before_save} and {after_save}, allowing {self.CLOCK_TOLERANCE} "
+            f"of slack), the same as an ordinary website signup; got {person.created_at}.",
+        )
+
+    def test_an_explicit_value_survives_save(self):
+        # A plausible legacy join date, well outside the CLOCK_TOLERANCE window
+        # around "now" used above, so the two tests cannot pass for the same
+        # accidental reason.
+        legacy_join_date = datetime(2016, 4, 14, 15, 41, tzinfo=ZoneInfo("Australia/Melbourne"))
+
+        person = Person(email="migrated.member@example.com", created_at=legacy_join_date)
+        person.save()
+        person.refresh_from_db()
+
+        self.assertEqual(
+            person.created_at,
+            legacy_join_date,
+            msg="created_at must not be an auto_now_add field: import_people_csv sets it "
+            "explicitly to the legacy CRM's own join date before the single save() call "
+            "that also writes the rest of the row, and that value must survive.",
+        )

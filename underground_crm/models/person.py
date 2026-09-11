@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from djmoney.models.fields import MoneyField
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils.translation import gettext_lazy as _
@@ -17,6 +18,7 @@ from ..contactability import (
     validate_domain_name,
     validate_email_with_deliverability,
 )
+from ..person_titles import clean_name_prefix
 
 
 class Tag(TagBase):
@@ -94,7 +96,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Legacy ID"),
         help_text=_("Person ID from the previous CRM, used for data migration."),
     )
-    prefix = models.CharField(max_length=10, null=True, blank=True, verbose_name=_("Name prefix"))
+    prefix = models.CharField(max_length=25, null=True, blank=True, verbose_name=_("Name prefix"))
     first_name = models.CharField(
         max_length=100, null=True, blank=True, help_text=_("First name (for the electoral roll)")
     )
@@ -436,7 +438,16 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
 
     # --- Timestamps ---
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+    # Not auto_now_add: that unconditionally overwrites whatever is assigned before
+    # save() on every INSERT, which import_people_csv relies on setting explicitly
+    # to the legacy CRM's own join date. A plain default only fills the field in
+    # when nothing else was assigned, so an ordinary signup still gets "now" while
+    # an explicit value survives a single save() like any other field. Both the
+    # Django admin and the API serializers already mark this field read-only in
+    # their own layer, so dropping auto_now_add opens no new way to spoof it.
+    created_at = models.DateTimeField(
+        default=timezone.now, editable=False, verbose_name=_("Created at")
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated at"))
 
     objects = PersonManager()
@@ -448,6 +459,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     class Meta:
         verbose_name = _("person")
         verbose_name_plural = _("people")
+        ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["last_name", "first_name"]),
             models.Index(fields=["email_opt_in"]),
@@ -469,6 +481,19 @@ class Person(AbstractBaseUser, PermissionsMixin):
             raise ValidationError(
                 f"Admins should always be staff members. This is not the case for {self}"
             )
+
+    def save(self, *args, **kwargs):
+        # Normalise / validate the name title on every write path — admin,
+        # shell, API, import. clean_name_prefix raises InvalidNamePrefixError
+        # (a ValueError) for a non-empty value that is not one or more
+        # recognised titles, or one that will not fit this field. Callers that
+        # must tolerate messy legacy data (the CSV importer) clean the value
+        # themselves first and downgrade the error to a warning; here it is
+        # deliberately left to propagate. See underground_crm.person_titles.
+        self.prefix = clean_name_prefix(
+            self.prefix, max_length=self._meta.get_field("prefix").max_length
+        )
+        super().save(*args, **kwargs)
 
     @property
     def full_name(self):

@@ -48,6 +48,10 @@ class InvalidPhoneNumberError(ValueError):
         super().__init__(f"{raw_number!r} is not a valid phone number")
 
 
+def clean_phone_number(raw_number: str) -> str:
+    return raw_number.replace(",", "").replace("-", "").replace("−", "").replace("*", "").strip()
+
+
 def parse_verified_phone_number(raw_number: str) -> Optional[PhoneNumber]:
     """Parse ``raw_number`` into a valid :class:`PhoneNumber`.
 
@@ -78,6 +82,104 @@ def parse_phone_number_with_verified_type(
         logger.warning("Phone number %s has forbidden type %s", raw_number, phone_type)
         return None, None
     return phone_number, phone_type
+
+
+# Australian geographic ("landline") area codes, and the state or territory
+# each one covers. Three of the four span more than one jurisdiction, so a
+# subscriber number quoted without its area code — common in legacy data —
+# often stays valid under several codes at once and can only be pinned down
+# once the person's state is known. Border towns really sit in a neighbouring
+# state's code; that approximation is accepted here.
+AU_GEOGRAPHIC_AREA_CODES: Tuple[str, ...] = ("02", "03", "07", "08")
+
+_AU_AREA_CODE_BY_STATE: dict[str, str] = {
+    "NSW": "02",
+    "ACT": "02",
+    "VIC": "03",
+    "TAS": "03",
+    "QLD": "07",
+    "SA": "08",
+    "WA": "08",
+    "NT": "08",
+}
+
+_AU_STATE_NAME_TO_ABBREV: dict[str, str] = {
+    "NEW SOUTH WALES": "NSW",
+    "AUSTRALIAN CAPITAL TERRITORY": "ACT",
+    "VICTORIA": "VIC",
+    "TASMANIA": "TAS",
+    "QUEENSLAND": "QLD",
+    "SOUTH AUSTRALIA": "SA",
+    "WESTERN AUSTRALIA": "WA",
+    "NORTHERN TERRITORY": "NT",
+}
+
+
+def au_area_code_for_state(state: Optional[str]) -> Optional[str]:
+    """The Australian geographic area code covering ``state``.
+
+    Accepts an abbreviation ("VIC") or a full name ("Victoria"), in any case.
+    Returns None for a value that is empty, unrecognised, or not an Australian
+    state or territory.
+    """
+    if not state:
+        return None
+    key = " ".join(state.strip().upper().split())
+    key = _AU_STATE_NAME_TO_ABBREV.get(key, key)
+    return _AU_AREA_CODE_BY_STATE.get(key)
+
+
+def _valid_au_fixed_line(national_number: str) -> Optional[PhoneNumber]:
+    """Parse ``national_number``, returning it only if it is a valid fixed line."""
+    try:
+        parsed = parse_verified_phone_number(national_number)
+    except InvalidPhoneNumberError:
+        return None
+    if parsed is None:
+        return None
+    if phonenumberutil.number_type(parsed) in (
+        PhoneNumberType.FIXED_LINE,
+        PhoneNumberType.FIXED_LINE_OR_MOBILE,
+    ):
+        return parsed
+    return None
+
+
+def recover_landline_with_missing_area_code(
+    local_number: str, geopolitical_state: Optional[str] = None
+) -> Optional[PhoneNumber]:
+    """Repair an Australian landline stored without a usable area code.
+
+    ``local_number`` is expected to be the eight-digit subscriber number on
+    its own (surrounding punctuation and spacing are ignored); anything that
+    is not eight digits is returned as None untouched. Each of the four
+    geographic area codes is prepended in turn and kept only when
+    libphonenumber accepts the result as a fixed-line number.
+
+    ``state`` is a legacy ``*_state`` value ("VIC", "Victoria", …). When it
+    names a state, the one area code covering that state is tried first and
+    used if it validates. Failing that — or with no usable state — the number
+    is accepted only when exactly one of the four codes validates it; a number
+    that stays ambiguous is left alone rather than guessed.
+
+    Returns the parsed :class:`PhoneNumber`, or None.
+    """
+    digits = re.sub(r"\D", "", local_number or "")
+    if len(digits) != 8:
+        return None
+
+    state_code = au_area_code_for_state(geopolitical_state)
+    if state_code:
+        from_state = _valid_au_fixed_line(f"{state_code}{digits}")
+        if from_state is not None:
+            return from_state
+
+    matches = [
+        candidate
+        for area_code in AU_GEOGRAPHIC_AREA_CODES
+        if (candidate := _valid_au_fixed_line(f"{area_code}{digits}")) is not None
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def is_mobile_number(phone_number: PhoneNumber) -> bool:

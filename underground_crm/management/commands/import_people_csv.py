@@ -6,15 +6,21 @@ Usage:
     python manage.py import_people_csv people.csv --with-interactions --with-notes
     python manage.py import_people_csv people.csv --dry-run
 
-Each row is matched on the legacy numeric ID (nationbuilder_id column). Existing
-records are updated in place; new records are created. The command is idempotent
-and safe to run multiple times.
+Each row is matched on the legacy numeric ID (eg nationbuilder_id column) and email
+address. Existing records are updated in place; new records are created. The command
+is idempotent in the case where a legacy user has an email address.
 
 Memberships are seeded from the membership_names column, a comma-separated list of
 MembershipType names, positionally aligned with the memberships_started_at,
 memberships_expires_on, and memberships_suspended_at columns (one entry per
 membership held by that person). Both MembershipType and Membership are looked up
 with get_or_create, so re-running the import never creates duplicates.
+
+Each Person's created_at is set from the legacy "created_at" column (an
+American-format local time such as "04/14/2016  3:41 PM") so member-tenure and
+cohort reporting reflect when the person actually joined rather than when this
+import ran. Those naive timestamps are read in Australia/Melbourne by default;
+set LEGACY_SOURCE_TIMEZONE to import an export produced in another region.
 
 Optional flags:
   --with-interactions   After importing each person, fetch their interactions from
@@ -27,12 +33,13 @@ Optional flags:
 
 The legacy CRM connection is configured via environment variables (see .env.example):
   LEGACY_ADMIN_URL, LEGACY_API_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT,
-  LEGACY_ADMIN_COOKIE_FILE
+  LEGACY_ADMIN_COOKIE_FILE, LEGACY_SOURCE_TIMEZONE
 """
 
 import csv
 import json
 import logging
+import os
 from typing import Optional, Tuple
 
 import re
@@ -42,11 +49,13 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from phonenumbers import PhoneNumberType
+import phonenumbers
+from django.db.models import Q
+from phonenumbers import PhoneNumberFormat, PhoneNumberType, phonenumberutil
 from phonenumbers.phonenumber import PhoneNumber
 
 from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
@@ -60,7 +69,10 @@ from underground_crm.contactability import (
     get_validated_email_address,
     parse_verified_phone_number,
     parse_phone_number_with_verified_type,
+    clean_phone_number,
+    recover_landline_with_missing_area_code,
 )
+from underground_crm.person_titles import InvalidNamePrefixError, clean_name_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +85,43 @@ _LEGACY_API_TOKEN = require_env("LEGACY_API_TOKEN")
 _LEGACY_USER_AGENT = require_env("LEGACY_USER_AGENT")
 _LEGACY_ADMIN_COOKIE_FILE = require_env("LEGACY_ADMIN_COOKIE_FILE")
 
-_LOCAL_TZ = ZoneInfo("Australia/Melbourne")
+# The legacy CRM exports timestamps as naive local wall-clock times with no
+# offset (e.g. "04/14/2016  3:41 PM"). They are read as times in this IANA zone
+# before being stored as aware datetimes. It defaults to the party's own
+# timezone; set LEGACY_SOURCE_TIMEZONE when importing an export that was produced
+# by an organisation in another region.
+_LEGACY_SOURCE_TIMEZONE_ENV_VAR = "LEGACY_SOURCE_TIMEZONE"
+_DEFAULT_LEGACY_SOURCE_TIMEZONE = "Australia/Melbourne"
+
+
+def get_legacy_source_timezone() -> ZoneInfo:
+    """Return the timezone the legacy export's naive timestamps are expressed in."""
+    name = (
+        os.environ.get(_LEGACY_SOURCE_TIMEZONE_ENV_VAR, "").strip()
+        or _DEFAULT_LEGACY_SOURCE_TIMEZONE
+    )
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError as exc:
+        raise CommandError(
+            f"{_LEGACY_SOURCE_TIMEZONE_ENV_VAR}={name!r} is not a known IANA timezone name "
+            f"(for example 'Australia/Melbourne' or 'Europe/London')."
+        ) from exc
+
+
+# A row whose CSV carried no usable email address is given a synthetic address so
+# the Person can still exist (email is unique and required). These are never real
+# and must never be treated as an identity: the placeholder is derived from the legacy ID.
+_PLACEHOLDER_EMAIL_SUFFIX = "@import.invalid"
+
+
+def _placeholder_email(legacy_id: int) -> str:
+    return f"no-email-{legacy_id}{_PLACEHOLDER_EMAIL_SUFFIX}"
+
+
+def _is_placeholder_email(email: Optional[str]) -> bool:
+    return bool(email) and email.endswith(_PLACEHOLDER_EMAIL_SUFFIX)
+
 
 # ---------------------------------------------------------------------------
 # Date / value helpers
@@ -88,16 +136,23 @@ _DT_FORMATS = [
 ]
 
 
-def _parse_datetime(value):
-    """Parse a date/time string from the legacy CSV into an aware datetime, or None."""
+def _parse_datetime(value, *, local_timezone: Optional[ZoneInfo] = None):
+    """Parse a date/time string from the legacy CSV into an aware datetime, or None.
+
+    A value that carries no timezone offset — the usual case for this export — is
+    read as a wall-clock time in ``local_timezone``, which defaults to the legacy
+    source timezone (see :func:`get_legacy_source_timezone`).
+    """
     if not value:
         return None
+    if local_timezone is None:
+        local_timezone = get_legacy_source_timezone()
     value = re.sub(r"\s+", " ", value.strip())
     for fmt in _DT_FORMATS:
         try:
             dt = datetime.strptime(value, fmt)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_LOCAL_TZ)
+                dt = dt.replace(tzinfo=local_timezone)
             return dt
         except ValueError:
             continue
@@ -343,6 +398,66 @@ def _get_email_with_is_bad(row: dict) -> Tuple[Optional[str], Optional[bool]]:
     return fallback
 
 
+class AmbiguousPersonMatchError(Exception):
+    # A CSV row uses a legacy ID or an email address to identify a different pre-existing person.
+    pass
+
+
+def find_existing_person(
+    *, legacy_id: int, email: Optional[str], first_name: Optional[str]
+) -> Optional[Person]:
+    """Return the existing Person this legacy row should update, if they are already present.
+
+    After using the legacy_id or email address to match a person, compare other identifiers to ensure it's indeed the
+    same legacy person.
+
+    Raises :class:`AmbiguousPersonMatchError` if the existing person with the legacy ID is a different person.
+    """
+    existing_people = Person.objects.filter(Q(legacy_id=legacy_id) | Q(email=email))
+    if existing_people.count() == 2:
+        logger.warning(
+            "The legacy ID %s and the email address %s match different pre-existing people. This row shall "
+            "be used to update the person with the same email address.",
+            legacy_id,
+            email,
+        )
+        result = existing_people.filter(email=email).first()
+        # Notice that the legacy ID is not applied to this person, as someone else in our database is already using it.
+        return result
+
+    elif existing_people.count() == 0:
+        # No conflicts
+        return None
+
+    existing_person = existing_people.first()
+    if not _is_placeholder_email(email):
+        if existing_person.email == email:
+            if existing_person.legacy_id and existing_person.legacy_id != legacy_id:
+                # The legacy ID somehow changed between exports.
+                raise AmbiguousPersonMatchError(
+                    f"An existing user with legacy ID {existing_person.legacy_id} has the same email address {email} "
+                    f"as the person on the current row with legacy ID {legacy_id}. This row shall be skipped."
+                )
+            existing_person.legacy_id = legacy_id  # This might've been blank before.
+            return existing_person
+        else:
+            raise AmbiguousPersonMatchError(
+                f"An existing user with legacy ID {legacy_id} has a different email address ({existing_person.email}) "
+                f"compared to the one on this row: {email!r}. This row shall therefore be skipped."
+            )
+
+    if first_name:
+        if existing_person.first_name == first_name:
+            return existing_person
+        else:
+            raise AmbiguousPersonMatchError(
+                f"An existing user with legacy ID {legacy_id} has a different first name ({existing_person.first_name}) to the current row: {first_name}. This row shall therefore be skipped."
+            )
+    raise AmbiguousPersonMatchError(
+        f"An existing user with legacy ID {legacy_id} lacks other expected fields for disambiguation. It is not clear if they're the same person as the current row, so the row shall be skipped."
+    )
+
+
 def _row_label(row) -> str:
     """A short "Row <legacy id> (<name>)" tag for error messages about a CSV row."""
     legacy_id = row.get("nationbuilder_id", "").strip() or "?"
@@ -354,10 +469,42 @@ def _row_label(row) -> str:
     return f"Row {legacy_id} ({name})"
 
 
+def _clean_prefix(row) -> Optional[str]:
+    """Return the row's name title, normalised, or None.
+
+    A prefix that is not one or more recognised titles — or that will not fit
+    Person.prefix — is logged and dropped rather than aborting the person's
+    import, the same policy as an unparseable phone number. Person.save()
+    re-validates whatever is returned here, so it is already known to be clean.
+    """
+    raw = row.get("prefix", "").strip()
+    if not raw:
+        return None
+    try:
+        return clean_name_prefix(raw, max_length=Person._meta.get_field("prefix").max_length)
+    except InvalidNamePrefixError:
+        logger.warning("Skipping unrecognised name title for %s: %r", _row_label(row), raw)
+        return None
+
+
+def _row_state(row) -> Optional[str]:
+    """The person's state or territory, for disambiguating a bare landline.
+
+    Falls through the address roles in the same order of preference the
+    address importer uses: home, then mailing, then registered.
+    """
+    for prefix in ("primary", "address", "registered", "billing", "mailing"):
+        # Notice that this order matches the `location` property of Person.
+        state = row.get(f"{prefix}_state", "").strip()
+        if state:
+            return state
+    return None
+
+
 def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[PhoneNumber]]:
     try:
         mobile_number, mobile_type = parse_phone_number_with_verified_type(
-            row.get("mobile_number", "").strip() or None
+            clean_phone_number(row.get("mobile_number", ""))
         )
     except InvalidPhoneNumberError as exc:
         logger.warning(
@@ -366,15 +513,29 @@ def get_mobile_and_phone_numbers(row) -> Tuple[Optional[PhoneNumber], Optional[P
             row.get("mobile_number"),
         )
         mobile_number, mobile_type = (None, None)
+    clean_phone = clean_phone_number(row.get("phone_number", ""))
     try:
-        phone_number, phone_type = parse_phone_number_with_verified_type(
-            row.get("phone_number", "").strip() or None
-        )
+        phone_number, phone_type = parse_phone_number_with_verified_type(clean_phone)
     except InvalidPhoneNumberError as exc:
         phone_number, phone_type = (None, None)
-        logger.warning(
-            "Skipping invalid phone number for %s: %s", _row_label(row), row.get("phone_number")
-        )
+        # Legacy landlines are sometimes transcribed as the 8-digit subscriber number
+        # with no area code. Try to infer the correct code, using the person's address.
+        recovered = recover_landline_with_missing_area_code(clean_phone, _row_state(row))
+        if recovered is not None:
+            phone_number = recovered
+            phone_type = phonenumberutil.number_type(recovered)
+            logger.info(
+                "Recovered a phone number for %s by adding an area code: %s -> %s",
+                _row_label(row),
+                row.get("phone_number"),
+                phonenumbers.format_number(recovered, PhoneNumberFormat.NATIONAL),
+            )
+        else:
+            logger.warning(
+                "Skipping invalid phone number for %s: %s",
+                _row_label(row),
+                row.get("phone_number"),
+            )
 
     if mobile_number:
         if mobile_type == PhoneNumberType.MOBILE:
@@ -420,15 +581,22 @@ def _person_fields(row, is_email_bad: bool):
     """Map a CSV row to a dict of Person field values (excluding FKs and M2M)."""
     mobile_number, phone_number = get_mobile_and_phone_numbers(row)
     try:
-        work_phone_number = parse_verified_phone_number(row.get("work_phone_number", "").strip())
+        work_phone_number = parse_verified_phone_number(
+            clean_phone_number(row.get("work_phone_number", ""))
+        )
     except InvalidPhoneNumberError as exc:
         work_phone_number = None
         logger.warning(
             "Skipping invalid work number for %s: %s", _row_label(row), row.get("work_phone_number")
         )
     first_name, preferred_name = _resolve_first_and_preferred_name(row)
+    # Person.created_at is not mapped here: unlike every other field below, it is
+    # not nullable and already carries a real default (see the model), so a row
+    # with no created_at cell must leave it alone rather than have this dict's
+    # blanket setattr loop null it out. parse_legacy_created_at() is applied as a
+    # targeted assignment in handle() instead, only when a value was parsed.
     return {
-        "prefix": row.get("prefix", "").strip() or None,
+        "prefix": _clean_prefix(row),
         "first_name": first_name,
         "middle_name": row.get("middle_name", "").strip() or None,
         "last_name": row.get("last_name", "").strip() or None,
@@ -470,6 +638,19 @@ def _person_fields(row, is_email_bad: bool):
         "ward": row.get("ward", "").strip() or None,
         "membership_number": row.get("legacy_membership_number", "").strip() or None,
     }
+
+
+_LEGACY_CREATED_AT_COLUMN = "created_at"
+
+
+def parse_legacy_created_at(row: dict) -> Optional[datetime]:
+    """Return the moment this person was first recorded in the legacy CRM, or None.
+
+    The legacy export carries it in the ``created_at`` column as an
+    American-format local wall-clock time, e.g. "04/14/2016  3:41 PM". It is
+    read in the legacy source timezone (see :func:`get_legacy_source_timezone`).
+    """
+    return _parse_datetime(row.get(_LEGACY_CREATED_AT_COLUMN, ""))
 
 
 # ---------------------------------------------------------------------------
@@ -684,8 +865,8 @@ class Command(BaseCommand):
 
             email, is_email_bad = _get_email_with_is_bad(row)
             if not email:
-                # Generate a stable placeholder so the record can exist without a real email.
-                email = f"no-email-{legacy_id}@import.invalid"
+                # A stable placeholder so the record can exist without a real email.
+                email = _placeholder_email(legacy_id)
 
             fields = _person_fields(row, is_email_bad=is_email_bad)
 
@@ -697,25 +878,36 @@ class Command(BaseCommand):
                 created_count += 1
                 continue
 
-            with transaction.atomic():
-                person, created = Person.objects.get_or_create(
+            try:
+                person = find_existing_person(
                     legacy_id=legacy_id,
-                    defaults={"email": email},
+                    email=email,
+                    first_name=fields.get("first_name"),
                 )
+            except AmbiguousPersonMatchError as exc:
+                self.stderr.write(f"  [skip] {_row_label(row)}: {exc}")
+                skipped_count += 1
+                continue
 
-                # Update all mapped fields.
-                for field, value in fields.items():
-                    setattr(person, field, value)
+            should_create = not person  # Creation will happen soon
+            if not person:
+                person = Person(legacy_id=legacy_id, email=email)
 
-                # Email may have changed (handle email uniqueness conflicts gracefully).
-                if person.email != email and not email.endswith("@import.invalid"):
-                    if not Person.objects.filter(email=email).exclude(pk=person.pk).exists():
-                        person.email = email
+            # Update all mapped fields.
+            for field, value in fields.items():
+                setattr(person, field, value)
 
-                # Addresses: create new ones; preserve existing if they already exist.
-                assign_addresses(person, row)
+            # A row with a parseable created_at records the date this person
+            # actually joined the legacy CRM; otherwise Person.created_at keeps
+            # its own default rather than being nulled out by the loop above.
+            created_at = parse_legacy_created_at(row)
+            if created_at is not None:
+                person.created_at = created_at
 
-                person.save()
+            # Create new addresses if necessary
+            assign_addresses(person, row)
+
+            person.save()
 
             legacy_id_to_person[legacy_id] = person
 
@@ -729,7 +921,7 @@ class Command(BaseCommand):
                 # Store email for lookup after all people are imported.
                 pending_point_person[person.pk] = ("email", point_person_email)
 
-            if created:
+            if should_create:
                 created_count += 1
             else:
                 updated_count += 1
@@ -768,9 +960,9 @@ class Command(BaseCommand):
                     [t.strip() for t in raw_tags.split(",") if t.strip()] if raw_tags else []
                 )
                 for name in tag_names:
-                    tag, created = Tag.objects.get_or_create(name=name)
+                    tag, should_create = Tag.objects.get_or_create(name=name)
                     self.stdout.write(
-                        f"{'Created' if created else 'Found'} tag {tag.name} for person"
+                        f"{'Created' if should_create else 'Found'} tag {tag.name} for person"
                     )
                     person.tags.add(tag)
 
