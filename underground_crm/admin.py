@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.models import Permission
 from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -48,6 +49,14 @@ class PersonTagInline(admin.TabularInline):
     model = PersonTag
     extra = 1
     fields = ["tag"]
+    # Without this, the tag widget renders as a plain <select> and Django
+    # re-evaluates the entire unfiltered Tag queryset for every inline row.
+    autocomplete_fields = ["tag"]
+
+    def get_queryset(self, request):
+        # ItemBase.__str__ (django-taggit) reads both content_object and tag,
+        # and the tabular inline template renders that per row.
+        return super().get_queryset(request).select_related("content_object", "tag")
 
 
 class PersonGroupInline(admin.TabularInline):
@@ -61,6 +70,14 @@ class PersonPermissionInline(admin.TabularInline):
     extra = 1
     fields = ["permission"]
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "permission":
+            # Permission.__str__ reads content_type, which the dropdown widget
+            # resolves for every choice; select_related avoids one query per
+            # distinct content type. Same fix as django.contrib.auth.admin.GroupAdmin.
+            kwargs["queryset"] = Permission.objects.select_related("content_type")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 
 class PersonNoteInline(admin.TabularInline):
     model = PersonNote
@@ -68,6 +85,14 @@ class PersonNoteInline(admin.TabularInline):
     extra = 1
     fields = ["text", "created_by", "created_at"]
     readonly_fields = ["created_at"]
+    # Without this, the created_by widget renders as a plain <select> and
+    # Django re-evaluates the entire unfiltered Person queryset per row.
+    autocomplete_fields = ["created_by"]
+
+    def get_queryset(self, request):
+        # PersonNote.__str__ reads self.person, which the tabular inline
+        # template renders per row; select_related avoids one query per note.
+        return super().get_queryset(request).select_related("person")
 
 
 class InteractionInline(admin.TabularInline):
@@ -76,6 +101,14 @@ class InteractionInline(admin.TabularInline):
     extra = 0
     fields = ["method", "status", "author", "note", "created_at"]
     readonly_fields = ["created_at"]
+    # Without this, the author widget renders as a plain <select> and Django
+    # re-evaluates the entire unfiltered Person queryset per row.
+    autocomplete_fields = ["author"]
+
+    def get_queryset(self, request):
+        # Interaction.__str__ reads self.person, which the tabular inline
+        # template renders per row; select_related avoids one query per interaction.
+        return super().get_queryset(request).select_related("person")
 
 
 @admin.register(Person)
@@ -102,6 +135,10 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     search_fields = ["email", "first_name", "last_name"]
     readonly_fields = ["created_at", "updated_at"]
     filter_horizontal = ()
+    # Without this, the recruiter/point_person widgets render as plain <select>
+    # elements and Django populates them by evaluating the entire unfiltered
+    # Person queryset — one full table scan per field on every change-form load.
+    autocomplete_fields = ["recruiter", "point_person"]
     inlines = [
         PersonTagInline,
         PersonGroupInline,
@@ -277,6 +314,10 @@ class FormSubmissionAdmin(admin.ModelAdmin):
     search_fields = ["person__email", "person__first_name", "person__last_name", "email_address"]
     readonly_fields = ["submission_time"]
     inlines = [SubmittedFieldInline]
+
+    def get_queryset(self, request):
+        # person and page are rendered directly in list_display for every row.
+        return super().get_queryset(request).select_related("person", "page")
 
 
 @admin.register(Address)
