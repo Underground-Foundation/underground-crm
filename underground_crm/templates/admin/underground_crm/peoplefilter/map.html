@@ -1,0 +1,75 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{% blocktrans with filter_name=people_filter.name %}Map: {{ filter_name }}{% endblocktrans %} | {{ site_title|default:_("Django administration") }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_changelist' %}">{% trans "People filters" %}</a>
+    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">{{ people_filter.name }}</a>
+    &rsaquo; {% trans "Map" %}
+</div>
+{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+<link rel="stylesheet" href="{{ leaflet_css_url }}"{% if leaflet_css_integrity %} integrity="{{ leaflet_css_integrity }}" crossorigin="anonymous"{% endif %}>
+<style>
+    #people-filter-map { height: min(700px, 70vh); margin-bottom: 1rem; border: 1px solid var(--hairline-color); }
+    /* Leaflet sets its own colors on popups, so the admin's link color is restated here
+       rather than inherited from a parent the popup is not inside. */
+    .leaflet-popup-content a { color: var(--link-fg); }
+    .leaflet-popup-content ul { margin: 0; padding: 0; list-style: none; }
+    .leaflet-popup-content li + li { margin-top: 0.5rem; }
+    .people-filter-map-address { display: block; color: var(--body-quiet-color); }
+    .people-filter-map-legend-key { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; vertical-align: middle; }
+    .people-filter-map-legend-key.precise { background: #2a6ba8; }
+    .people-filter-map-legend-key.approximate { background: #b4700f; opacity: 0.5; }
+</style>
+{% endblock %}
+
+{% block extrahead %}{{ block.super }}
+<script defer src="{{ leaflet_js_url }}"{% if leaflet_js_integrity %} integrity="{{ leaflet_js_integrity }}" crossorigin="anonymous"{% endif %}></script>
+<script defer src="{% static 'underground_crm/js/people_filter_map.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    {% if people_filter.description %}
+    <p>{{ people_filter.description }}</p>
+    {% endif %}
+    <p>
+        <a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">{% trans "Edit filter" %}</a>
+        &nbsp;&middot;&nbsp;
+        <a href="{{ people_filter.evaluation_url }}">{% trans "List the matching people" %}</a>
+    </p>
+
+    <p>
+        {% blocktrans count matched=map_data.person_count %}{{ matched }} person matches this filter.{% plural %}{{ matched }} people match this filter.{% endblocktrans %}
+        {% if map_data.ungeocoded_person_count %}
+            {% blocktrans count unmapped=map_data.ungeocoded_person_count %}{{ unmapped }} of them has no geocoded address and so is not on the map.{% plural %}{{ unmapped }} of them have no geocoded address and so are not on the map.{% endblocktrans %}
+        {% endif %}
+        {% if map_data.omitted_location_count %}
+            {% blocktrans count omitted=map_data.omitted_location_count %}A further {{ omitted }} location is left off, because the map shows only the places where the most people live.{% plural %}A further {{ omitted }} locations are left off, because the map shows only the places where the most people live.{% endblocktrans %}
+        {% endif %}
+    </p>
+
+    {% if markers %}
+    <div id="people-filter-map"
+         data-tile-url="{{ tile_url }}"
+         data-tile-attribution="{{ tile_attribution }}"
+         data-approximate-label="{% trans 'Approximate location, accurate only to the locality or postcode.' %}"
+         data-library-missing-label="{% trans 'The map library could not be loaded, so the matching people cannot be shown on a map.' %}"></div>
+    {{ markers|json_script:"people-filter-map-data" }}
+    <p>
+        <span class="people-filter-map-legend-key precise"></span>
+        {% trans "A geocode of the property itself." %}
+        &nbsp;&nbsp;
+        <span class="people-filter-map-legend-key approximate"></span>
+        {% trans "A geocode of the surrounding locality or postcode only." %}
+    </p>
+    {% else %}
+    <p>{% trans "None of the matching people has a geocoded address, so there is nothing to map yet." %}</p>
+    {% endif %}
+</div>
+{% endblock %}

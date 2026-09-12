@@ -434,6 +434,35 @@ REST_FRAMEWORK = {
 
 ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
 
+# The People filter map in the Django admin draws its markers with Leaflet and its base
+# map with OpenStreetMap tiles. Neither is vendored into this library, so that it does
+# not carry a copy of somebody else's minified JavaScript, and every URL below is
+# overridable for deployments that self-host their assets, cannot reach a public CDN, or
+# have their own tile server. The OpenStreetMap Foundation's tile usage policy allows the
+# incidental traffic an internal admin page generates, but not a public-facing map.
+LEAFLET_CSS_URL = os.environ.get(
+    "LEAFLET_CSS_URL", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+)
+LEAFLET_JS_URL = os.environ.get("LEAFLET_JS_URL", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
+
+# Subresource integrity digests, as published alongside those two files. They are what
+# stops a compromised CDN from running its own code inside the admin, so leave them set
+# whenever the URLs above point at a third party. A self-hosted copy will not match these
+# digests, so point the URLs at it and set both of these to an empty string together.
+LEAFLET_CSS_INTEGRITY = os.environ.get(
+    "LEAFLET_CSS_INTEGRITY", "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+)
+LEAFLET_JS_INTEGRITY = os.environ.get(
+    "LEAFLET_JS_INTEGRITY", "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+)
+
+# A Leaflet tile URL template: {s} is the subdomain, {z}/{x}/{y} the tile coordinates.
+MAP_TILE_URL = os.environ.get("MAP_TILE_URL", "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png")
+MAP_TILE_ATTRIBUTION = os.environ.get(
+    "MAP_TILE_ATTRIBUTION",
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+)
+
 # VERBOSE controls log verbosity (matches the convention used across services):
 #   0 = INFO  (default)
 #   1 = DEBUG

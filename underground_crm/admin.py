@@ -1,11 +1,14 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Permission
 from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
+from django.utils.translation import gettext_lazy as _
 
 from .forms.person_filter import PeopleFilterAdminForm
+from .maps import build_map_data
 from .models import (
     Address,
     Donation,
@@ -377,14 +380,14 @@ class InteractionAdmin(admin.ModelAdmin):
 @admin.register(PeopleFilter)
 class PeopleFilterAdmin(admin.ModelAdmin):
     form = PeopleFilterAdminForm
-    list_display = ["name", "description", "evaluation_link"]
+    list_display = ["name", "description", "evaluation_link", "map_link"]
     search_fields = ["name", "description"]
-    readonly_fields = ["sql", "evaluation_link"]
+    readonly_fields = ["sql", "evaluation_link", "map_link"]
 
     def get_fieldsets(self, request, obj=None):
         base = [(None, {"fields": ("name", "description", "criteria")})]
         if obj is not None:
-            base.append((None, {"fields": ("evaluation_link",)}))
+            base.append((None, {"fields": ("evaluation_link", "map_link")}))
             base.append(("Generated SQL", {"fields": ("sql",)}))
         return base
 
@@ -395,6 +398,11 @@ class PeopleFilterAdmin(admin.ModelAdmin):
                 "people-filter-evaluation/<uuid:pk>/",
                 self.admin_site.admin_view(self.evaluation_view),
                 name="underground_crm_peoplefilter_evaluate",
+            ),
+            path(
+                "people-filter-map/<uuid:pk>/",
+                self.admin_site.admin_view(self.map_view),
+                name="underground_crm_peoplefilter_map",
             ),
         ]
         return custom + urls
@@ -419,5 +427,40 @@ class PeopleFilterAdmin(admin.ModelAdmin):
         return TemplateResponse(
             request,
             "admin/underground_crm/peoplefilter/evaluate.html",
+            context,
+        )
+
+    def map_view(self, request, pk):
+        from django.shortcuts import get_object_or_404
+
+        people_filter = get_object_or_404(PeopleFilter, pk=pk)
+        # Person.location falls back through the home, registered, billing and mailing
+        # addresses in turn, so all four are selected here rather than left to emit a
+        # query apiece as the map data is built.
+        people = people_filter.apply(
+            Person.objects.select_related(
+                "home_address",
+                "registered_address",
+                "billing_address",
+                "mailing_address",
+            )
+        ).order_by("last_name", "first_name")
+        map_data = build_map_data(people)
+        context = {
+            **self.admin_site.each_context(request),
+            "people_filter": people_filter,
+            "map_data": map_data,
+            "markers": map_data.as_marker_payload(),
+            "leaflet_css_url": settings.LEAFLET_CSS_URL,
+            "leaflet_css_integrity": settings.LEAFLET_CSS_INTEGRITY,
+            "leaflet_js_url": settings.LEAFLET_JS_URL,
+            "leaflet_js_integrity": settings.LEAFLET_JS_INTEGRITY,
+            "tile_url": settings.MAP_TILE_URL,
+            "tile_attribution": settings.MAP_TILE_ATTRIBUTION,
+            "title": _("Map: %(filter_name)s") % {"filter_name": people_filter.name},
+        }
+        return TemplateResponse(
+            request,
+            "admin/underground_crm/peoplefilter/map.html",
             context,
         )

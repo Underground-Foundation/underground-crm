@@ -121,6 +121,30 @@ Current commands:
   `export_legacy_private_notes`; otherwise fetches them directly from the legacy CRM using the
   same cookie-based auth as that command. Idempotent via `legacy_activity_id` deduplication.
 
+## Mapping a People filter
+
+A saved `PeopleFilter` can be plotted in the Django admin as well as listed. Three admin
+pages link to each other: the filter's change form, its evaluation page (the list of
+matching people) and its map page at
+`/django-admin/underground_crm/peoplefilter/people-filter-map/<uuid>/`.
+
+`underground_crm/maps.py` turns a queryset of people into markers and is where the
+behavior worth knowing about lives:
+
+- Coordinates come from `Person.location`, which falls back through the home, registered,
+  billing and mailing addresses. Anybody whose chosen address has never been geocoded is
+  counted and reported on the page rather than silently dropped.
+- People who geocoded to the same point share one marker, so a household is one pin.
+- A marker is drawn as an approximate region unless every geocode on it is graded 1 to 3
+  by G-NAF, because grades 4 and above name a locality or postcode centroid and would
+  otherwise pass for somebody's front door.
+- `DEFAULT_LOCATION_LIMIT` caps how many markers reach the browser, keeping the busiest
+  points; the page says how many locations it left off.
+
+Leaflet and the map tiles are loaded from public URLs rather than vendored into the
+library, and both are overridable — see the `LEAFLET_*` and `MAP_TILE_*` settings in
+`underground_crm/settings.py` and the matching entries in `.env.example`.
+
 ## Addressr (Australian address search)
 
 `docker-compose.yml` runs Addressr backed by OpenSearch. The G-NAF dataset
