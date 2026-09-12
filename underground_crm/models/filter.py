@@ -46,6 +46,7 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
     "text": [
         ("icontains", "contains", True),
         ("exact", "is exactly", True),
+        ("not_exact", "does not equal", True),
         ("istartswith", "starts with", True),
         ("isnull", "is empty", False),
         ("not_isnull", "is not empty", False),
@@ -180,4 +181,15 @@ class PeopleFilter(models.Model):
             return Q(**{field: True})
         if op == "false":
             return Q(**{field: False})
+        if op == "not_exact":
+            # A plain ~Q(**{field: value}) is wrong for many-valued relations such
+            # as tags__name: Django would join in one related row per person and
+            # exclude only that row, so a person with both the excluded tag and
+            # some other tag would still match on the other tag's join row. This
+            # excludes by person, not by join row: it excludes every person who
+            # has the value at all, wherever it comes from.
+            from .person import Person
+
+            matching_people = Person.objects.filter(**{f"{field}__exact": value})
+            return ~Q(pk__in=matching_people.values("pk"))
         return Q(**{f"{field}__{op}": value})
