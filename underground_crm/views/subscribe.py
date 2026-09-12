@@ -72,7 +72,7 @@ def subscribe_view(request):
     is_authenticated = request.user.is_authenticated
     person_created = False
     if is_authenticated:
-        target_person = request.user
+        target_person: Person = request.user
     else:
         if not email:
             return JsonResponse({"error": _("Email address is required.")}, status=400)
@@ -85,7 +85,7 @@ def subscribe_view(request):
             return JsonResponse({"error": str(conflict)}, status=409)
         email = Person.objects.normalize_email(email)
         person_created = not Person.objects.filter(email=email).exists()
-        target_person = get_or_create_person(email, first_name, last_name)
+        target_person: Person = get_or_create_person(email, first_name, last_name)
 
     already_subscribed = target_person.tags.filter(pk=tag.pk).exists()
 
@@ -100,6 +100,9 @@ def subscribe_view(request):
     submission.save()
 
     target_person.tags.add(tag, through_defaults={"was_authenticated": is_authenticated})
+    if not target_person.email_opt_in:
+        target_person.email_opt_in = True
+        target_person.save(update_fields=["email_opt_in"])
 
     subscription_created.send(
         sender=None,
