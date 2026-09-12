@@ -933,6 +933,14 @@ class Command(BaseCommand):
             )
 
         root_page = site.root_page
+        if root_page.get_parent() is None:
+            raise CommandError(
+                f"The site's root page ('{root_page.title}', pk={root_page.pk}) has no "
+                "parent, so it appears to be Wagtail's own internal tree root rather "
+                "than an ordinary home page. Site.root_page must point at a page "
+                "beneath that tree root — repoint the site's root page (Wagtail admin: "
+                "Settings > Sites, or via the Django shell) before importing pages."
+            )
         self.stdout.write(f"Importing pages under '{root_page.title}' (pk={root_page.pk}).")
 
         # Note that even redirections will need the HTML here (for the resultant page in the redirection)

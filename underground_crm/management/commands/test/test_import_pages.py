@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -5,6 +6,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import django.test
+from django.core.management.base import CommandError
 from wagtail.models import Page, Site
 
 from underground_crm.contactability import get_validated_email_address
@@ -563,6 +565,52 @@ class TestReplaceRootPage(django.test.TestCase):
         Command()._replace_root_page(self.site, self.old_root, new_page)
 
         self.assertFalse(Page.objects.filter(pk=old_root_pk).exists())
+
+
+@django.test.override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class TestRootPageValidation(django.test.TestCase):
+    """
+    A Site's root_page must point at an ordinary page beneath Wagtail's own
+    internal tree root, never at that tree root itself — the tree root has
+    no parent, and treebeard's own add_child()/move() calls in
+    _replace_root_page() assume the page they're operating on does. A
+    misconfigured Site (root_page pointing at the tree root) used to surface
+    as a bare `AttributeError: 'NoneType' object has no attribute
+    'add_child'`; this checks the command instead raises a clear,
+    actionable CommandError before doing any work.
+
+    Uses a local-memory cache instead of the project's configured (Redis)
+    cache, same as TestReplaceRootPage above: creating a Site fires
+    Wagtail's post_save signal handler, which clears a site-root-paths cache
+    entry, and that shouldn't require a real cache backend to be running.
+    """
+
+    def test_site_root_page_with_no_parent_raises_a_clear_error(self):
+        tree_root = Page.objects.get(id=1)
+        misconfigured_site = Site.objects.create(
+            hostname="misconfigured.example.com",
+            root_page=tree_root,
+        )
+        with tempfile.TemporaryDirectory() as domain_dir:
+            with self.assertRaises(CommandError) as context:
+                Command().create_pages_from_path(
+                    domain_dir=Path(domain_dir),
+                    should_replace=False,
+                    page_building_map=PAGE_BUILDING_MAP,
+                    site=misconfigured_site,
+                    slug=None,
+                )
+        self.assertIn(
+            "has no parent",
+            str(context.exception),
+            msg=(
+                "The error should name the actual misconfiguration (the site's "
+                "root page has no parent) instead of surfacing treebeard's own "
+                "AttributeError from deep inside _replace_root_page()"
+            ),
+        )
 
 
 class TestFormPageTypeMapping(unittest.TestCase):
