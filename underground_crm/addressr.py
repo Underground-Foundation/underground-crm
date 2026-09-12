@@ -72,6 +72,10 @@ def _get(path: str) -> dict | None:
 def search(query: str) -> list[dict]:
     """Return raw address suggestions for a free-text query string.
     The response format is eg:
+    [{'sla': '1 COOK RD, LINDFIELD NSW 2070', 'score': 264.7019, 'pid': 'GANSW705239062'}]
+
+    Older Addressr releases carried the same identifier as a HAL-style self
+    link instead, and no 'pid':
     [{'sla': '1 COOK RD, LINDFIELD NSW 2070', 'score': 264.7019, 'links': {'self': {'href': '/addresses/GANSW705239062'}}}]
     """
     encoded = urllib.parse.urlencode({"q": query})
@@ -80,14 +84,25 @@ def search(query: str) -> list[dict]:
 
 
 def gnaf_id_from_search_entry(entry: dict) -> str | None:
-    """The G-NAF Address Detail PID of one search() entry, extracted from its
-    self link (e.g. "/addresses/GANSW705239062"), or None when the entry
-    carries no well-formed link."""
-    href = ((entry.get("links") or {}).get("self") or {}).get("href")
-    if not isinstance(href, str):
-        return None
-    gnaf_id = href.rsplit("/", 1)[-1]
-    return gnaf_id if GNAF_ID_PATTERN.fullmatch(gnaf_id) else None
+    """The G-NAF Address Detail PID of one search() entry, or None when the
+    entry carries no well-formed identifier.
+
+    Both response shapes in search()'s docstring are accepted. Addressr 3.3.x
+    returns the PID as a plain "pid" field; earlier releases returned no "pid"
+    and instead only a self link to "/addresses/<pid>". Reading just the link
+    fails in a way that is easy to miss on an upgrade, because nothing errors:
+    search() still returns correctly-scored matches, so a geocoding run reports
+    every address as simply "no result", and the autocomplete in
+    views/address.py hands the form a null gnaf_id for a suggestion the visitor
+    can see is right.
+    """
+    pid = entry.get("pid")
+    if not isinstance(pid, str):
+        href = ((entry.get("links") or {}).get("self") or {}).get("href")
+        if not isinstance(href, str):
+            return None
+        pid = href.rsplit("/", 1)[-1]
+    return pid if GNAF_ID_PATTERN.fullmatch(pid) else None
 
 
 def _extract_structured_address(detail: dict) -> StructuredAddress | None:

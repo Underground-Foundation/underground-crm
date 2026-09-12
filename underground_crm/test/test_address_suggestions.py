@@ -62,7 +62,7 @@ class AddressSuggestionViewTest(django.test.SimpleTestCase):
             {
                 "sla": "1 COOK RD, LINDFIELD NSW 2070",
                 "score": 264.7019,
-                "links": {"self": {"href": "/addresses/GANSW705239062"}},
+                "pid": "GANSW705239062",
             }
         ]
         with mock.patch.object(addressr, "search", return_value=canned_response):
@@ -74,6 +74,39 @@ class AddressSuggestionViewTest(django.test.SimpleTestCase):
             "presents with the G-NAF ID of that exact address, which the "
             "autocomplete script stores in the form's hidden companion field "
             "so the submission resolves to the address the visitor picked.",
+        )
+
+    def test_suggestions_accept_the_older_self_link_shape(self):
+        # Addressr releases before 3.3 carried the PID only as a HAL-style self
+        # link. Both shapes stay supported because the deployed query service
+        # and a developer's local container are pinned separately (see
+        # ADDRESSR_VERSION in fusion-underground's compose files against the
+        # image in this repository's docker-compose.yml), so they can differ.
+        canned_response = [
+            {
+                "sla": "1 COOK RD, LINDFIELD NSW 2070",
+                "score": 264.7019,
+                "links": {"self": {"href": "/addresses/GANSW705239062"}},
+            }
+        ]
+        with mock.patch.object(addressr, "search", return_value=canned_response):
+            suggestions = self._get_suggestions(KNOWN_ADDRESS_QUERY)
+        self.assertEqual(
+            suggestions,
+            [{"sla": "1 COOK RD, LINDFIELD NSW 2070", "gnaf_id": "GANSW705239062"}],
+            "An entry carrying no 'pid' must still yield the G-NAF ID from its "
+            "self link, so an older Addressr container keeps working.",
+        )
+
+    def test_suggestion_without_any_identifier_yields_none(self):
+        canned_response = [{"sla": "1 COOK RD, LINDFIELD NSW 2070", "score": 264.7019}]
+        with mock.patch.object(addressr, "search", return_value=canned_response):
+            suggestions = self._get_suggestions(KNOWN_ADDRESS_QUERY)
+        self.assertEqual(
+            suggestions,
+            [{"sla": "1 COOK RD, LINDFIELD NSW 2070", "gnaf_id": None}],
+            "A suggestion Addressr gives no identifier for must still be "
+            "offered as text, with a null ID rather than a fabricated one.",
         )
 
     def test_endpoint_rejects_post_requests(self):
