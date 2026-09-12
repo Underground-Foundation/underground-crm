@@ -253,6 +253,7 @@ def handle_spam_or_unsubscription(
         updated_fields.append("is_supporter")
     else:
         logger.info("User %s unsubscribed from this email: %s", recipient, event["subject"])
+    recipient.email_opt_in = False
     recipient.unsubscribed_at = datetime.datetime.now(tz=datetime.timezone.utc)
     if persist:
         recipient.save(update_fields=updated_fields)
