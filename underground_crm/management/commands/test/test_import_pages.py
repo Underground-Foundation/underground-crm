@@ -10,6 +10,7 @@ from wagtail.models import Page, Site
 from underground_crm.contactability import get_validated_email_address
 from underground_crm.management.commands.import_pages import (
     PAGE_BUILDING_MAP,
+    Command,
     build_form_page,
     build_registration_page,
     extract_donation_frequency,
@@ -22,8 +23,10 @@ from underground_crm.management.commands.import_pages import (
     extract_page_size,
     get_event_detail_pairs,
     get_host_by_email_address,
+    is_site_root,
     parse_event_datetime,
 )
+from underground_crm.models import UndergroundBasicPage
 from underground_crm.models.pages import FormPage, RegistrationPage
 
 
@@ -506,6 +509,60 @@ class TestBuildFormPageTagging(django.test.TestCase):
             page.tags_to_apply.exists(),
             msg="A 'Suggestion Box' submission doesn't indicate the submitter is a volunteer",
         )
+
+
+class TestIsSiteRoot(unittest.TestCase):
+    def test_url_path_slash_is_the_site_root(self):
+        self.assertTrue(is_site_root({"url_path": "/"}))
+
+    def test_other_url_paths_are_not_the_site_root(self):
+        self.assertFalse(is_site_root({"url_path": "/some-page"}))
+
+    def test_missing_url_path_is_not_the_site_root(self):
+        self.assertFalse(is_site_root({}))
+
+
+@django.test.override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class TestReplaceRootPage(django.test.TestCase):
+    """
+    A legacy page whose own url_path was "/" must become the site's root
+    (home) page in place of whatever page is there already, rather than
+    being imported underneath it — see Command._replace_root_page().
+
+    Uses a local-memory cache instead of the project's configured (Redis)
+    cache: moving a page fires Wagtail's post_page_move signal, which reads
+    through the default cache to resolve site root paths, and that lookup
+    shouldn't require a real cache backend to be running for this test.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.first()
+        self.old_root = self.site.root_page.specific
+        self.child = UndergroundBasicPage(title="Existing subpage", slug="existing-subpage")
+        self.old_root.add_child(instance=self.child)
+
+    def test_new_page_becomes_the_site_root(self):
+        new_page = UndergroundBasicPage(title="home4", slug="home4")
+        updated = Command()._replace_root_page(self.site, self.old_root, new_page)
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page_id, updated.pk)
+
+    def test_existing_subpages_stay_in_place_under_the_new_root(self):
+        new_page = UndergroundBasicPage(title="home4", slug="home4")
+        updated = Command()._replace_root_page(self.site, self.old_root, new_page)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.get_parent().pk, updated.pk)
+
+    def test_old_root_page_no_longer_exists(self):
+        old_root_pk = self.old_root.pk
+        new_page = UndergroundBasicPage(title="home4", slug="home4")
+        Command()._replace_root_page(self.site, self.old_root, new_page)
+
+        self.assertFalse(Page.objects.filter(pk=old_root_pk).exists())
 
 
 class TestFormPageTypeMapping(unittest.TestCase):
