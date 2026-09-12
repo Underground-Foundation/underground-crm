@@ -4,6 +4,9 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
+from django.urls import reverse
+from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
 
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
@@ -129,12 +132,22 @@ class PeopleFilter(models.Model):
         return str(self.apply(User.objects.all()).query)
 
     @property
-    def evaluation_link(self) -> str:
-        from django.urls import reverse
-        from django.utils.html import format_html
+    def evaluation_url(self) -> str:
+        """The admin page listing every person this filter currently matches."""
+        return reverse("admin:underground_crm_peoplefilter_evaluate", args=[self.pk])
 
-        url = reverse("admin:underground_crm_peoplefilter_evaluate", args=[self.pk])
-        return format_html('<a href="{}">Evaluate</a>', url)
+    @property
+    def map_url(self) -> str:
+        """The admin page plotting the matched people on a map of their addresses."""
+        return reverse("admin:underground_crm_peoplefilter_map", args=[self.pk])
+
+    @property
+    def evaluation_link(self) -> str:
+        return format_html('<a href="{}">{}</a>', self.evaluation_url, _("Evaluate"))
+
+    @property
+    def map_link(self) -> str:
+        return format_html('<a href="{}">{}</a>', self.map_url, _("Map"))
 
     # ------------------------------------------------------------------
     # Private helpers
