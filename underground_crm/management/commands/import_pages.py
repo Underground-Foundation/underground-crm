@@ -826,6 +826,13 @@ def is_redirection(attributes: Dict[str, Any]):
     return get_page_type_attribute(attributes) == "Redirect"
 
 
+def is_site_root(attributes: Dict[str, Any]) -> bool:
+    """Return True if the legacy page's own path was "/", i.e. it was the
+    legacy site's home page and should become the Wagtail site's root page
+    rather than being imported as a child page."""
+    return attributes.get("url_path") == "/"
+
+
 def get_site_from_options(options):
     if options.get("site_id"):
         return Site.objects.get(id=options["site_id"])
@@ -863,6 +870,22 @@ class Command(BaseCommand):
             required=False,
             help="The slug of the page to be imported",
         )
+
+    def _replace_root_page(self, site: Site, old_root: Page, new_page: Page) -> Page:
+        """
+        Swap `new_page` in as the site's root (home) page in place of
+        `old_root`, first moving `old_root`'s existing children so they
+        remain in place as children of `new_page`, then deleting `old_root`
+        (now childless) once it is no longer the site's root page.
+        """
+        children = list(old_root.get_children())
+        old_root.get_parent().add_child(instance=new_page)
+        for child in children:
+            child.move(new_page, pos="last-child")
+        site.root_page = new_page
+        site.save()
+        old_root.delete()
+        return new_page
 
     def _should_continue_with_json_path(self, json_path: Path, slug: str):
         if json_path.exists():
@@ -936,26 +959,38 @@ class Command(BaseCommand):
             if not page_builder:
                 continue
 
-            if is_redirection(attributes):
-                existing = Redirect.objects.filter(old_path=current_slug).first()
-            else:
-                existing = Page.objects.filter(slug=current_slug).first()
+            replacing_root = is_site_root(attributes)
             is_replacing = False
 
-            if existing is not None:
-                if not should_replace:
+            if replacing_root:
+                if root_page.slug == current_slug and not should_replace:
                     self.stderr.write(
-                        f"  [skip] page with slug '{current_slug}' already exists. "
+                        f"  [skip] the site's root page is already '{current_slug}'. "
                         "Pass --replace to overwrite it."
                     )
                     self.counter.increment_skipped()
                     continue
-                self.stdout.write(
-                    f"  Deleting existing page '{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
-                )
-                existing.delete()
-                root_page.refresh_from_db()
-                is_replacing = True
+                is_replacing = root_page.slug == current_slug
+            else:
+                if is_redirection(attributes):
+                    existing = Redirect.objects.filter(old_path=current_slug).first()
+                else:
+                    existing = Page.objects.filter(slug=current_slug).first()
+
+                if existing is not None:
+                    if not should_replace:
+                        self.stderr.write(
+                            f"  [skip] page with slug '{current_slug}' already exists. "
+                            "Pass --replace to overwrite it."
+                        )
+                        self.counter.increment_skipped()
+                        continue
+                    self.stdout.write(
+                        f"  Deleting existing page '{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
+                    )
+                    existing.delete()
+                    root_page.refresh_from_db()
+                    is_replacing = True
 
             extracted = extract_importable_html(html_file, importable_dir)
             if extracted is None:
@@ -974,20 +1009,29 @@ class Command(BaseCommand):
                 slug=current_slug,
                 site=site,
             )
-            if isinstance(new_page, Page):
-                parent_page_id = attributes.get("parent_id")
-                if parent_page_id:
-                    parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
-                    parent_page.add_child(instance=new_page)
-                else:
-                    root_page.add_child(instance=new_page)
-            elif isinstance(new_page, Redirect):
-                new_page.save()
+            if replacing_root:
+                old_root = root_page
+                new_page = self._replace_root_page(site, old_root, new_page)
+                root_page = new_page
+                self.stdout.write(
+                    f"  Updated the site's root page (was '{old_root.title}') to "
+                    f"{new_page.__class__.__name__} (slug='{current_slug}'), keeping its subpages in place."
+                )
+            else:
+                if isinstance(new_page, Page):
+                    parent_page_id = attributes.get("parent_id")
+                    if parent_page_id:
+                        parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
+                        parent_page.add_child(instance=new_page)
+                    else:
+                        root_page.add_child(instance=new_page)
+                elif isinstance(new_page, Redirect):
+                    new_page.save()
 
-            self.stdout.write(
-                f"  Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
-                f" (slug='{current_slug}') under '{root_page.title}'."
-            )
+                self.stdout.write(
+                    f"  Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
+                    f" (slug='{current_slug}') under '{root_page.title}'."
+                )
 
             if is_replacing:
                 self.counter.increment_replaced()

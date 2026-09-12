@@ -101,11 +101,18 @@ services:
   # entry below maps that name to the host gateway; Docker Desktop provides it for free,
   # Linux does not. The tunnel then has to accept connections arriving at that gateway and
   # not only at 127.0.0.1, so give ssh an explicit bind address:
-  #   ssh -L 172.17.0.1:9200:localhost:9200 user@deployment-host
+  #   ssh -L 172.17.0.1:19200:localhost:9200 user@deployment-host
+  #   LOADER_ELASTIC_HOST=host.docker.internal LOADER_ELASTIC_PORT=19200 ./update-gnaf.sh
   # Note that address is the `docker0` gateway, which is what Docker's `host-gateway` alias
   # resolves to — *not* this project's own network gateway, which is a different subnet
   # and where a listener would not be reached. Confirm it rather than assuming:
   #   docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
+  #
+  # The local end of that tunnel must not be 9200, because the `opensearch` service above
+  # publishes on 0.0.0.0:9200 and so already answers at the gateway address. Sharing the
+  # number would not produce a clash to notice: with the tunnel down, the loader would
+  # reach that local instance instead and index into it, reporting success while the
+  # remote index it was aimed at stayed empty.
   #
   # The 3.x image is Distroless, which changes how this service is invoked. There is no
   # shell and no /usr/bin/env in it, so the `addressr-loader` bin shim cannot be resolved
