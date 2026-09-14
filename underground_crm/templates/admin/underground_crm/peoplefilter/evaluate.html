@@ -31,7 +31,7 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Email</th>
+                {% if partial_email_addresses %}<th>Email</th>{% endif %}
                 <th>Age</th>
                 {% if show_donations %}<th>Donations</th>{% endif %}
                 {% if show_engagement %}<th>Latest engagement</th>{% endif %}
@@ -49,7 +49,7 @@
                         {{ person.full_name|default:"—" }}
                     </a>
                 </td>
-                <td>{% if partial_email_addresses %}{{ person.partial_email_address }}{% else %}—{% endif %}</td>
+                {% if partial_email_addresses %}<td>{{ person.partial_email_address }}</td>{% endif %}
                 <td>{{ person.age|default:"—" }}</td>
                 {% if show_donations %}<td>{{ person.donations_amount }}</td>{% endif %}
                 {% if show_engagement %}<td>{% if person.latest_engagement %}{{ person.latest_engagement.created_at|naturaltime }}{% else %}—{% endif %}</td>{% endif %}
@@ -60,7 +60,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{% if show_donations and show_engagement %}9{% elif show_donations or show_engagement %}8{% else %}7{% endif %}">No people match this filter.</td>
+                <td colspan="{{ colspan }}">No people match this filter.</td>
             </tr>
             {% endfor %}
         </tbody>
