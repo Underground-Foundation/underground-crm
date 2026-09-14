@@ -24,19 +24,20 @@ from underground_crm.models.address import Address
 
 logger = logging.getLogger(__name__)
 
-# A real, well-known address (also used in test_tasks.py) with the street and
-# suburb misspelled the way a hand-typed legacy CRM entry often is, but with
-# an already-correct state and postcode. Used to verify that
-# --correct-address-fields fixes the free-text fields to match Addressr's
-# canonical spelling without touching fields that were already right.
-KNOWN_ADDRESS_LINE1 = "1 Cook Rd"
-KNOWN_ADDRESS_LINE1_MISSPELLED = "1 Cok Rd"
-KNOWN_ADDRESS_CITY = "Lindfield"
-KNOWN_ADDRESS_CITY_MISSPELLED = "Lindfeld"
-KNOWN_ADDRESS_STATE = "NSW"
-KNOWN_ADDRESS_POSTCODE = "2070"
-EXPECTED_CANONICAL_LINE1 = "1 COOK RD"
-EXPECTED_CANONICAL_CITY = "LINDFIELD"
+# A real address (also used in test_tasks.py) with the street and suburb
+# misspelled the way a hand-typed legacy CRM entry often is, but with an
+# already-correct state and postcode. Addressr's fuzzy search must still find
+# the address despite both misspellings, which rules out very short names:
+# it matches "19 Carnavon St, Brunswik" but finds nothing at all for "1 Cok
+# Rd, Lindfeld".
+KNOWN_ADDRESS_LINE1 = "19 Carnarvon St"
+KNOWN_ADDRESS_LINE1_MISSPELLED = "19 Carnavon St"
+KNOWN_ADDRESS_CITY = "Brunswick"
+KNOWN_ADDRESS_CITY_MISSPELLED = "Brunswik"
+KNOWN_ADDRESS_STATE = "VIC"
+KNOWN_ADDRESS_POSTCODE = "3056"
+EXPECTED_CANONICAL_LINE1 = "19 CARNARVON ST"
+EXPECTED_CANONICAL_CITY = "BRUNSWICK"
 
 
 def _addressr_reachable() -> bool:
@@ -213,7 +214,7 @@ class GeocodeAddressesCommandTest(django.test.TestCase):
             msg="Geocoding should still populate latitude regardless of the new flag.",
         )
 
-    def test_without_flag_geocodes_but_leaves_address_fields_unchanged(self):
+    def test_without_flag_corrects_minor_misspellings_in_typed_case(self):
         address = self._make_mangled_address()
 
         call_command("geocode_addresses")
@@ -221,13 +222,21 @@ class GeocodeAddressesCommandTest(django.test.TestCase):
 
         self.assertEqual(
             address.line1,
-            KNOWN_ADDRESS_LINE1_MISSPELLED,
-            msg="Without --correct-address-fields, the misspelled line1 must be left as imported.",
+            KNOWN_ADDRESS_LINE1,
+            msg=(
+                f"Without --correct-address-fields, the minor misspelling in "
+                f"{KNOWN_ADDRESS_LINE1_MISSPELLED!r} should still take Addressr's "
+                f"spelling, keeping the title case it was typed in."
+            ),
         )
         self.assertEqual(
             address.city,
-            KNOWN_ADDRESS_CITY_MISSPELLED,
-            msg="Without --correct-address-fields, the misspelled city must be left as imported.",
+            KNOWN_ADDRESS_CITY,
+            msg=(
+                f"Without --correct-address-fields, the minor misspelling "
+                f"{KNOWN_ADDRESS_CITY_MISSPELLED!r} should still take Addressr's "
+                f"spelling, keeping the title case it was typed in."
+            ),
         )
         self.assertIsNotNone(
             address.latitude,

@@ -13,6 +13,8 @@ import logging
 import unittest
 import urllib.error
 import urllib.request
+from decimal import Decimal
+from unittest import mock
 
 from django.conf import settings
 from django.test import TestCase
@@ -22,6 +24,44 @@ from underground_crm.models.address import Address
 from underground_crm.tasks import geocode_address
 
 logger = logging.getLogger(__name__)
+
+# 19 Carnarvon Street, Brunswick, as typed carelessly into a form, and as
+# G-NAF spells it. The G-NAF ID is the real one, but the coordinates of the
+# canned match are illustrative values, not looked up from G-NAF.
+CARNARVON_ST_TYPED = {
+    "line1": "19 carnarvon St",
+    "city": "brunswick",
+    "state": "Vic",
+    "postcode": "3056",
+}
+CARNARVON_ST_CORRECTED_LINE1 = "19 Carnarvon St"
+CARNARVON_ST_CORRECTED_CITY = "Brunswick"
+CARNARVON_ST_GEOCODE = addressr_client.Geocode(
+    latitude=Decimal("-37.769420"),
+    longitude=Decimal("144.958710"),
+    reliability=2,
+    confidence=0,
+    address=addressr_client.StructuredAddress(
+        line1="19 CARNARVON ST",
+        city="BRUNSWICK",
+        state="VIC",
+        postcode="3056",
+        street_number="19",
+        street_name="CARNARVON",
+        street_type=addressr_client.GnafCode(code="STREET", name="ST"),
+    ),
+    gnaf_id="GAVIC419796003",
+    sla="19 CARNARVON ST, BRUNSWICK VIC 3056",
+)
+
+
+def _unqueued_address(**components: str) -> Address:
+    """Save an Address without the post_save signal queuing a geocode, so
+    each test runs the task itself."""
+    address = Address(**components)
+    address._skip_geocoding = True
+    address.save()
+    return address
 
 
 def _addressr_reachable() -> bool:
@@ -84,3 +124,62 @@ class GeocodingTaskTest(TestCase):
     def test_task_handles_nonexistent_pk_gracefully(self):
         # Should log a warning and return without raising.
         geocode_address("00000000-0000-0000-0000-000000000000")
+
+    def test_live_task_corrects_capitalization_of_street_and_suburb(self):
+        address = _unqueued_address(**CARNARVON_ST_TYPED)
+        if addressr_client.geocode(str(address)) is None:
+            self.skipTest("The seeded G-NAF data does not contain 19 Carnarvon St, Brunswick.")
+
+        geocode_address(str(address.pk))
+        address.refresh_from_db()
+
+        self.assertIsNotNone(address.latitude)
+        self.assertEqual(address.line1, CARNARVON_ST_CORRECTED_LINE1)
+        self.assertEqual(address.city, CARNARVON_ST_CORRECTED_CITY)
+
+
+class GeocodingTaskCorrectionTest(TestCase):
+    """The task's handling of an Addressr match, with Addressr (an external
+    service) substituted by a canned result; the live counterpart above runs
+    against the real container when it is up."""
+
+    def test_task_stores_corrected_street_and_suburb(self):
+        address = _unqueued_address(**CARNARVON_ST_TYPED)
+
+        with mock.patch.object(addressr_client, "geocode", return_value=CARNARVON_ST_GEOCODE):
+            geocode_address(str(address.pk))
+        address.refresh_from_db()
+
+        self.assertEqual(address.latitude, CARNARVON_ST_GEOCODE.latitude)
+        self.assertEqual(address.gnaf_id, CARNARVON_ST_GEOCODE.gnaf_id)
+        self.assertEqual(address.line1, CARNARVON_ST_CORRECTED_LINE1)
+        self.assertEqual(address.city, CARNARVON_ST_CORRECTED_CITY)
+        self.assertEqual(
+            address.postcode,
+            CARNARVON_ST_TYPED["postcode"],
+            "Fields outside the street and suburb are never rewritten.",
+        )
+
+    def test_task_does_not_overwrite_an_edit_saved_during_the_lookup(self):
+        address = _unqueued_address(**CARNARVON_ST_TYPED)
+        edited_line1 = "21 Carnarvon St"
+
+        def edit_then_answer(query: str) -> addressr_client.Geocode:
+            # Someone saves a different street number while Addressr is
+            # still answering the query for the old one.
+            Address.objects.filter(pk=address.pk).update(line1=edited_line1)
+            return CARNARVON_ST_GEOCODE
+
+        with mock.patch.object(addressr_client, "geocode", side_effect=edit_then_answer):
+            geocode_address(str(address.pk))
+        address.refresh_from_db()
+
+        self.assertEqual(
+            address.line1,
+            edited_line1,
+            "A correction computed from the old text must not clobber a newer edit.",
+        )
+        self.assertIsNone(
+            address.latitude,
+            "The old text's coordinates must not be attached to the edited address.",
+        )

@@ -5,6 +5,11 @@ Addressr has no batch endpoint, so requests are issued concurrently within each
 batch using a thread pool. Results are written back via bulk_update, which does
 not trigger Django signals.
 
+Minor misspellings of the street name and suburb are always corrected to
+Addressr's spelling (see address_correction.correct_minor_misspellings).
+--correct-address-fields goes further, overwriting line1, city, state and
+postcode with the match's values however much they differ.
+
 Usage:
     python manage.py geocode_addresses
     python manage.py geocode_addresses --batch-size 20
@@ -18,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.core.management.base import BaseCommand
 
 from underground_crm import addressr as addressr_client
+from underground_crm.address_correction import correct_minor_misspellings
 from underground_crm.models.address import Address
 
 # Fields overwritten from the Addressr match when --correct-address-fields is set.
@@ -100,9 +106,11 @@ class Command(BaseCommand):
             action="store_true",
             default=False,
             help=(
-                "Also overwrite line1/city/state/postcode with the values from "
-                "the matched Addressr address, in case the imported legacy "
-                "address had a wrong street name, suburb or postcode."
+                "Overwrite line1/city/state/postcode with the values from the "
+                "matched Addressr address, in case the imported legacy address "
+                "had a wrong street name, suburb or postcode. Without this flag, "
+                "only minor misspellings of the street name and suburb are "
+                "corrected."
             ),
         )
 
@@ -123,8 +131,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Geocoding {total} address(es) in batches of {batch_size}…")
 
         update_fields = ["latitude", "longitude", "geocode_reliability", "gnaf_id"]
-        if correct_address_fields:
-            update_fields += list(_CORRECTABLE_FIELDS)
+        update_fields += list(_CORRECTABLE_FIELDS)
 
         processed = geocoded = skipped = failed = corrected = 0
 
@@ -147,8 +154,11 @@ class Command(BaseCommand):
                     address.longitude = result.longitude
                     address.geocode_reliability = result.reliability
                     address.gnaf_id = result.gnaf_id
-                    if correct_address_fields and result.address:
-                        changed = _apply_corrections(address, result.address)
+                    if result.address:
+                        if correct_address_fields:
+                            changed = _apply_corrections(address, result.address)
+                        else:
+                            changed = correct_minor_misspellings(address, result.address)
                         if changed:
                             corrected += 1
                             self.stdout.write(
@@ -162,7 +172,8 @@ class Command(BaseCommand):
 
             self.stdout.write(f"  {processed}/{total}")
 
-        summary = f"Done. Geocoded: {geocoded}, no content: {skipped}, no result: {failed}."
-        if correct_address_fields:
-            summary += f" Corrected: {corrected}."
+        summary = (
+            f"Done. Geocoded: {geocoded}, no content: {skipped}, no result: {failed}, "
+            f"corrected: {corrected}."
+        )
         self.stdout.write(self.style.SUCCESS(summary))

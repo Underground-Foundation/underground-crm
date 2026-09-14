@@ -19,7 +19,11 @@
     {% if people_filter.description %}
     <p>{{ people_filter.description }}</p>
     {% endif %}
-    <p><a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">Edit filter</a></p>
+    <p>
+        <a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">{% trans "Edit filter" %}</a>
+        &nbsp;&middot;&nbsp;
+        <a href="{{ people_filter.map_url }}">{% trans "Map the matching people" %}</a>
+    </p>
 
     <p>{{ people|length }} people match this filter.</p>
 
