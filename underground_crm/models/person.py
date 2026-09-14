@@ -504,6 +504,19 @@ class Person(AbstractBaseUser, PermissionsMixin):
         return self.full_name or self.email
 
     @property
+    def partial_email_address(self) -> str:
+        """Mask the local part of the email for display contexts that must not
+        reveal a full address (e.g. the saved-filter evaluation screen). Keeps
+        the first 5 characters of the local part, replacing the rest with an
+        ellipsis; short local parts are left untouched since there is nothing
+        left to hide."""
+        local_part, separator, domain = self.email.partition("@")
+        visible_length = 5
+        if len(local_part) <= visible_length:
+            return self.email
+        return f"{local_part[:visible_length]}…{separator}{domain}"
+
+    @property
     def first_name_or_friend(self):
         return self.first_name or "Friend"
 

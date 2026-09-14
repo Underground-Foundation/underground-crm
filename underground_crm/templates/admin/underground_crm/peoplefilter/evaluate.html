@@ -49,7 +49,7 @@
                         {{ person.full_name|default:"—" }}
                     </a>
                 </td>
-                <td>{{ person.email }}</td>
+                <td>{% if partial_email_addresses %}{{ person.partial_email_address }}{% else %}—{% endif %}</td>
                 <td>{{ person.age|default:"—" }}</td>
                 {% if show_donations %}<td>{{ person.donations_amount }}</td>{% endif %}
                 {% if show_engagement %}<td>{% if person.latest_engagement %}{{ person.latest_engagement.created_at|naturaltime }}{% else %}—{% endif %}</td>{% endif %}
@@ -82,6 +82,13 @@
         <div class="module" id="evaluation-filters">
             <h2>{% trans "Display options" %}</h2>
             <form method="get">
+                <div>
+                    <label>
+                        <input type="hidden" name="partial-email-addresses" value="false">
+                        <input type="checkbox" name="partial-email-addresses" value="true" {% if partial_email_addresses %}checked{% endif %} onchange="this.form.submit()">
+                        {% trans "Partial email addresses" %}
+                    </label>
+                </div>
                 <div>
                     <label>
                         <input type="checkbox" name="show-donations" {% if show_donations %}checked{% endif %} onchange="this.form.submit()">

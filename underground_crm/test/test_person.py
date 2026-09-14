@@ -83,6 +83,54 @@ class PersonLanguageTest(unittest.TestCase):
         self.assertEqual(self._person("").language_count(), 0)
 
 
+class PersonPartialEmailAddressTest(unittest.TestCase):
+    # The number of local-part characters partial_email_address keeps before the
+    # ellipsis, per the spec: the ellipsis stands in for the 6th letter before "@"
+    # onwards, so exactly 5 letters are shown.
+    VISIBLE_LOCAL_PART_LENGTH = 5
+
+    def test_masks_local_part_beyond_the_visible_length(self):
+        # A real-looking address whose local part is longer than the visible length,
+        # so the masking behaviour is actually exercised.
+        email = "owen9825@gmail.com"
+        person = Person(email=email)
+
+        self.assertEqual(
+            person.partial_email_address,
+            "owen9…@gmail.com",
+            msg=f"The first {self.VISIBLE_LOCAL_PART_LENGTH} characters of the local part "
+            f"('owen9825') should be kept, with an ellipsis standing in for the rest, so "
+            f"'{email}' was expected to become 'owen9…@gmail.com'.",
+        )
+
+    def test_local_part_at_the_visible_length_is_shown_in_full(self):
+        # Local part is exactly VISIBLE_LOCAL_PART_LENGTH characters long, so there is
+        # nothing left to hide and no ellipsis should appear.
+        email = "abcde@example.com"
+        person = Person(email=email)
+
+        self.assertEqual(
+            person.partial_email_address,
+            email,
+            msg=f"A local part of exactly {self.VISIBLE_LOCAL_PART_LENGTH} characters "
+            f"leaves nothing beyond the visible portion, so '{email}' should be returned "
+            "unchanged rather than gaining a pointless ellipsis.",
+        )
+
+    def test_short_local_part_is_shown_in_full(self):
+        # A local part shorter than the visible length, e.g. a real short given name.
+        email = "amy@example.com"
+        person = Person(email=email)
+
+        self.assertEqual(
+            person.partial_email_address,
+            email,
+            msg=f"'{email}' has a local part shorter than the "
+            f"{self.VISIBLE_LOCAL_PART_LENGTH}-character visible portion, so it should be "
+            "returned unchanged rather than being masked.",
+        )
+
+
 class PersonLocationTest(django.test.TestCase):
     def _person(self, email="person@example.com", **kwargs):
         from underground_crm.models import Person

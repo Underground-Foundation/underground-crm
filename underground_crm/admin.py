@@ -416,12 +416,17 @@ class PeopleFilterAdmin(admin.ModelAdmin):
         )
         show_donations = "show-donations" in request.GET
         show_engagement = "show-engagement" in request.GET
+        # Defaults to true (unlike the other display options above), so a hidden
+        # field ahead of the checkbox in the template submits "false" whenever the
+        # form is posted with the box unchecked — see evaluate.html.
+        partial_email_addresses = request.GET.get("partial-email-addresses", "true") != "false"
         context = {
             **self.admin_site.each_context(request),
             "people_filter": people_filter,
             "people": people,
             "show_donations": show_donations,
             "show_engagement": show_engagement,
+            "partial_email_addresses": partial_email_addresses,
             "title": f"Evaluate: {people_filter.name}",
         }
         return TemplateResponse(
