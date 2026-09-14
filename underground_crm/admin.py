@@ -8,7 +8,7 @@ from django.urls import path
 from django.utils.translation import gettext_lazy as _
 
 from .forms.person_filter import PeopleFilterAdminForm
-from .maps import build_map_data
+from .maps import build_map_data, tile_layer_payload
 from .models import (
     Address,
     Donation,
@@ -455,8 +455,7 @@ class PeopleFilterAdmin(admin.ModelAdmin):
             "leaflet_css_integrity": settings.LEAFLET_CSS_INTEGRITY,
             "leaflet_js_url": settings.LEAFLET_JS_URL,
             "leaflet_js_integrity": settings.LEAFLET_JS_INTEGRITY,
-            "tile_url": settings.MAP_TILE_URL,
-            "tile_attribution": settings.MAP_TILE_ATTRIBUTION,
+            "tile_layers": tile_layer_payload(settings.MAP_TILE_LAYERS),
             "title": _("Map: %(filter_name)s") % {"filter_name": people_filter.name},
         }
         return TemplateResponse(

@@ -1,10 +1,10 @@
 /*
  * Plots the people matched by a saved People filter on a Leaflet map.
  *
- * The markers arrive as JSON in a <script type="application/json"> element written by
- * Django's json_script filter, and the tile server and its attribution arrive as data
- * attributes on the map container, so that both stay configurable from Django settings.
- * See underground_crm/maps.py for the shape of the marker data.
+ * The markers and the choice of base maps each arrive as JSON in a
+ * <script type="application/json"> element written by Django's json_script filter, so
+ * that the base maps stay configurable from the MAP_TILE_LAYERS setting. See
+ * underground_crm/maps.py for the shape of both.
  */
 (function () {
     'use strict';
@@ -13,8 +13,9 @@
     // small and solid, whereas one that names only a locality or postcode is drawn larger
     // and fainter, so that it reads as a region rather than as somebody's front door.
     // The legend beneath the map repeats these two colors in CSS, so a change here needs
-    // the matching change to .people-filter-map-legend-key in the map template.
-    var PRECISE_MARKER = { radius: 6, color: '#2a6ba8', fillColor: '#2a6ba8', fillOpacity: 0.8, weight: 1 };
+    // the matching change to .people-filter-map-legend-key in the map template. The thick
+    // white border keeps a precise marker distinct against busy streets and satellite imagery.
+    var PRECISE_MARKER = { radius: 7, color: '#ffffff', opacity: 1, weight: 3, fillColor: '#2a6ba8', fillOpacity: 1 };
     var APPROXIMATE_MARKER = { radius: 10, color: '#b4700f', fillColor: '#b4700f', fillOpacity: 0.25, weight: 1, dashArray: '3' };
 
     // Zooming all the way in on a single marker would show a street with no context
@@ -22,17 +23,77 @@
     var MAX_FIT_ZOOM = 16;
     var FIT_PADDING_IN_PIXELS = 30;
 
-    function readMarkers() {
-        var element = document.getElementById('people-filter-map-data');
+    // Where the viewer's last choice of base map is remembered, by the layer's key.
+    var TILE_LAYER_STORAGE_KEY = 'underground_crm.peopleFilterMap.tileLayer';
+
+    function readJson(elementId, description) {
+        var element = document.getElementById(elementId);
         if (element === null) {
             return [];
         }
         try {
             return JSON.parse(element.textContent);
         } catch (error) {
-            console.error('People filter map: the marker data could not be read.', error);
+            console.error('People filter map: the ' + description + ' could not be read.', error);
             return [];
         }
+    }
+
+    // Storage can be unavailable altogether (in a private window, or with site data
+    // blocked), in which case the map simply opens on the first layer every time.
+    function readRememberedTileLayer() {
+        try {
+            return window.localStorage.getItem(TILE_LAYER_STORAGE_KEY);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function rememberTileLayer(key) {
+        try {
+            window.localStorage.setItem(TILE_LAYER_STORAGE_KEY, key);
+        } catch (error) {
+            // Nothing to do: the choice just won't outlast this page.
+        }
+    }
+
+    /*
+     * Adds every configured base map to the layers control and shows one of them: the
+     * viewer's previous choice if it is still on offer, and otherwise the first.
+     */
+    function addTileLayers(map, definitions) {
+        if (definitions.length === 0) {
+            return;
+        }
+        var rememberedKey = readRememberedTileLayer();
+        var baseLayers = {};
+        var keysByName = {};
+        var initialLayer = null;
+
+        definitions.forEach(function (definition, index) {
+            // Django's default Referrer-Policy of "same-origin" strips the Referer header
+            // from cross-origin requests, and OpenStreetMap's tile servers block tile
+            // requests that arrive without one. Sending only the origin identifies the
+            // site without leaking the page's path, which contains the filter's UUID.
+            var options = Object.assign(
+                { referrerPolicy: 'strict-origin-when-cross-origin' },
+                definition.options
+            );
+            var layer = L.tileLayer(definition.url, options);
+            baseLayers[definition.name] = layer;
+            keysByName[definition.name] = definition.key;
+            if (index === 0 || definition.key === rememberedKey) {
+                initialLayer = layer;
+            }
+        });
+
+        initialLayer.addTo(map);
+        if (definitions.length > 1) {
+            L.control.layers(baseLayers).addTo(map);
+        }
+        map.on('baselayerchange', function (event) {
+            rememberTileLayer(keysByName[event.name]);
+        });
     }
 
     /*
@@ -82,15 +143,13 @@
             return;
         }
 
-        var markers = readMarkers();
+        var markers = readJson('people-filter-map-data', 'marker data');
         if (markers.length === 0) {
             return;
         }
 
         var map = L.map(container);
-        L.tileLayer(container.dataset.tileUrl, {
-            attribution: container.dataset.tileAttribution
-        }).addTo(map);
+        addTileLayers(map, readJson('people-filter-map-tile-layers', 'base map choices'));
 
         var approximateLabel = container.dataset.approximateLabel;
         var coordinates = markers.map(function (marker) {

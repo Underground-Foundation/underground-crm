@@ -15,8 +15,13 @@ Person = get_user_model()
 
 
 def geocode_address(address_id: str) -> None:
-    """Call Addressr to geocode an Address and store the result."""
+    """
+    Call Addressr to geocode an Address and store the result, adopting
+    Addressr's spelling of the street name and suburb where the address had
+    them only slightly wrong (see address_correction.correct_minor_misspellings).
+    """
     from . import addressr as addressr_client
+    from .address_correction import correct_minor_misspellings
 
     try:
         address = Address.objects.get(pk=uuid.UUID(address_id))
@@ -29,13 +34,28 @@ def geocode_address(address_id: str) -> None:
         logger.info("geocode_address: no result from Addressr for Address %s", address_id)
         return
 
-    # Use .update() to avoid re-triggering the post_save signal.
-    Address.objects.filter(pk=address.pk).update(
+    typed = {field: getattr(address, field) for field in ("line1", "city")}
+    changed = correct_minor_misspellings(address, result.address) if result.address else []
+
+    # Use .update() to avoid re-triggering the post_save signal. Filtering on
+    # the values the correction started from means an edit saved while
+    # Addressr was being queried is never overwritten; that edit has queued a
+    # fresh geocode of its own.
+    updated = Address.objects.filter(
+        pk=address.pk, **{field: typed[field] for field in changed}
+    ).update(
         latitude=result.latitude,
         longitude=result.longitude,
         geocode_reliability=result.reliability,
         gnaf_id=result.gnaf_id,
+        **{field: getattr(address, field) for field in changed},
     )
+    if changed and updated:
+        logger.info(
+            "geocode_address: corrected the spelling of %s for Address %s",
+            ", ".join(changed),
+            address_id,
+        )
 
 
 def record_rsvp_engagement(event_guest_id: str) -> None:

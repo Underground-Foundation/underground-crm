@@ -14,6 +14,8 @@ import logging as _logging
 import os
 from pathlib import Path
 
+from django.utils.translation import gettext_lazy
+
 # These paths should be overridden by an inheriting app
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_ROOT = BASE_DIR / "static"
@@ -435,7 +437,7 @@ REST_FRAMEWORK = {
 ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
 
 # The People filter map in the Django admin draws its markers with Leaflet and its base
-# map with OpenStreetMap tiles. Neither is vendored into this library, so that it does
+# maps with public tile servers. Neither is vendored into this library, so that it does
 # not carry a copy of somebody else's minified JavaScript, and every URL below is
 # overridable for deployments that self-host their assets, cannot reach a public CDN, or
 # have their own tile server. The OpenStreetMap Foundation's tile usage policy allows the
@@ -456,12 +458,69 @@ LEAFLET_JS_INTEGRITY = os.environ.get(
     "LEAFLET_JS_INTEGRITY", "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
 )
 
-# A Leaflet tile URL template: {s} is the subdomain, {z}/{x}/{y} the tile coordinates.
-MAP_TILE_URL = os.environ.get("MAP_TILE_URL", "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png")
-MAP_TILE_ATTRIBUTION = os.environ.get(
-    "MAP_TILE_ATTRIBUTION",
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-)
+# Thunderforest serves its tiles only to holders of an API key, which can be obtained from
+# https://manage.thunderforest.com/. Without one, its layer is left out of the map's choices.
+THUNDERFOREST_API_KEY = os.environ.get("THUNDERFOREST_API_KEY", "")
+
+# The base maps offered on the People filter map, the first of which is shown until the
+# viewer picks another. Each "url" is a Leaflet tile URL template, in which {z}/{x}/{y} are
+# the tile coordinates, {s} is a subdomain and {r} becomes "@2x" on high-density screens.
+# A template containing {apikey} is filled from the layer's "api_key", and such a layer is
+# omitted while its key is blank. A "max_zoom" of None leaves Leaflet's own default of 18.
+# The "key" identifies the layer in the viewer's browser, which remembers their choice, so
+# it should stay stable even if the displayed name changes. OpenStreetMap has deprecated
+# its a/b/c tile subdomains, so that layer uses the single hostname.
+MAP_TILE_LAYERS = [
+    {
+        "key": "esri-world-street-map",
+        "name": gettext_lazy("Street map (Esri)"),
+        "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        "attribution": (
+            "Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, "
+            "Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012"
+        ),
+        "max_zoom": None,
+    },
+    {
+        "key": "openstreetmap-mapnik",
+        "name": gettext_lazy("Street map (OpenStreetMap)"),
+        "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        "max_zoom": 19,
+    },
+    {
+        "key": "esri-world-imagery",
+        "name": gettext_lazy("Satellite imagery (Esri)"),
+        "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        "attribution": (
+            "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, "
+            "Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+        ),
+        "max_zoom": None,
+    },
+    {
+        "key": "cyclosm",
+        "name": gettext_lazy("Cycling map (CyclOSM)"),
+        "url": "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+        "attribution": (
+            '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases" '
+            'title="CyclOSM - Open Bicycle render">CyclOSM</a> | Map data: &copy; '
+            '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        ),
+        "max_zoom": 20,
+    },
+    {
+        "key": "thunderforest-pioneer",
+        "name": gettext_lazy("Historical style (Thunderforest Pioneer)"),
+        "url": "https://api.thunderforest.com/pioneer/{z}/{x}/{y}{r}.png?apikey={apikey}",
+        "attribution": (
+            '&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>, &copy; '
+            '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        ),
+        "max_zoom": 22,
+        "api_key": THUNDERFOREST_API_KEY,
+    },
+]
 
 # VERBOSE controls log verbosity (matches the convention used across services):
 #   0 = INFO  (default)

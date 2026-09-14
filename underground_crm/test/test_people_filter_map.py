@@ -10,12 +10,14 @@ import logging
 from decimal import Decimal
 
 import django.test
+from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from underground_crm.maps import (
     PRECISE_GEOCODE_MAX_RELIABILITY,
     build_map_data,
     has_precise_geocode,
+    tile_layer_payload,
 )
 from underground_crm.models import Address, PeopleFilter
 
@@ -235,6 +237,76 @@ class GeocodePrecisionTest(django.test.TestCase):
         )
 
 
+OPENSTREETMAP_LAYER = {
+    "key": "openstreetmap-mapnik",
+    "name": "Street map (OpenStreetMap)",
+    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    "max_zoom": 19,
+}
+ESRI_IMAGERY_LAYER = {
+    "key": "esri-world-imagery",
+    "name": "Satellite imagery (Esri)",
+    "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    "attribution": "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS",
+    "max_zoom": None,
+}
+THUNDERFOREST_API_KEY = "3f9c2d7e8b1a4c6f9e0d2b5a7c8e1f34"
+
+
+def thunderforest_pioneer_layer(api_key: str) -> dict:
+    return {
+        "key": "thunderforest-pioneer",
+        "name": "Historical style (Thunderforest Pioneer)",
+        "url": "https://api.thunderforest.com/pioneer/{z}/{x}/{y}{r}.png?apikey={apikey}",
+        "attribution": '&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>',
+        "max_zoom": 22,
+        "api_key": api_key,
+    }
+
+
+class TileLayerPayloadTest(django.test.SimpleTestCase):
+    """Which base maps are offered to the browser, and in what shape."""
+
+    def test_layers_keep_their_configured_order(self):
+        layers = [OPENSTREETMAP_LAYER, ESRI_IMAGERY_LAYER]
+
+        payload = tile_layer_payload(layers)
+
+        self.assertEqual(
+            [layer["key"] for layer in payload],
+            [layer["key"] for layer in layers],
+            msg="The first configured layer is the one the map opens on, so order matters",
+        )
+
+    def test_a_layer_needing_an_api_key_is_left_out_while_the_key_is_blank(self):
+        payload = tile_layer_payload([OPENSTREETMAP_LAYER, thunderforest_pioneer_layer("")])
+
+        self.assertEqual(
+            [layer["key"] for layer in payload],
+            [OPENSTREETMAP_LAYER["key"]],
+            msg="Without a key, every Thunderforest tile would be refused",
+        )
+
+    def test_a_layer_with_its_api_key_passes_the_key_to_leaflet(self):
+        layer = thunderforest_pioneer_layer(THUNDERFOREST_API_KEY)
+
+        (payload,) = tile_layer_payload([layer])
+
+        self.assertEqual(payload["options"]["apikey"], THUNDERFOREST_API_KEY)
+        self.assertEqual(payload["options"]["maxZoom"], layer["max_zoom"])
+
+    def test_an_unset_maximum_zoom_is_left_to_leaflet(self):
+        (payload,) = tile_layer_payload([ESRI_IMAGERY_LAYER])
+
+        self.assertNotIn(
+            "maxZoom",
+            payload["options"],
+            msg="A maxZoom of null would override Leaflet's default rather than defer to it",
+        )
+        self.assertEqual(payload["options"]["attribution"], ESRI_IMAGERY_LAYER["attribution"])
+
+
 class PeopleFilterMapViewTest(django.test.TestCase):
     """The admin page itself: who may see it, and what it hands to the browser."""
 
@@ -290,6 +362,26 @@ class PeopleFilterMapViewTest(django.test.TestCase):
             markers[0]["people"][0]["admin_url"],
             f"/django-admin/underground_crm/person/{self.supporter.pk}/change/",
         )
+
+    def test_the_map_page_offers_the_configured_base_maps(self):
+        layers = [OPENSTREETMAP_LAYER, ESRI_IMAGERY_LAYER]
+
+        with self.settings(MAP_TILE_LAYERS=layers):
+            response = self.client.get(self.people_filter.map_url)
+
+        offered_layers = json.loads(
+            response.content.decode()
+            .split('<script id="people-filter-map-tile-layers" type="application/json">')[1]
+            .split("</script>")[0]
+        )
+        self.assertEqual(offered_layers, tile_layer_payload(layers))
+
+    def test_the_default_base_maps_can_be_serialized_for_the_page(self):
+        response = self.client.get(self.people_filter.map_url)
+
+        self.assertEqual(response.status_code, 200)
+        for layer in tile_layer_payload(settings.MAP_TILE_LAYERS):
+            self.assertContains(response, layer["key"])
 
     def test_the_map_page_links_back_to_the_filter_and_its_evaluation(self):
         response = self.client.get(self.people_filter.map_url)

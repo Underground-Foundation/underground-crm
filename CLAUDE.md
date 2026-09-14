@@ -142,8 +142,11 @@ behavior worth knowing about lives:
   points; the page says how many locations it left off.
 
 Leaflet and the map tiles are loaded from public URLs rather than vendored into the
-library, and both are overridable — see the `LEAFLET_*` and `MAP_TILE_*` settings in
-`underground_crm/settings.py` and the matching entries in `.env.example`.
+library, and both are overridable — see the `LEAFLET_*` and `MAP_TILE_LAYERS` settings in
+`underground_crm/settings.py` and the matching entries in `.env.example`. The viewer picks
+a base map from `MAP_TILE_LAYERS` with Leaflet's layers control, and their browser
+remembers the choice. A layer whose tile URL needs an `{apikey}` (Thunderforest, via
+`THUNDERFOREST_API_KEY`) is left out of the choices while its key is blank.
 
 ## Addressr (Australian address search)
 

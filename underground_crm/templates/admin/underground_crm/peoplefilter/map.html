@@ -23,7 +23,8 @@
     .leaflet-popup-content li + li { margin-top: 0.5rem; }
     .people-filter-map-address { display: block; color: var(--body-quiet-color); }
     .people-filter-map-legend-key { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; vertical-align: middle; }
-    .people-filter-map-legend-key.precise { background: #2a6ba8; }
+    /* The outer shadow outlines the white border, which would otherwise vanish against the page. */
+    .people-filter-map-legend-key.precise { background: #2a6ba8; border: 2px solid #ffffff; box-shadow: 0 0 0 1px var(--hairline-color); }
     .people-filter-map-legend-key.approximate { background: #b4700f; opacity: 0.5; }
 </style>
 {% endblock %}
@@ -56,11 +57,10 @@
 
     {% if markers %}
     <div id="people-filter-map"
-         data-tile-url="{{ tile_url }}"
-         data-tile-attribution="{{ tile_attribution }}"
          data-approximate-label="{% trans 'Approximate location, accurate only to the locality or postcode.' %}"
          data-library-missing-label="{% trans 'The map library could not be loaded, so the matching people cannot be shown on a map.' %}"></div>
     {{ markers|json_script:"people-filter-map-data" }}
+    {{ tile_layers|json_script:"people-filter-map-tile-layers" }}
     <p>
         <span class="people-filter-map-legend-key precise"></span>
         {% trans "A geocode of the property itself." %}

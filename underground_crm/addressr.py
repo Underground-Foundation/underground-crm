@@ -32,6 +32,19 @@ MINIMUM_QUERY_LENGTH: int = 5
 GNAF_ID_PATTERN = re.compile(r"[A-Z0-9_]{1,32}")
 
 
+class GnafCode(NamedTuple):
+    """
+    One entry of a G-NAF lookup table, as Addressr reports it. Street types
+    and street suffixes are both recorded this way, but the tables disagree
+    about which half is the full word: the street type STREET has the name
+    "ST", whereas the street suffix N has the name "NORTH". Addressr's
+    single-line and multi-line addresses always print the name.
+    """
+
+    code: str
+    name: str
+
+
 class StructuredAddress(NamedTuple):
     """The structured address components of an Addressr match, suitable for
     overwriting the free-text fields on our own Address model."""
@@ -40,6 +53,14 @@ class StructuredAddress(NamedTuple):
     city: str | None
     state: str | None
     postcode: str | None
+    # The street number as G-NAF prints it, e.g. "19", "551A" or "480-490".
+    street_number: str | None = None
+    # The street name without its type or suffix, e.g. "CARNARVON" or "ST KILDA".
+    street_name: str | None = None
+    # e.g. GnafCode(code="STREET", name="ST"), or None for a street without a type.
+    street_type: GnafCode | None = None
+    # e.g. GnafCode(code="N", name="NORTH"), or None for a street without a suffix.
+    street_suffix: GnafCode | None = None
 
 
 class Geocode(NamedTuple):
@@ -105,14 +126,37 @@ def gnaf_id_from_search_entry(entry: dict) -> str | None:
     return pid if GNAF_ID_PATTERN.fullmatch(pid) else None
 
 
+def _gnaf_code(entry: dict | None) -> GnafCode | None:
+    """The GnafCode of an Addressr {"code": ..., "name": ...} entry, or None
+    when the entry is absent or incomplete."""
+    if not entry or not entry.get("code") or not entry.get("name"):
+        return None
+    return GnafCode(code=entry["code"], name=entry["name"])
+
+
+def _street_number_text(number: dict) -> str | None:
+    """
+    The street number as G-NAF prints it, from Addressr's structured number:
+    {"number": 19} is "19", {"number": 551, "suffix": "A"} is "551A", and
+    {"number": 480, "last": {"number": 490}} is "480-490".
+    """
+    if number.get("number") is None:
+        return None
+    text = f"{number['number']}{number.get('suffix') or ''}"
+    last = number.get("last") or {}
+    if last.get("number") is not None:
+        text += f"-{last['number']}{last.get('suffix') or ''}"
+    return text
+
+
 def _extract_structured_address(detail: dict) -> StructuredAddress | None:
     """
     Build a StructuredAddress from an Addressr address detail response.
 
     ``mla`` (multi-line address) always ends with a "LOCALITY STATE POSTCODE"
-    line preceded by a "NUMBER STREET" line — a leading flat/unit line, if
-    present, comes before that — so the street line is always the second-last
-    entry regardless of whether a flat/unit is present.
+    line preceded by a "NUMBER STREET" line — a flat/unit line or a building
+    name, if present, comes before that — so the street line is always the
+    second-last entry.
     """
     structured = detail.get("structured")
     mla = detail.get("mla")
@@ -121,11 +165,16 @@ def _extract_structured_address(detail: dict) -> StructuredAddress | None:
 
     state = structured.get("state") or {}
     locality = structured.get("locality") or {}
+    street = structured.get("street") or {}
     return StructuredAddress(
         line1=mla[-2] or None,
         city=locality.get("name"),
         state=state.get("abbreviation"),
         postcode=structured.get("postcode"),
+        street_number=_street_number_text(structured.get("number") or {}),
+        street_name=street.get("name"),
+        street_type=_gnaf_code(street.get("type")),
+        street_suffix=_gnaf_code(street.get("suffix")),
     )
 
 

@@ -105,6 +105,40 @@ def has_precise_geocode(reliability: int | None) -> bool:
     return reliability is not None and reliability <= PRECISE_GEOCODE_MAX_RELIABILITY
 
 
+# The placeholder that a tile URL template uses for an API key, which Leaflet fills in
+# from the layer option of the same name.
+API_KEY_PLACEHOLDER = "{apikey}"
+
+
+def tile_layer_payload(layers: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The base maps from ``settings.MAP_TILE_LAYERS`` that the page's script can offer.
+
+    A layer whose tile server demands an API key is dropped while that key is blank,
+    because every tile it requested would fail and the viewer would see an empty map.
+    The names are forced to plain strings here, since they are usually lazy
+    translations, and the option names are the ones Leaflet's ``L.tileLayer`` expects.
+    """
+    payload = []
+    for layer in layers:
+        api_key = layer.get("api_key", "")
+        if API_KEY_PLACEHOLDER in layer["url"] and not api_key:
+            continue
+        options: dict[str, Any] = {"attribution": layer["attribution"]}
+        if layer.get("max_zoom") is not None:
+            options["maxZoom"] = layer["max_zoom"]
+        if api_key:
+            options["apikey"] = api_key
+        payload.append(
+            {
+                "key": layer["key"],
+                "name": str(layer["name"]),
+                "url": layer["url"],
+                "options": options,
+            }
+        )
+    return payload
+
+
 def build_map_data(
     people: Iterable["Person"], *, location_limit: int = DEFAULT_LOCATION_LIMIT
 ) -> MapData:
