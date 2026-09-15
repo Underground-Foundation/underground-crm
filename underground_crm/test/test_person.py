@@ -8,6 +8,7 @@ import django.test
 from django.utils import timezone
 
 from underground_crm.models import Person
+from underground_crm.models.person import PARTIAL_EMAIL_ADDRESS_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -46,41 +47,175 @@ class PersonLanguageTest(unittest.TestCase):
         return Person(email="lang@example.com", language_preferences=language_preferences)
 
     def test_preferred_language_from_browser_string(self):
+        # en-US is listed first with no explicit q-value, so it takes the implicit
+        # q=1.0 and outranks every other tag in the header.
+        browser_language_header = "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
+        highest_priority_tag = browser_language_header.split(",")[0].split(";")[0]
         self.assertEqual(
-            self._person("en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7").preferred_language,
-            "en-US",
+            self._person(browser_language_header).preferred_language,
+            highest_priority_tag,
+            msg=f"'{browser_language_header}' has no explicit q-value on its first tag, "
+            f"so that tag ('{highest_priority_tag}') carries the implicit q=1.0 and "
+            "should be preferred over every other tag in the header.",
         )
 
     def test_preferred_language_respects_q_values(self):
-        # zh-TW is listed second but has an implicit q=1.0, so it beats en;q=0.9
+        # zh-TW is listed second but has an implicit q=1.0, so it beats en;q=0.9.
+        browser_language_header = "en;q=0.9,zh-TW"
+        highest_priority_tag = "zh-TW"
         self.assertEqual(
-            self._person("en;q=0.9,zh-TW").preferred_language,
-            "zh-TW",
+            self._person(browser_language_header).preferred_language,
+            highest_priority_tag,
+            msg=f"In '{browser_language_header}', '{highest_priority_tag}' carries the "
+            "implicit q=1.0 and should outrank the explicit q=0.9 on the other tag, "
+            "regardless of listing order.",
         )
 
     def test_preferred_language_single_tag(self):
-        self.assertEqual(self._person("fr-FR").preferred_language, "fr-FR")
+        only_tag = "fr-FR"
+        self.assertEqual(
+            self._person(only_tag).preferred_language,
+            only_tag,
+            msg=f"With only one language tag ('{only_tag}') present, that tag is "
+            "necessarily the preferred one.",
+        )
 
     def test_preferred_language_defaults_to_en_au_when_unset(self):
-        self.assertEqual(self._person(None).preferred_language, "en-AU")
+        default_language = "en-AU"
+        self.assertEqual(
+            self._person(None).preferred_language,
+            default_language,
+            msg=f"With no language_preferences recorded at all, preferred_language "
+            f"should fall back to '{default_language}', the CRM's default locale "
+            "(Australia/Melbourne).",
+        )
 
     def test_preferred_language_defaults_to_en_au_when_empty(self):
-        self.assertEqual(self._person("").preferred_language, "en-AU")
+        default_language = "en-AU"
+        self.assertEqual(
+            self._person("").preferred_language,
+            default_language,
+            msg=f"An empty language_preferences string carries no usable tag, so "
+            f"preferred_language should fall back to '{default_language}' just as it "
+            "does when language_preferences is unset entirely.",
+        )
 
     def test_language_count_from_browser_string(self):
+        # The count should reflect however many comma-separated tags the header
+        # actually lists, not a number re-typed by hand.
+        browser_language_header = "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
+        expected_count = len(browser_language_header.split(","))
         self.assertEqual(
-            self._person("en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7").language_count(),
-            4,
+            self._person(browser_language_header).language_count(),
+            expected_count,
+            msg=f"'{browser_language_header}' lists {expected_count} comma-separated "
+            "language tags, so language_count() should report that many.",
         )
 
     def test_language_count_single_language(self):
-        self.assertEqual(self._person("ja").language_count(), 1)
+        browser_language_header = "ja"
+        expected_count = len(browser_language_header.split(","))
+        self.assertEqual(
+            self._person(browser_language_header).language_count(),
+            expected_count,
+            msg=f"'{browser_language_header}' lists a single language tag, so "
+            f"language_count() should report {expected_count}.",
+        )
 
     def test_language_count_when_unset(self):
-        self.assertEqual(self._person(None).language_count(), 0)
+        self.assertEqual(
+            self._person(None).language_count(),
+            0,
+            msg="With no language_preferences recorded at all, there are no tags to "
+            "count, so language_count() should report 0.",
+        )
 
     def test_language_count_when_empty(self):
-        self.assertEqual(self._person("").language_count(), 0)
+        self.assertEqual(
+            self._person("").language_count(),
+            0,
+            msg="An empty language_preferences string contains no tags, so "
+            "language_count() should report 0.",
+        )
+
+
+class PersonPartialEmailAddressTest(unittest.TestCase):
+    def test_masks_local_part_beyond_the_visible_length(self):
+        # A real-looking address whose local part is longer than the visible length,
+        # so the masking behaviour is actually exercised.
+        email_address = "owen9825@gmail.com"
+        local_part = email_address.split("@")[0]
+        self.assertGreater(
+            len(local_part),
+            PARTIAL_EMAIL_ADDRESS_LENGTH,
+            msg=f"'{email_address}' was chosen to exercise the masking behaviour, so its "
+            f"local part must be longer than PARTIAL_EMAIL_ADDRESS_LENGTH "
+            f"({PARTIAL_EMAIL_ADDRESS_LENGTH}); otherwise this test would not be "
+            "checking what it claims to.",
+        )
+        person = Person(email=email_address)
+
+        expected_prefix = local_part[:PARTIAL_EMAIL_ADDRESS_LENGTH]
+        visible_prefix, _, rest = person.partial_email_address.partition("…")
+        self.assertEqual(
+            visible_prefix,
+            expected_prefix,
+            msg=f"The first PARTIAL_EMAIL_ADDRESS_LENGTH characters of the local part "
+            f"should be kept in full, so '{email_address}' should become "
+            f"'{expected_prefix}…@gmail.com'; got '{person.partial_email_address}'.",
+        )
+        self.assertTrue(
+            rest.startswith("@"),
+            msg=f"The domain should follow the ellipsis unchanged; got "
+            f"'{person.partial_email_address}'.",
+        )
+
+    def test_local_part_at_the_visible_length_is_shown_in_full(self):
+        # A realistic local part cut down to exactly PARTIAL_EMAIL_ADDRESS_LENGTH
+        # characters, so there is nothing left to hide and no ellipsis should appear.
+        given_name = "hamish"
+        self.assertGreaterEqual(
+            len(given_name),
+            PARTIAL_EMAIL_ADDRESS_LENGTH,
+            msg=f"'{given_name}' must be at least PARTIAL_EMAIL_ADDRESS_LENGTH "
+            f"({PARTIAL_EMAIL_ADDRESS_LENGTH}) characters long, or slicing it below would "
+            "not actually reach the boundary this test is meant to exercise.",
+        )
+        local_part = given_name[:PARTIAL_EMAIL_ADDRESS_LENGTH]
+        email_address = f"{local_part}@example.com"
+        person = Person(email=email_address)
+
+        self.assertEqual(
+            person.partial_email_address,
+            email_address,
+            msg=f"A local part of exactly PARTIAL_EMAIL_ADDRESS_LENGTH "
+            f"({PARTIAL_EMAIL_ADDRESS_LENGTH}) characters leaves nothing beyond the "
+            f"visible portion, so '{email_address}' should be returned unchanged rather "
+            "than gaining a pointless ellipsis.",
+        )
+
+    def test_short_local_part_is_shown_in_full(self):
+        # A local part shorter than PARTIAL_EMAIL_ADDRESS_LENGTH, e.g. a real short
+        # given name.
+        email_address = "amy@example.com"
+        local_part = email_address.split("@")[0]
+        self.assertLess(
+            len(local_part),
+            PARTIAL_EMAIL_ADDRESS_LENGTH,
+            msg=f"'{email_address}' was chosen to exercise the short-local-part case, so "
+            f"its local part must be shorter than PARTIAL_EMAIL_ADDRESS_LENGTH "
+            f"({PARTIAL_EMAIL_ADDRESS_LENGTH}); otherwise this test would not be "
+            "checking what it claims to.",
+        )
+        person = Person(email=email_address)
+
+        self.assertEqual(
+            person.partial_email_address,
+            email_address,
+            msg=f"'{email_address}' has a local part shorter than "
+            f"PARTIAL_EMAIL_ADDRESS_LENGTH ({PARTIAL_EMAIL_ADDRESS_LENGTH}), so it should "
+            "be returned unchanged rather than being masked.",
+        )
 
 
 class PersonLocationTest(django.test.TestCase):

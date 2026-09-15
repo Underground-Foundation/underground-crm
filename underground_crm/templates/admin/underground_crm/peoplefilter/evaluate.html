@@ -1,14 +1,14 @@
 {% extends "admin/base_site.html" %}
 {% load i18n static humanize %}
 
-{% block title %}Evaluate: {{ people_filter.name }} | {{ site_title|default:_("Django administration") }}{% endblock %}
+{% block title %}{% blocktrans with filter_name=people_filter.name %}Evaluate: {{ filter_name }}{% endblocktrans %} | {{ site_title|default:_("Django administration") }}{% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
-    <a href="{% url 'admin:index' %}">Home</a>
-    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_changelist' %}">People filters</a>
+    <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+    &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_changelist' %}">{% trans "People filters" %}</a>
     &rsaquo; <a href="{% url 'admin:underground_crm_peoplefilter_change' people_filter.pk %}">{{ people_filter.name }}</a>
-    &rsaquo; Evaluate
+    &rsaquo; {% trans "Evaluate" %}
 </div>
 {% endblock %}
 
@@ -25,20 +25,20 @@
         <a href="{{ people_filter.map_url }}">{% trans "Map the matching people" %}</a>
     </p>
 
-    <p>{{ people|length }} people match this filter.</p>
+    <p>{% blocktrans count matched=people|length %}{{ matched }} person matches this filter.{% plural %}{{ matched }} people match this filter.{% endblocktrans %}</p>
 
     <table>
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Age</th>
-                {% if show_donations %}<th>Donations</th>{% endif %}
-                {% if show_engagement %}<th>Latest engagement</th>{% endif %}
-                <th>Tags</th>
-                <th>Staff</th>
-                <th>Admin</th>
-                <th>Active</th>
+                <th>{% trans "Name" %}</th>
+                {% if partial_email_addresses %}<th>{% trans "Email" %}</th>{% endif %}
+                <th>{% trans "Age" %}</th>
+                {% if show_donations %}<th>{% trans "Donations" %}</th>{% endif %}
+                {% if show_engagement %}<th>{% trans "Latest engagement" %}</th>{% endif %}
+                <th>{% trans "Tags" %}</th>
+                <th>{% trans "Staff" %}</th>
+                <th>{% trans "Admin" %}</th>
+                <th>{% trans "Active" %}</th>
             </tr>
         </thead>
         <tbody>
@@ -49,18 +49,23 @@
                         {{ person.full_name|default:"—" }}
                     </a>
                 </td>
-                <td>{{ person.email }}</td>
+                {% if partial_email_addresses %}<td>{{ person.partial_email_address }}</td>{% endif %}
                 <td>{{ person.age|default:"—" }}</td>
                 {% if show_donations %}<td>{{ person.donations_amount }}</td>{% endif %}
                 {% if show_engagement %}<td>{% if person.latest_engagement %}{{ person.latest_engagement.created_at|naturaltime }}{% else %}—{% endif %}</td>{% endif %}
                 <td>{% for tag in person.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                <td>{% if person.is_staff %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
-                <td>{% if person.is_admin %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
-                <td>{% if person.is_active %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="Yes">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="No">{% endif %}</td>
+                <td>{% if person.is_staff %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="{% trans 'Yes' %}">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="{% trans 'No' %}">{% endif %}</td>
+                <td>{% if person.is_admin %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="{% trans 'Yes' %}">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="{% trans 'No' %}">{% endif %}</td>
+                <td>{% if person.is_active %}<img src="{% static 'admin/img/icon-yes.svg' %}" alt="{% trans 'Yes' %}">{% else %}<img src="{% static 'admin/img/icon-no.svg' %}" alt="{% trans 'No' %}">{% endif %}</td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{% if show_donations and show_engagement %}9{% elif show_donations or show_engagement %}8{% else %}7{% endif %}">No people match this filter.</td>
+                {% comment %}
+                    The placeholder spans the six columns in the header that are always shown
+                    (Name, Age, Tags, Staff, Admin and Active), plus one for each optional column
+                    whose toggle is on. Each toggle is a boolean, which "add" counts as 1 or 0.
+                {% endcomment %}
+                <td colspan="{{ 6|add:partial_email_addresses|add:show_donations|add:show_engagement }}">{% trans "No people match this filter." %}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -84,6 +89,13 @@
             <form method="get">
                 <div>
                     <label>
+                        <input type="hidden" name="partial-email-addresses" value="false">
+                        <input type="checkbox" name="partial-email-addresses" value="true" {% if partial_email_addresses %}checked{% endif %} onchange="this.form.submit()">
+                        {% trans "Partial email addresses" %}
+                    </label>
+                </div>
+                <div>
+                    <label>
                         <input type="checkbox" name="show-donations" {% if show_donations %}checked{% endif %} onchange="this.form.submit()">
                         {% trans "Donations" %}
                     </label>
@@ -97,7 +109,7 @@
             </form>
         </div>
     </div>
-    <button type="button" id="evaluation-sidebar-toggle" class="sticky toggle-nav-sidebar" title="Toggle display options"></button>
+    <button type="button" id="evaluation-sidebar-toggle" class="sticky toggle-nav-sidebar" title="{% trans 'Toggle display options' %}"></button>
 </div>
 <script>
 (function () {

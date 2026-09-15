@@ -56,6 +56,9 @@ class PersonManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
+PARTIAL_EMAIL_ADDRESS_LENGTH = 5
+
+
 class Person(AbstractBaseUser, PermissionsMixin):
     """
     Central person/contact record. Serves as both the auth user model and the
@@ -502,6 +505,16 @@ class Person(AbstractBaseUser, PermissionsMixin):
     @property
     def name_or_email(self):
         return self.full_name or self.email
+
+    @property
+    def partial_email_address(self) -> str:
+        """Replace a chunk of the email address with an ellipsis, in case an
+        unauthorized person happens to be able to see the screen. This sort of
+        thing allows Underground CRM to be used in demonstrations."""
+        local_part, separator, domain = self.email.partition("@")
+        if len(local_part) <= PARTIAL_EMAIL_ADDRESS_LENGTH:
+            return self.email
+        return f"{local_part[:PARTIAL_EMAIL_ADDRESS_LENGTH]}…{separator}{domain}"
 
     @property
     def first_name_or_friend(self):

@@ -1,10 +1,13 @@
+from django import forms
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.admin import helpers
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Permission
 from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from .forms.person_filter import PeopleFilterAdminForm
@@ -118,13 +121,14 @@ class InteractionInline(admin.TabularInline):
 class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     ordering = ["email"]
     list_display = [
-        "email",
+        "partial_email",
         "first_name",
         "last_name",
         "is_supporter",
         "is_donor",
         "created_at",
     ]
+    list_display_links = ["partial_email"]
     list_filter = [
         SavedFilterListFilter,
         "is_supporter",
@@ -261,6 +265,26 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
     )
+
+    @admin.display(description=_("Email"), ordering="email")
+    def partial_email(self, obj: Person) -> str:
+        return obj.partial_email_address
+
+    def action_checkbox(self, obj: Person):
+        # The base implementation puts str(obj) — the full, unmasked email address
+        # — in the checkbox's aria-label. Rebuild it with the masked address so the
+        # full address never reaches the page, matching the "Email" column above.
+        label = (
+            f"{obj.full_name} ({obj.partial_email_address})"
+            if obj.full_name
+            else obj.partial_email_address
+        )
+        attrs = {
+            "class": "action-select",
+            "aria-label": format_html(_("Select this object for an action - {}"), label),
+        }
+        checkbox = forms.CheckboxInput(attrs, lambda value: False)
+        return checkbox.render(helpers.ACTION_CHECKBOX_NAME, str(obj.pk))
 
     def get_readonly_fields(self, request, obj=None):
         readonly = list(super().get_readonly_fields(request, obj))
@@ -416,12 +440,14 @@ class PeopleFilterAdmin(admin.ModelAdmin):
         )
         show_donations = "show-donations" in request.GET
         show_engagement = "show-engagement" in request.GET
+        should_display_partial_email = request.GET.get("partial-email-addresses", "true") != "false"
         context = {
             **self.admin_site.each_context(request),
             "people_filter": people_filter,
             "people": people,
             "show_donations": show_donations,
             "show_engagement": show_engagement,
+            "partial_email_addresses": should_display_partial_email,
             "title": f"Evaluate: {people_filter.name}",
         }
         return TemplateResponse(
