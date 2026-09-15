@@ -56,6 +56,9 @@ class PersonManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
+PARTIAL_EMAIL_ADDRESS_LENGTH = 5
+
+
 class Person(AbstractBaseUser, PermissionsMixin):
     """
     Central person/contact record. Serves as both the auth user model and the
@@ -505,16 +508,13 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     @property
     def partial_email_address(self) -> str:
-        """Mask the local part of the email for display contexts that must not
-        reveal a full address (e.g. the saved-filter evaluation screen). Keeps
-        the first 5 characters of the local part, replacing the rest with an
-        ellipsis; short local parts are left untouched since there is nothing
-        left to hide."""
+        """Replace a chunk of the email address with an ellipsis, in case an
+        unauthorized person happens to be able to see the screen. This sort of
+        thing allows Underground CRM to be used in demonstrations."""
         local_part, separator, domain = self.email.partition("@")
-        visible_length = 5
-        if len(local_part) <= visible_length:
+        if len(local_part) <= PARTIAL_EMAIL_ADDRESS_LENGTH:
             return self.email
-        return f"{local_part[:visible_length]}…{separator}{domain}"
+        return f"{local_part[:PARTIAL_EMAIL_ADDRESS_LENGTH]}…{separator}{domain}"
 
     @property
     def first_name_or_friend(self):
