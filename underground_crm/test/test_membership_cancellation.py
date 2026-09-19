@@ -13,9 +13,10 @@ Person = get_user_model()
 
 PASSWORD = "correct-horse-battery"
 # Deliberately not "Fusion Party": these tests run against the Fusion theme,
-# whose branding puts that name in the page chrome itself (the <title>, the
-# nav), which would make a membership-type name of "Fusion Party" match
-# incidentally rather than because the memberships section rendered it.
+# whose branding puts that name in the page's own template elements (the
+# <title>, the nav), which would make a membership-type name of "Fusion
+# Party" match incidentally rather than because the memberships section
+# rendered it.
 MEMBERSHIP_TYPE_NAME = "Pirate Party"
 # Far enough in the future that "still active" is unambiguous, however long
 # the test suite takes to run.

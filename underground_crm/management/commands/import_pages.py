@@ -7,8 +7,8 @@ Usage:
 
 For each <slug>.html found in <domain>/, the command:
   1. Reads <domain>/<slug>.json to determine the page type and title.
-  2. Extracts the element with id="content" from the HTML and writes it
-     to <domain>/importable/<slug>.html.
+  2. Extracts the page's article content (see extract_importable_html) and
+     writes it to <domain>/importable/<slug>.html.
   3. Creates (or replaces) the corresponding Wagtail page using that content
      as a Raw HTML body block.
 
@@ -147,16 +147,32 @@ def extract_importable_html(
     html_file: Path,
     importable_dir: Optional[Path],
 ) -> tuple[BeautifulSoup, str] | None:
-    """Extract the id='content' element, write it to importable_dir, and return
-    the full-page soup alongside the extracted HTML string.
+    """Extract the element that holds the page's actual content, write it to
+    importable_dir, and return the full-page soup alongside the extracted
+    HTML string.
 
-    Returns None if no id='content' element is found.
+    The page's own ``div.content`` is preferred when present: the outer
+    ``id="content"`` region it sits inside also picks up the byline and
+    table-of-contents elements alongside the article, and a page can be
+    simple enough that ``div.content`` holds the entire article with nothing
+    left outside it. Where ``div.content`` is absent, the nested
+    ``id="content"`` div is next best (extract_page_size relies on this same
+    nesting), then any ``div.container``, then the page's own ``id="content"``
+    region as the last resort.
+
+    Returns None if none of these are found.
     """
     document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
     content = document_soup.find(id="content")
     if content is None:
         return None
-    html_content = _prettify(content)
+    body = (
+        content.find("div", class_="content")
+        or content.find("div", id="content")
+        or content.find("div", class_="container")
+        or content
+    )
+    html_content = _prettify(body)
     if importable_dir:
         (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
     return document_soup, html_content
