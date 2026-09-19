@@ -6,7 +6,7 @@ from django.db import models
 class Interaction(models.Model):
     """
     A logged interaction between a staff member and a person.
-    Corresponds to NationBuilder's 'contact' records.
+    Corresponds to the legacy CMS's 'contact' records.
     """
 
     METHOD_FACE_TO_FACE = "face_to_face"

@@ -765,6 +765,17 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
             "events calendar."
         ),
     )
+    show_slug_as_breadcrumb = models.BooleanField(
+        default=False,
+        verbose_name=_("Show slug as breadcrumb"),
+        help_text=_(
+            "If disabled (the default), this feed's items are addressed "
+            "directly beneath this page's own parent, so an item's URL "
+            "omits this feed's slug — the way the legacy CMS addresses blog "
+            "and calendar entries. If enabled, item URLs are nested beneath "
+            "this page's own URL as usual."
+        ),
+    )
 
     content_panels = BasicPage.content_panels + [
         FieldPanel("page_size"),
@@ -776,16 +787,60 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
         ),
     ]
 
+    promote_panels = PageWithMetadata.promote_panels + [
+        FieldPanel("show_slug_as_breadcrumb"),
+    ]
+
     edit_handler = TabbedInterface(
         [
             ObjectList(content_panels, heading=_("Content")),
-            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(promote_panels, heading=_("Metadata")),
             ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
         ]
     )
 
     class Meta:
         verbose_name = _("Feed Page")
+
+    def save(self, *args, **kwargs):
+        breadcrumb_changed = False
+        if self.pk is not None:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("show_slug_as_breadcrumb", flat=True)
+                .first()
+            )
+            breadcrumb_changed = previous is not None and previous != self.show_slug_as_breadcrumb
+        super().save(*args, **kwargs)
+        if breadcrumb_changed:
+            self._realign_child_url_paths()
+
+    def _realign_child_url_paths(self) -> None:
+        """
+        Recompute url_path for this feed's direct children after
+        show_slug_as_breadcrumb changes.
+
+        Page.save() only recalculates url_path when a page's own slug or
+        position in the tree changes. Toggling this flag changes how a
+        *child's* URL is built without touching the child's own slug, so
+        that recalculation has to happen here instead.
+        """
+        for child in self.get_children().specific():
+            old_url_path = child.url_path
+            new_url_path = child.set_url_path(self)
+            if new_url_path != old_url_path:
+                child.save(update_fields=["url_path"], clean=False)
+                child._update_descendant_url_paths(old_url_path, new_url_path)
+
+    def _update_descendant_url_paths(self, old_url_path: str, new_url_path: str) -> None:
+        if not self.show_slug_as_breadcrumb:
+            # A flattened child's url_path is built from this feed's own
+            # parent (see FeedChildPageMixin.set_url_path below), so this
+            # feed's own slug never appears in it — renaming this feed
+            # leaves its children's URLs untouched.
+            return
+        super()._update_descendant_url_paths(old_url_path, new_url_path)
 
     def local_item_pages(self, *, at: datetime.datetime | None = None) -> list[Page]:
         """The live, public descendant pages this feed lists, in the page's
@@ -855,7 +910,40 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
         return IndexPageAtomFeed
 
 
-class BlogPost(UndergroundBasicPage):
+class FeedChildPageMixin(models.Model):
+    """
+    Shared by page types that live directly beneath a FeedPage (BlogPost,
+    EventPage): unless the feed opts in via show_slug_as_breadcrumb, these
+    pages are addressed beneath the feed's own parent rather than beneath
+    the feed itself, so the feed's slug never appears in their URL.
+
+    Also carries an intro StreamField, rendered ahead of the page's body by
+    basic_page.html's intro_content block — a short lede distinct from the
+    body content, e.g. a standfirst above a blog post or a summary above an
+    event's details.
+    """
+
+    intro = DeclaredBlocksStreamField(
+        BASIC_PAGE_BLOCKS,
+        use_json_field=True,
+        blank=True,
+    )
+
+    class Meta:
+        abstract = True
+
+    def set_url_path(self, parent):
+        if parent is not None:
+            specific_parent = parent.specific
+            if (
+                isinstance(specific_parent, FeedPage)
+                and not specific_parent.show_slug_as_breadcrumb
+            ):
+                return super().set_url_path(specific_parent.get_parent())
+        return super().set_url_path(parent)
+
+
+class BlogPost(FeedChildPageMixin, UndergroundBasicPage):
     """
     A dated article belonging within a FeedPage index. Themes that subclass
     FeedPage should extend parent_page_types accordingly — Wagtail matches
@@ -873,9 +961,20 @@ class BlogPost(UndergroundBasicPage):
         related_name="+",
     )
 
-    content_panels = BasicPage.content_panels + [
+    content_panels = Page.content_panels + [
+        FieldPanel("intro"),
+        FieldPanel("body"),
+        FieldPanel("show_toc"),
         FieldPanel("author", heading=_("Author")),
     ]
+
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading=_("Content")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+        ]
+    )
 
     @classmethod
     def published(cls, *, within: Page | None = None) -> PageQuerySet:
@@ -888,7 +987,7 @@ class BlogPost(UndergroundBasicPage):
         return posts
 
 
-class EventPage(FormPage):
+class EventPage(FeedChildPageMixin, FormPage):
     """
     An event page. Extends FormPage (rather than BasicPage) so staff can add
     arbitrary extra "input" blocks to its body via the CMS, same as any
@@ -923,6 +1022,20 @@ class EventPage(FormPage):
         ),
     )
     capacity = models.PositiveIntegerField(null=True, blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("intro"),
+        FieldPanel("body"),
+        FieldPanel("tags_to_apply"),
+    ]
+
+    edit_handler = TabbedInterface(
+        [
+            ObjectList(content_panels, heading=_("Content")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+        ]
+    )
 
     @property
     def is_multi_day(self):

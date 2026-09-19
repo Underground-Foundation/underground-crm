@@ -58,7 +58,7 @@ from underground_crm.contactability import (
     parse_address,
 )
 from underground_crm.blocks import registration_person_field_names
-from underground_crm.models import Address, FeedPage, BasicPage, UndergroundBasicPage
+from underground_crm.models import Address, FeedPage, UndergroundBasicPage
 from underground_crm.models import Tag as CrmTag
 from underground_crm.models.pages import (
     EventPage,
@@ -89,6 +89,9 @@ class ImportCounter:
 
     def increment_skipped(self) -> None:
         self.skipped += 1
+
+    def has_evaluated_any_pages(self):
+        return bool(self.imported or self.replaced or self.skipped)
 
     def get_summary(self) -> str:
         return f"Imported: {self.imported}, replaced: {self.replaced}, skipped: {self.skipped}."
@@ -126,10 +129,18 @@ def _load_page_attributes(json_path: Path) -> dict | None:
     # or the unwrapped record object {"id": ..., "attributes": ...} directly,
     # depending on which endpoint was used to fetch it.
     if isinstance(raw.get("data"), dict):
-        attributes = raw["data"].get("attributes", {})
+        record = raw["data"]
     else:
-        attributes = raw.get("attributes", {})
-    return attributes or None
+        record = raw
+    attributes = record.get("attributes", {})
+    if not attributes:
+        return None
+    # The legacy page id lives on the record itself, not inside its
+    # "attributes" object, but get_page_args() needs it alongside the rest
+    # of the metadata to populate BasicPage.legacy_id.
+    if "id" not in attributes and record.get("id") is not None:
+        attributes = {**attributes, "id": record["id"]}
+    return attributes
 
 
 def extract_importable_html(
@@ -383,16 +394,20 @@ def get_page_args(document_soup, importable_html, attributes, slug: str, site) -
         # hosted Wagtail image, not a URL.
         pass
     author = extract_author(document_soup)
+    legacy_id = attributes.get("id")
     return {
         "title": headline,
         "slug": slug,
         "owner": author,
         "seo_title": seo_title,
         "search_description": extract_og_description(head),
-        "latest_revision_created_at": get_publication_date(attributes),
+        # Kept through publishing (Wagtail only sets it when empty), and the
+        # date feeds list a page under (see feed_item_date).
+        "first_published_at": get_publication_date(attributes),
         "og_type_override": extract_og_type(head),
         "body": json.dumps([{"type": "html", "value": importable_html}]),
         "show_toc": should_show_toc(document_soup),
+        "legacy_id": int(legacy_id) if legacy_id is not None else None,
     }
 
 
@@ -430,6 +445,9 @@ def build_event_page(
         site=site,
     )
     kwargs.pop("show_toc")
+    # EventPage descends from FormServingPage, not BasicPage, so it has no
+    # legacy_id field to store this in.
+    kwargs.pop("legacy_id")
     page = cast(
         EventPage,
         return_class(**kwargs),
@@ -706,6 +724,9 @@ def build_form_page(
         site=site,
     )
     kwargs.pop("show_toc")
+    # FormPage descends from FormServingPage, not BasicPage, so it has no
+    # legacy_id field to store this in.
+    kwargs.pop("legacy_id")
     kwargs["body"] = body_blocks
     page = cast(FormPage, return_class(**kwargs))
     tags_to_apply = get_tags_to_apply_for_legacy_type(get_page_type_attribute(attributes))
@@ -796,6 +817,9 @@ def build_registration_page(
         site=site,
     )
     kwargs.pop("show_toc")
+    # RegistrationPage descends from FormServingPage, not BasicPage, so it
+    # has no legacy_id field.
+    kwargs.pop("legacy_id")
     kwargs["body"] = body_blocks
     return RegistrationPage(**kwargs)
 
@@ -808,7 +832,7 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
     "Donation": build_payment_page,
     "Event": build_event_page,
     "Blog": build_feed_page,
-    "Blog Post": build_underground_basic_page,
+    "Blog Post": build_blog_post,
     "Redirect": build_redirection,
     "Signup": build_registration_page,
     "Volunteer Signup": build_form_page,
@@ -1026,26 +1050,32 @@ class Command(BaseCommand):
                     f"{new_page.__class__.__name__} (slug='{current_slug}'), keeping its subpages in place."
                 )
             else:
+                immediate_parent = root_page
                 if isinstance(new_page, Page):
-                    parent_page_id = attributes.get("parent_id")
-                    if parent_page_id:
-                        parent_page = BasicPage.objects.get(legacy_id=int(parent_page_id))
-                        parent_page.add_child(instance=new_page)
-                    else:
-                        root_page.add_child(instance=new_page)
+                    parent_slug = attributes.get("parent_slug")
+                    if parent_slug:
+                        immediate_parent = Page.objects.get(slug=parent_slug)
+                    immediate_parent.add_child(instance=new_page)
                 elif isinstance(new_page, Redirect):
                     new_page.save()
 
                 self.stdout.write(
                     f"  Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
-                    f" (slug='{current_slug}') under '{root_page.title}'."
+                    f" (slug='{current_slug}') under '{immediate_parent.title}' (pk={immediate_parent.pk})."
                 )
+
+            if isinstance(new_page, Page):
+                # add_child() saves only the page row: the page would be live
+                # but have no revision, so no history and no live_revision.
+                new_page.save_revision().publish()
 
             if is_replacing:
                 self.counter.increment_replaced()
             else:
                 self.counter.increment_imported()
 
+        if slug and not self.counter.has_evaluated_any_pages():
+            raise CommandError(f"'{slug}' was not available for importing.")
         self.stdout.write(self.style.SUCCESS(f"Done. {self.counter.get_summary()}"))
 
     def handle(self, *args, **options) -> None:

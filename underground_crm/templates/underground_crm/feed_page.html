@@ -36,7 +36,13 @@
           {% endif %}
           {% if item.is_external %}&mdash; {{ item.source_title }}{% endif %}
         </p>
-        {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+        {% if item.page.intro %}
+          {% for block in item.page.intro %}
+            {% include_block block %}
+          {% endfor %}
+        {% elif item.summary %}
+          <p>{{ item.summary }}</p>
+        {% endif %}
       </article>
     {% empty %}
       <p>{% translate "There is nothing to show here yet." %}</p>

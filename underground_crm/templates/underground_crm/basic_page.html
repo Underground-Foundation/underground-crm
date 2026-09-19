@@ -10,9 +10,16 @@
             <div class="col-12 mx-auto">
               <div class="content-wrapper">
                 <div id="page-content" class="my-2 mx-1 p-3">
-                  {% for block in page.body %}
-                    {% include_block block %}
-                  {% endfor %}
+                  {% block body_content %}
+                    {% block intro_content %}
+                    {% for block in page.intro %}
+                      {% include_block block %}
+                    {% endfor %}
+                    {% endblock %}
+                    {% for block in page.body %}
+                      {% include_block block %}
+                    {% endfor %}
+                  {% endblock %}
                   {% block extra_body_content %}{% endblock %}
                 </div>
               </div>

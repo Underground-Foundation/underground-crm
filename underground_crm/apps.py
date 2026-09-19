@@ -8,8 +8,12 @@ class UndergroundCrmConfig(AppConfig):
 
     def ready(self) -> None:
         import underground_crm.signals  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+        from underground_crm.feed_routing import (
+            patch_page_routing,
+        )  # pylint: disable=import-outside-toplevel
         from underground_crm.telepath import (
             register_adapters,
         )  # pylint: disable=import-outside-toplevel
 
         register_adapters()
+        patch_page_routing()
