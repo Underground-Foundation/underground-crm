@@ -244,6 +244,17 @@ This creates `<domain>/<slug>.json` (the JSON:API metadata record) and
 `<domain>/<slug>.html` (the full rendered HTML) for each slug. Run it once
 per page you want to migrate.
 
+A paginated listing, such as a blog, shows only its first page of posts. Add
+`--with-pagination` to also fetch the rest, following the links in the page's
+`<ul class="pagination">`:
+
+```bash
+python manage.py fetch_pages --domain fusionparty.org.au --slug news --with-pagination
+```
+
+The further pages are saved beside the first as `<slug>?page=<number>.html`
+(for example `news?page=2.html`).
+
 **Step 2 — parse the HTML and import into Wagtail:**
 
 ```bash

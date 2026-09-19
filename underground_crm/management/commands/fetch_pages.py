@@ -8,6 +8,8 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from underground_crm.management.commands.legacy_api_client import (
+    FIRST_PAGE_NUMBER,
+    fetch_all_page_html,
     fetch_page_html,
     fetch_page_json,
     get_api_headers,
@@ -37,6 +39,15 @@ class Command(BaseCommand):
             required=True,
             help="Page slug to fetch.",
         )
+        parser.add_argument(
+            "--with-pagination",
+            action="store_true",
+            help=(
+                "Also fetch every further page of a paginated listing (a blog, say), "
+                'found through the links in its <ul class="pagination">. They are '
+                "saved as <slug>?page=<number>.html beside <slug>.html."
+            ),
+        )
 
     def handle(self, *args, **options):
         domain = options["domain"]
@@ -61,10 +72,20 @@ class Command(BaseCommand):
         self.stderr.write(f"Saved {json_path}")
 
         self.stderr.write(f"Fetching HTML from https://{domain}/{slug}...")
-        html_bytes, error = fetch_page_html(domain, slug, html_opener)
+        if options["with_pagination"]:
+            pages, error = fetch_all_page_html(domain, slug, html_opener)
+        else:
+            html_bytes, error = fetch_page_html(domain, slug, html_opener)
+            pages = {FIRST_PAGE_NUMBER: html_bytes}
         if error:
             raise CommandError(error)
 
-        html_path = output_dir / f"{slug}.html"
-        html_path.write_bytes(html_bytes)
-        self.stderr.write(f"Saved {html_path}")
+        for page_number, html_bytes in sorted(pages.items()):
+            file_name = (
+                f"{slug}.html"
+                if page_number == FIRST_PAGE_NUMBER
+                else f"{slug}?page={page_number}.html"
+            )
+            html_path = output_dir / file_name
+            html_path.write_bytes(html_bytes)
+            self.stderr.write(f"Saved {html_path}")

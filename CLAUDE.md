@@ -23,9 +23,10 @@ underground_crm/          Django app (the pip-installable library)
   settings.py             Base Django settings — theme projects import and extend these
   site_urls.py            Default root URL configuration — theme projects may override if needed
   legacy_html.py          Rebuilds a legacy page's HTML as StreamField blocks (rich text,
-                          image, button) for import_pages' Blog Post builder — pure bs4, no
-                          Django/Wagtail import, tested in underground_crm/test/ without a
-                          database
+                          image, button) for import_pages' Blog Post builder, and cuts from a
+                          post's body whatever its stub's intro already says
+                          (remove_duplicated_intro) — pure bs4, no Django/Wagtail import,
+                          tested in underground_crm/test/ without a database
   legacy_images.py        Fetches images a decomposed legacy page references and stores
                           them in the Wagtail image library, for legacy_html.py's
                           `image_resolver`

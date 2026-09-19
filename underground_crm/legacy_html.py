@@ -17,8 +17,9 @@ parsing can be exercised in tests without a settings module.
 """
 
 import copy
+import json
 import re
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
@@ -34,12 +35,12 @@ BUTTON_BLOCK = "button"
 ImageResolver = Callable[[str, str], Optional[object]]
 
 # The tags a RichTextBlock built from BASIC_PAGE_BLOCKS' feature list can
-# actually hold: features are h2/h3/h4, bold, italic, link, ol, ul, hr,
-# blockquote and image. Anything outside this set would be discarded the
-# first time an editor opened the page in Draftail, so a node containing one
-# is sent to a Raw HTML block instead, where it survives intact.
+# actually hold: features are h2/h3/h4, bold, italic, underline, link, ol,
+# ul, hr, blockquote and image. Anything outside this set would be discarded
+# the first time an editor opened the page in Draftail, so a node containing
+# one is sent to a Raw HTML block instead, where it survives intact.
 RICH_TEXT_BLOCK_TAGS = frozenset({"p", "h2", "h3", "h4", "ul", "ol", "li", "hr", "blockquote"})
-RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "br"})
+RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "u", "br"})
 
 # Legacy bodies carry their own <h1> (the headline is also the page title) and
 # occasionally an <h5>/<h6>. Draftail offers h2–h4 only, so they are moved to
@@ -126,6 +127,8 @@ _DISCARDABLE_VALUES = {
 
 _BOLD_WEIGHTS = frozenset({"bold", "bolder", "600", "700", "800", "900"})
 _ITALIC_STYLES = frozenset({"italic", "oblique"})
+_UNDERLINE_PROPERTIES = frozenset({"text-decoration", "text-decoration-line"})
+_UNDERLINE_VALUES = frozenset({"underline"})
 
 # Attributes a <span> may carry and still be treated as a pure wrapper. class
 # and id are included because neither can be represented in a Wagtail block:
@@ -180,18 +183,21 @@ def format_style(declarations: List[Tuple[str, str]]) -> str:
     return "; ".join(f"{prop}: {value}" for prop, value in declarations)
 
 
-def _reduce_style(declarations: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], bool, bool]:
+def _reduce_style(
+    declarations: List[Tuple[str, str]],
+) -> Tuple[List[Tuple[str, str]], bool, bool, bool]:
     """
     Drop the presentational noise from a style attribute.
 
     Returns the declarations worth keeping, plus whether the discarded ones
-    asked for bold and italic — those two are not noise, they are markup the
-    legacy editor chose to express as CSS, so the caller re-expresses them as
-    <strong>/<em> rather than losing them.
+    asked for bold, italic and underline — those three are not noise, they
+    are markup the legacy editor chose to express as CSS, so the caller
+    re-expresses them as <strong>/<em>/<u> rather than losing them.
     """
     kept: List[Tuple[str, str]] = []
     is_bold = False
     is_italic = False
+    is_underline = False
     for prop, value in declarations:
         if prop == "font-weight" and value in _BOLD_WEIGHTS:
             is_bold = True
@@ -199,12 +205,15 @@ def _reduce_style(declarations: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, 
         if prop == "font-style" and value in _ITALIC_STYLES:
             is_italic = True
             continue
+        if prop in _UNDERLINE_PROPERTIES and value in _UNDERLINE_VALUES:
+            is_underline = True
+            continue
         if prop in _DISCARDABLE_PROPERTIES:
             continue
         if value in _DISCARDABLE_VALUES.get(prop, frozenset()):
             continue
         kept.append((prop, value))
-    return kept, is_bold, is_italic
+    return kept, is_bold, is_italic, is_underline
 
 
 def _wrap_contents(tag: Tag, name: str) -> None:
@@ -224,11 +233,14 @@ def strip_presentational_markup(root: Tag) -> None:
     ordinary text in a span that asks for the weight it already had. Once the
     declaration is dropped the span has nothing left to say, so it is
     unwrapped and its children become direct children of its own parent.
+    ``text-decoration: underline`` is the same story — genuine markup
+    expressed as CSS — and is re-expressed as ``<u>``, a registered Draftail
+    feature, rather than dropped as noise.
 
-    A span that still carries something meaningful afterwards — a color, an
-    underline — is left standing. That costs its paragraph a rich text block
-    and wins it a raw HTML one, which is the right trade: the styling is
-    preserved rather than silently dropped.
+    A span that still carries something meaningful afterwards — a color, a
+    background — is left standing. That costs its paragraph a rich text
+    block and wins it a raw HTML one, which is the right trade: the styling
+    is preserved rather than silently dropped.
 
     <img> is skipped entirely: nothing from its style attribute reaches a
     Wagtail block, and _image_block() still needs to read the width and float
@@ -244,7 +256,7 @@ def strip_presentational_markup(root: Tag) -> None:
             if tag.name == "img" or tag.decomposed:
                 continue
             declarations = parse_style(tag.get("style", ""))
-            kept, is_bold, is_italic = _reduce_style(declarations)
+            kept, is_bold, is_italic, is_underline = _reduce_style(declarations)
             if kept != declarations:
                 changed = True
                 if kept:
@@ -253,12 +265,14 @@ def strip_presentational_markup(root: Tag) -> None:
                     del tag["style"]
             if tag.name not in _UNWRAPPABLE_TAGS:
                 # A block tag keeps its identity; only the noise went away.
-                # Bold/italic expressed as CSS on a <p> applies to the whole
-                # paragraph, so re-express it inside the paragraph.
+                # Bold/italic/underline expressed as CSS on a <p> applies to
+                # the whole paragraph, so re-express it inside the paragraph.
                 if is_bold:
                     _wrap_contents(tag, "strong")
                 if is_italic:
                     _wrap_contents(tag, "em")
+                if is_underline:
+                    _wrap_contents(tag, "u")
                 continue
             if kept or set(tag.attrs) - _UNWRAPPABLE_SPAN_ATTRIBUTES:
                 continue
@@ -266,6 +280,8 @@ def strip_presentational_markup(root: Tag) -> None:
                 _wrap_contents(tag, "strong")
             if is_italic:
                 _wrap_contents(tag, "em")
+            if is_underline:
+                _wrap_contents(tag, "u")
             tag.unwrap()
             changed = True
 
@@ -689,6 +705,110 @@ def decompose_legacy_content(
     collector = _BlockCollector()
     _collect(_meaningful_children(body), collector, image_resolver)
     return collector.blocks
+
+
+# Elements that are content in their own right even when they hold no text.
+_TEXTLESS_CONTENT_TAGS = ["img", "hr", "iframe", "video", "audio", "embed", "object", "svg"]
+
+
+def blocks_have_content(blocks: List[dict]) -> bool:
+    """
+    Whether any of `blocks` would show a reader something. A rich text or Raw
+    HTML block holding only whitespace and empty tags does not count, but every
+    other kind of block (an image, a button, and so on) does.
+    """
+    for block in blocks:
+        if block["type"] not in (RICH_TEXT_BLOCK, RAW_HTML_BLOCK):
+            return True
+        fragment = BeautifulSoup(str(block["value"]), "html.parser")
+        if fragment.find(_TEXTLESS_CONTENT_TAGS) or _has_content(fragment):
+            return True
+    return False
+
+
+class _Unit(NamedTuple):
+    """
+    The smallest piece of a block that `remove_duplicated_intro` compares: one
+    top-level element of a text block, or a whole block of any other kind.
+    """
+
+    key: str
+    block_index: int
+    # The unit's own markup, for a text block. None for any other kind of block.
+    markup: Optional[str]
+
+
+_SPACE_AROUND_TAGS = re.compile(r"\s*(<[^>]+>)\s*")
+
+
+def _comparable(markup: str) -> str:
+    """`markup` with its whitespace made uniform, so that `<p>\nHello </p>`
+    and `<p>Hello</p>` compare as equal."""
+    return _SPACE_AROUND_TAGS.sub(r"\1", " ".join(markup.split()))
+
+
+def _units(blocks: List[dict]) -> List[_Unit]:
+    units: List[_Unit] = []
+    for index, block in enumerate(blocks):
+        if block["type"] not in (RICH_TEXT_BLOCK, RAW_HTML_BLOCK):
+            key = f"{block['type']}:{json.dumps(block['value'], sort_keys=True)}"
+            units.append(_Unit(key, index, None))
+            continue
+        for child in BeautifulSoup(str(block["value"]), "html.parser").contents:
+            if isinstance(child, NavigableString) and not child.strip():
+                continue
+            markup = str(child)
+            units.append(_Unit(f"{block['type']}:{_comparable(markup)}", index, markup))
+    return units
+
+
+def remove_duplicated_intro(body: List[dict], intro: List[dict]) -> Tuple[List[dict], int]:
+    """
+    Cut from the start of `body` whatever an `intro` already says.
+
+    A blog post's intro is the start of its body, as the legacy blog page
+    excerpted it, so the two begin identically. Comparing whole blocks would
+    miss that, because consecutive paragraphs are merged into a single rich
+    text block: the intro's block is only the first few paragraphs of the
+    body's. So the comparison is between the top-level elements inside the
+    blocks (each paragraph, list or image), and stops at the first one that
+    differs. An element that the intro only quotes part of is not the same
+    element, so it stays in the body in full.
+
+    Returns the remaining body blocks and the number of elements cut. `body`
+    and `intro` are left untouched.
+    """
+    body_units = _units(body)
+    shared = 0
+    for intro_unit, body_unit in zip(_units(intro), body_units):
+        if intro_unit.key != body_unit.key:
+            break
+        shared += 1
+    if not shared:
+        return body, 0
+    if shared == len(body_units):
+        return [], shared
+
+    first_remaining = body_units[shared]
+    block = body[first_remaining.block_index]
+    # Only a text block can be split, and only when the cut fell inside it
+    # rather than on the boundary between it and the block before.
+    cut_inside_block = body_units[shared - 1].block_index == first_remaining.block_index
+    if cut_inside_block and first_remaining.markup is not None:
+        separator = "\n" if block["type"] == RAW_HTML_BLOCK else ""
+        head = [
+            {
+                "type": block["type"],
+                "value": separator.join(
+                    unit.markup
+                    for unit in body_units[shared:]
+                    if unit.block_index == first_remaining.block_index
+                ),
+            }
+        ]
+    else:
+        head = [block]
+    return [*head, *body[first_remaining.block_index + 1 :]], shared
 
 
 def summarise(blocks: List[dict]) -> str:

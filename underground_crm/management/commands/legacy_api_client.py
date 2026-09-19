@@ -4,8 +4,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
+from bs4 import BeautifulSoup
 from django.core.management import CommandError
 
 
@@ -65,14 +66,77 @@ def fetch_pages_json(
     return data.get("data", []), None
 
 
-def fetch_page_html(domain: str, slug: str, html_opener):
-    """Return (html_bytes, None) on success or (None, error_string) on failure."""
+FIRST_PAGE_NUMBER = 1
+
+
+def fetch_page_html(domain: str, slug: str, html_opener, page_number: Optional[int] = None):
+    """Return (html_bytes, None) on success or (None, error_string) on failure.
+
+    `page_number` asks for that page of a paginated listing (``?page=<n>``);
+    leaving it out fetches the page as a visitor first sees it."""
     url = f"https://{domain}/{slug}"
+    if page_number is not None:
+        url += "?" + urllib.parse.urlencode({"page": page_number})
     try:
         with html_opener.open(url) as resp:
             return resp.read(), None
     except urllib.error.HTTPError as e:
         return None, f"HTTP {e.code} fetching {url}"
+
+
+def extract_pagination_page_numbers(html: Union[str, bytes]) -> Set[int]:
+    """
+    The numbers of the pages that a listing's ``<ul class="pagination">`` links
+    to, along with the one it is currently on.
+
+    Each ``<li>`` holds a link whose ``page`` query parameter is the page it
+    goes to. The links that go nowhere are passed over: a "Previous" link on
+    the first page has an empty ``page=``, and the current page's own link is
+    only ``#``, so for that one the number is read from its text instead. A
+    document with no pagination gives an empty set.
+    """
+    pagination = BeautifulSoup(html, "html.parser").find("ul", class_="pagination")
+    if pagination is None:
+        return set()
+    numbers: Set[int] = set()
+    for item in pagination.find_all("li"):
+        link = item.find("a", href=True)
+        if link is None:
+            continue
+        values = urllib.parse.parse_qs(urllib.parse.urlparse(str(link["href"])).query).get("page")
+        label = link.get_text(strip=True)
+        if values and values[0].isdigit():
+            numbers.add(int(values[0]))
+        elif "active" in item.get("class", []) and label.isdigit():
+            numbers.add(int(label))
+    return {number for number in numbers if number >= FIRST_PAGE_NUMBER}
+
+
+def fetch_all_page_html(
+    domain: str, slug: str, html_opener
+) -> Tuple[Dict[int, bytes], Optional[str]]:
+    """
+    Fetch a listing's first page and every other page its pagination reaches.
+
+    A long listing may show only the pages near the current one, so the crawl
+    reads the pagination of each page it fetches, not just the first, until
+    there is no page left that it has not fetched. Returns (pages keyed by
+    number, None) on success, or ({}, error_string) as soon as any fetch fails.
+    """
+    pages: Dict[int, bytes] = {}
+    pending: Set[int] = {FIRST_PAGE_NUMBER}
+    while pending:
+        number = min(pending)
+        pending.discard(number)
+        # The first page is fetched as a visitor would, without a page number.
+        html_bytes, error = fetch_page_html(
+            domain, slug, html_opener, page_number=None if number == FIRST_PAGE_NUMBER else number
+        )
+        if error:
+            return {}, error
+        pages[number] = html_bytes
+        pending |= extract_pagination_page_numbers(html_bytes) - pages.keys()
+    return pages, None
 
 
 def get_api_headers() -> dict:

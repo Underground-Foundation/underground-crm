@@ -235,6 +235,7 @@ BASIC_PAGE_BLOCKS = [
                 "h4",
                 "bold",
                 "italic",
+                "underline",
                 "link",
                 "ol",
                 "ul",

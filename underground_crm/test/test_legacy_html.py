@@ -17,7 +17,9 @@ from underground_crm.legacy_html import (
     RAW_HTML_BLOCK,
     RICH_TEXT_BLOCK,
     decompose_legacy_content,
+    blocks_have_content,
     find_body_container,
+    remove_duplicated_intro,
     strip_presentational_markup,
     summarise,
 )
@@ -40,6 +42,143 @@ def stub_resolver(counter=None):
         return seen[source]
 
     return resolve
+
+
+HEADER_IMAGE = '<img alt="" src="https://example.org/uploads/rally.jpg" style="width: 100%;"/>'
+OPENING_PARAGRAPH = "<p>Something has changed in Australian politics.</p>"
+SECOND_PARAGRAPH = "<p>One Nation's result in South Australia was not a quirky state result.</p>"
+THIRD_PARAGRAPH = "<p>A line has been crossed, and the old assumptions no longer hold.</p>"
+CLOSING_PARAGRAPH = "<p>What we do next is up to all of us.</p>"
+
+
+def html_block(markup: str) -> dict:
+    return {"type": RAW_HTML_BLOCK, "value": markup}
+
+
+def rich_text_block(*paragraphs: str) -> dict:
+    return {"type": RICH_TEXT_BLOCK, "value": "".join(paragraphs)}
+
+
+class TestRemoveDuplicatedIntro(unittest.TestCase):
+    """An intro is the start of the body, as a blog's list excerpted it."""
+
+    def test_the_paragraphs_an_intro_quotes_are_cut_from_the_start_of_a_merged_rich_text_block(
+        self,
+    ):
+        body = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH, THIRD_PARAGRAPH)]
+        intro = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        remaining, _ = remove_duplicated_intro(body, intro)
+        self.assertEqual(remaining, [rich_text_block(THIRD_PARAGRAPH)])
+
+    def test_an_image_and_the_paragraphs_after_it_are_cut_across_block_boundaries(self):
+        body = [html_block(HEADER_IMAGE), rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        intro = [html_block(HEADER_IMAGE), rich_text_block(OPENING_PARAGRAPH)]
+        remaining, _ = remove_duplicated_intro(body, intro)
+        self.assertEqual(remaining, [rich_text_block(SECOND_PARAGRAPH)])
+
+    def test_the_count_is_of_the_elements_cut(self):
+        body = [html_block(HEADER_IMAGE), rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        intro = [html_block(HEADER_IMAGE), rich_text_block(OPENING_PARAGRAPH)]
+        _, cut = remove_duplicated_intro(body, intro)
+        self.assertEqual(
+            cut,
+            len([HEADER_IMAGE, OPENING_PARAGRAPH]),
+            "the image and the opening paragraph are the two elements the intro repeats",
+        )
+
+    def test_a_block_the_cut_ends_exactly_before_is_left_as_it_was(self):
+        untouched = rich_text_block(SECOND_PARAGRAPH, "\n", THIRD_PARAGRAPH)
+        remaining, _ = remove_duplicated_intro(
+            [html_block(HEADER_IMAGE), untouched], [html_block(HEADER_IMAGE)]
+        )
+        self.assertEqual(remaining, [untouched])
+
+    def test_blocks_after_the_cut_are_kept(self):
+        closing = html_block("<iframe src='https://example.org/video'></iframe>")
+        remaining, _ = remove_duplicated_intro(
+            [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH), closing],
+            [rich_text_block(OPENING_PARAGRAPH)],
+        )
+        self.assertEqual(remaining, [rich_text_block(SECOND_PARAGRAPH), closing])
+
+    def test_a_body_the_intro_covers_entirely_is_left_empty(self):
+        body = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        remaining, _ = remove_duplicated_intro(body, body)
+        self.assertEqual(remaining, [])
+
+    def test_nothing_is_cut_when_the_body_does_not_begin_with_the_intro(self):
+        body = [rich_text_block(SECOND_PARAGRAPH, THIRD_PARAGRAPH)]
+        remaining, cut = remove_duplicated_intro(body, [rich_text_block(OPENING_PARAGRAPH)])
+        self.assertEqual(remaining, body)
+        self.assertEqual(cut, 0, "no element of the intro appears at the start of the body")
+
+    def test_cutting_stops_at_the_first_element_that_differs(self):
+        edited_second = "<p>One Nation's result in South Australia was a warning.</p>"
+        body = [rich_text_block(OPENING_PARAGRAPH, edited_second, THIRD_PARAGRAPH)]
+        intro = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH, THIRD_PARAGRAPH)]
+        remaining, _ = remove_duplicated_intro(body, intro)
+        self.assertEqual(
+            remaining,
+            [rich_text_block(edited_second, THIRD_PARAGRAPH)],
+            "a repeat of the third paragraph after an edited second one is not part of the intro",
+        )
+
+    def test_a_paragraph_the_intro_only_partly_quotes_stays_in_full(self):
+        truncated = "<p>One Nation's result in South Australia was not…</p>"
+        body = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        remaining, _ = remove_duplicated_intro(
+            body, [rich_text_block(OPENING_PARAGRAPH, truncated)]
+        )
+        self.assertEqual(remaining, [rich_text_block(SECOND_PARAGRAPH)])
+
+    def test_differences_in_whitespace_do_not_matter(self):
+        body = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        spaced_intro = [
+            rich_text_block("<p>\n  Something has changed in   Australian politics.\n</p>")
+        ]
+        remaining, _ = remove_duplicated_intro(body, spaced_intro)
+        self.assertEqual(remaining, [rich_text_block(SECOND_PARAGRAPH)])
+
+    def test_identical_button_blocks_are_recognised(self):
+        donate = {"type": BUTTON_BLOCK, "value": {"text": "Donate", "url": "/donate"}}
+        remaining, _ = remove_duplicated_intro(
+            [donate, rich_text_block(OPENING_PARAGRAPH)], [dict(donate)]
+        )
+        self.assertEqual(remaining, [rich_text_block(OPENING_PARAGRAPH)])
+
+    def test_an_empty_intro_cuts_nothing(self):
+        body = [rich_text_block(OPENING_PARAGRAPH)]
+        self.assertEqual(remove_duplicated_intro(body, []), (body, 0))
+
+    def test_the_arguments_are_not_modified(self):
+        body = [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)]
+        intro = [rich_text_block(OPENING_PARAGRAPH)]
+        remove_duplicated_intro(body, intro)
+        self.assertEqual(body, [rich_text_block(OPENING_PARAGRAPH, SECOND_PARAGRAPH)])
+        self.assertEqual(intro, [rich_text_block(OPENING_PARAGRAPH)])
+
+    def test_raw_html_blocks_are_split_like_rich_text(self):
+        body = [html_block(f"{HEADER_IMAGE}\n{CLOSING_PARAGRAPH}")]
+        remaining, _ = remove_duplicated_intro(body, [html_block(HEADER_IMAGE)])
+        self.assertEqual(remaining, [html_block(CLOSING_PARAGRAPH)])
+
+
+class TestBlocksHaveContent(unittest.TestCase):
+    def test_no_blocks_have_no_content(self):
+        self.assertFalse(blocks_have_content([]))
+
+    def test_a_rich_text_block_of_blank_paragraphs_has_no_content(self):
+        self.assertFalse(blocks_have_content([rich_text_block("<p>&nbsp;</p>", "<p> </p>")]))
+
+    def test_a_paragraph_of_text_is_content(self):
+        self.assertTrue(blocks_have_content([rich_text_block(OPENING_PARAGRAPH)]))
+
+    def test_a_raw_html_block_with_only_an_image_is_content(self):
+        self.assertTrue(blocks_have_content([html_block(HEADER_IMAGE)]))
+
+    def test_a_button_is_content(self):
+        button = {"type": BUTTON_BLOCK, "value": {"text": "Donate", "url": "/donate"}}
+        self.assertTrue(blocks_have_content([button]))
 
 
 class TestStripPresentationalMarkup(unittest.TestCase):
@@ -73,6 +212,36 @@ class TestStripPresentationalMarkup(unittest.TestCase):
         soup = parse('<p><span style="font-style: italic;">Sincerely</span></p>')
         strip_presentational_markup(soup)
         self.assertEqual(str(soup), "<p><em>Sincerely</em></p>")
+
+    def test_underline_expressed_as_css_becomes_u(self):
+        """
+        text-decoration: underline is the legacy editor's own underline
+        button, not Google Docs noise, so it survives as <u> — a registered
+        Draftail feature (see register_underline_feature in wagtail_hooks.py)
+        — rather than pushing the paragraph into a raw HTML block.
+        """
+        soup = parse(
+            '<p><span style="text-decoration: underline;">'
+            "If you are a member, now is the time to act like it matters."
+            "</span></p>"
+        )
+        strip_presentational_markup(soup)
+        self.assertEqual(
+            str(soup),
+            "<p><u>If you are a member, now is the time to act like it matters.</u></p>",
+        )
+
+    def test_underline_combines_with_bold(self):
+        soup = parse(
+            '<p><strong><span style="text-decoration: underline;">' "Act now" "</span></strong></p>"
+        )
+        strip_presentational_markup(soup)
+        self.assertEqual(str(soup), "<p><strong><u>Act now</u></strong></p>")
+
+    def test_css_underline_on_a_paragraph_wraps_its_contents(self):
+        soup = parse('<p style="text-decoration: underline;">Take note</p>')
+        strip_presentational_markup(soup)
+        self.assertEqual(str(soup), "<p><u>Take note</u></p>")
 
     def test_meaningful_span_is_kept(self):
         """A colour cannot be expressed as a block, so the span stays to be preserved verbatim."""

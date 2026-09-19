@@ -100,6 +100,7 @@ class FakeImageModel:
 
 def build_resolver(session=None, image_model=None, **kwargs) -> RemoteImageResolver:
     kwargs.setdefault("legacy_asset_urls", (LEGACY_ASSET_URL,))
+    kwargs.setdefault("satisfactory_image_domains", ())
     resolver = RemoteImageResolver(**kwargs)
     resolver.session = session or FakeSession()
     model = image_model or FakeImageModel()
@@ -156,9 +157,51 @@ class TestSourceEligibility(unittest.TestCase):
     def test_a_url_not_prefixed_by_a_legacy_asset_url_is_skipped_even_if_absolute(self):
         session = FakeSession()
         resolver = build_resolver(session)
-        self.assertIsNone(resolver("https://www.fusionparty.org.au/uploads/banner.png", ""))
+        self.assertIsNone(resolver("https://www.fusionparty.org.au/photos/banner.png", ""))
         self.assertEqual(session.requested, [])
         self.assertEqual(resolver.skipped, 1)
+
+    def test_a_url_with_uploads_in_the_path_is_internalized_even_off_a_legacy_asset_url(self):
+        url = "https://cdn.example.test/uploads/banner.png"
+        session = FakeSession({url: FakeResponse(png_bytes())})
+        resolver = build_resolver(session)
+        self.assertIsNotNone(resolver(url, ""))
+        self.assertEqual(session.requested, [url])
+
+    def test_a_url_on_a_satisfactory_domain_is_skipped_even_with_uploads_in_the_path(self):
+        session = FakeSession()
+        resolver = build_resolver(session, satisfactory_image_domains=("fusionparty.org.au",))
+        self.assertIsNone(resolver("https://fusionparty.org.au/uploads/banner.png", ""))
+        self.assertEqual(session.requested, [])
+        self.assertEqual(resolver.skipped, 1)
+
+    def test_a_url_on_a_satisfactory_domain_is_skipped_even_if_it_matches_a_legacy_asset_url(self):
+        # A satisfactory domain wins even over an explicit LEGACY_ASSET_URLS
+        # prefix match: it's already ours, so there's nothing to fetch.
+        session = FakeSession()
+        resolver = build_resolver(
+            session, satisfactory_image_domains=("assets.legacycrm.example.com",)
+        )
+        self.assertIsNone(resolver(f"{LEGACY_ASSET_URL}/banner.png", ""))
+        self.assertEqual(session.requested, [])
+        self.assertEqual(resolver.skipped, 1)
+
+    def test_a_satisfactory_domain_matches_a_subdomain_too(self):
+        session = FakeSession()
+        resolver = build_resolver(session, satisfactory_image_domains=("fusionparty.org.au",))
+        self.assertIsNone(resolver("https://cdn.fusionparty.org.au/uploads/banner.png", ""))
+        self.assertEqual(session.requested, [])
+        self.assertEqual(resolver.skipped, 1)
+
+    def test_satisfactory_image_domains_defaults_to_the_environment_variable(self):
+        url = "https://fusionparty.org.au/uploads/banner.png"
+        session = FakeSession({url: FakeResponse(png_bytes())})
+        with mock.patch.dict(os.environ, {"SATISFACTORY_IMAGE_DOMAINS": "fusionparty.org.au"}):
+            resolver = RemoteImageResolver(legacy_asset_urls=())
+        resolver.session = session
+        resolver._image_model = lambda: FakeImageModel()  # pylint: disable=protected-access
+        self.assertIsNone(resolver(url, ""))
+        self.assertEqual(session.requested, [])
 
     def test_a_url_on_the_same_host_but_a_different_path_is_skipped(self):
         # LEGACY_ASSET_URLS is a prefix match, not just a host match: a

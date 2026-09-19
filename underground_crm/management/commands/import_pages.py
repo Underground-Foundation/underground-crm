@@ -9,16 +9,21 @@ For each <slug>.html found in <domain>/, the command:
   1. Reads <domain>/<slug>.json to determine the page type and title.
   2. Extracts the page's article content (see extract_importable_html) and
      writes it to <domain>/importable/<slug>.html.
-  3. Creates (or replaces) the corresponding Wagtail page using that content
-     as a Raw HTML body block.
+  3. Creates (or replaces) the corresponding Wagtail page, rebuilding the
+     article content as StreamField blocks (see
+     underground_crm.legacy_html.decompose_legacy_content), falling back to
+     a single Raw HTML body block when nothing could be decomposed.
 
 Supported page types:
   "Basic"            -> UndergroundBasicPage
   "Calendar"         -> FeedPage (ordered soonest first, as an events index)
   "Donation"         -> PaymentPage
   "Event"            -> EventPage
-  "Blog"             -> FeedPage (ordered newest first)
-  "Blog Post"        -> UndergroundBasicPage
+  "Blog"             -> FeedPage (ordered newest first), with a stub BlogPost
+                        for each post in its list (see build_blog_post_stubs)
+  "Blog Post"        -> BlogPost (keeping the intro of a stub made from its
+                        blog's list, and cutting the intro's text from the
+                        start of the body; see build_blog_post)
   "Redirect"         -> Redirect
   "Signup"           -> RegistrationPage (the <form>'s fields become
                         person_field StreamField blocks when they match
@@ -42,6 +47,7 @@ from dataclasses import dataclass
 from dateutil import parser
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, cast
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
@@ -58,6 +64,13 @@ from underground_crm.contactability import (
     parse_address,
 )
 from underground_crm.blocks import registration_person_field_names
+from underground_crm.legacy_html import (
+    BUTTON_BLOCK,
+    RAW_HTML_BLOCK,
+    blocks_have_content,
+    decompose_legacy_content,
+    remove_duplicated_intro,
+)
 from underground_crm.models import Address, FeedPage, UndergroundBasicPage
 from underground_crm.models import Tag as CrmTag
 from underground_crm.models.pages import (
@@ -398,7 +411,39 @@ def extract_event_population(soup: BeautifulSoup):
     return None
 
 
-def get_page_args(document_soup, importable_html, attributes, slug: str, site) -> dict:
+def build_body_blocks(document_soup: BeautifulSoup, importable_html: str) -> List[dict]:
+    """
+    The page's article content as StreamField blocks.
+
+    decompose_legacy_content() does its own narrowing down to the article
+    container (see find_body_container), so it is handed the full,
+    un-narrowed ``id="content"`` element straight from the document rather
+    than the already-narrowed `importable_html` — narrowing it twice would
+    have decompose_legacy_content search for that container *inside itself*
+    and find nothing to descend into. `importable_html` is kept as the
+    fallback for when nothing could be decomposed (an empty content element,
+    or one this narrowing does not recognise at all).
+    """
+    content_element = document_soup.find(id="content")
+    blocks = decompose_legacy_content(content_element) if content_element is not None else []
+    if blocks:
+        return blocks
+    return [{"type": RAW_HTML_BLOCK, "value": importable_html}]
+
+
+def get_page_args(
+    document_soup,
+    importable_html,
+    attributes,
+    slug: str,
+    site,
+    body_blocks: Optional[List[dict]] = None,
+) -> dict:
+    """
+    The keyword arguments common to every imported page. `body_blocks` is the
+    page's body when the caller has already built (and adjusted) it; otherwise
+    it is built here from the document.
+    """
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
     # The name attribute is an administrative label for the page. The headline is what public viewers see as a
@@ -411,6 +456,7 @@ def get_page_args(document_soup, importable_html, attributes, slug: str, site) -
         pass
     author = extract_author(document_soup)
     legacy_id = attributes.get("id")
+    publication_date = get_publication_date(attributes)
     return {
         "title": headline,
         "slug": slug,
@@ -419,9 +465,16 @@ def get_page_args(document_soup, importable_html, attributes, slug: str, site) -
         "search_description": extract_og_description(head),
         # Kept through publishing (Wagtail only sets it when empty), and the
         # date feeds list a page under (see feed_item_date).
-        "first_published_at": get_publication_date(attributes),
+        "first_published_at": publication_date,
+        # The "Publication time" shown when the page is edited. A time in the
+        # past does not hold the page back; only a future one schedules it.
+        "go_live_at": publication_date,
         "og_type_override": extract_og_type(head),
-        "body": json.dumps([{"type": "html", "value": importable_html}]),
+        "body": json.dumps(
+            body_blocks
+            if body_blocks is not None
+            else build_body_blocks(document_soup, importable_html)
+        ),
         "show_toc": should_show_toc(document_soup),
         "legacy_id": int(legacy_id) if legacy_id is not None else None,
     }
@@ -493,6 +546,29 @@ def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
     return len(list_items)
 
 
+def build_feed_body_blocks(document_soup: BeautifulSoup, legacy_id: Optional[str]) -> List[dict]:
+    """
+    The body of a legacy Blog page, without its ``<ul id="blog-page-<id>">``
+    of posts.
+
+    A FeedPage's template lists its children itself, so importing the legacy
+    list into the body too would show every post twice. Whatever else the
+    page holds (an introduction above the list, say) is kept; a page holding
+    nothing else gets an empty body, not the Raw HTML fallback that
+    build_body_blocks would otherwise reach for, since that would carry the
+    list in again.
+
+    Works on a copy: the caller still needs the list to make the stubs (see
+    build_blog_post_stubs) and to size the page.
+    """
+    without_list = copy.copy(document_soup)
+    post_list = without_list.find("ul", id=f"blog-page-{legacy_id}")
+    if post_list is not None:
+        post_list.decompose()
+    content_element = without_list.find(id="content")
+    return decompose_legacy_content(content_element) if content_element is not None else []
+
+
 def build_feed_page(
     document_soup,
     importable_html: str,
@@ -508,6 +584,11 @@ def build_feed_page(
         attributes=attributes,
         slug=slug,
         site=site,
+        body_blocks=(
+            build_feed_body_blocks(document_soup, attributes.get("id"))
+            if ordering == FeedPage.Ordering.NEWEST_FIRST
+            else None
+        ),
     )
     kwargs.pop("show_toc")
     page = cast(
@@ -592,23 +673,164 @@ def build_blog_post(
     slug: str,
     site: Site,
     return_class=BlogPost,
+    existing_intro: Optional[List[dict]] = None,
 ) -> BlogPost:
+    """
+    Build and return an unsaved BlogPost from imported HTML content.
+
+    `existing_intro` is the intro of the stub that the blog page's list already
+    made for this post (see build_blog_post_stubs), or None when there was no
+    stub. The post keeps that intro, and whatever the intro already says is cut
+    from the start of the body so that it is not shown twice.
+    """
+    body_blocks = build_body_blocks(document_soup, importable_html)
+    if existing_intro is not None:
+        body_blocks, duplicated = remove_duplicated_intro(body_blocks, existing_intro)
+        logger.info(
+            "    [intro] cut %s duplicated element(s) from the body of '%s'.", duplicated, slug
+        )
     page = cast(
         BlogPost,
-        build_underground_basic_page(
-            document_soup=document_soup,
-            importable_html=importable_html,
-            attributes=attributes,
-            slug=slug,
-            site=site,
-            return_class=return_class,
+        return_class(
+            **get_page_args(
+                document_soup=document_soup,
+                importable_html=importable_html,
+                attributes=attributes,
+                slug=slug,
+                site=site,
+                body_blocks=body_blocks,
+            )
         ),
     )
+    if existing_intro is not None:
+        page.intro = json.dumps(existing_intro)
     # BlogPost is the only page type with its own author field (distinct from
     # the inherited "owner") — get_page_args() no longer sets it, since every
     # other page type this is called for lacks that field entirely.
     page.author = extract_author(document_soup)
     return page
+
+
+class BlogPostListing(NamedTuple):
+    """One entry of a legacy blog page's list of posts, before it becomes a BlogPost."""
+
+    slug: str
+    title: str
+    author_name: Optional[str]
+    published_at: Optional[datetime.datetime]
+    intro: List[dict]
+
+
+def _blog_post_slug(header: Tag) -> Optional[str]:
+    """The slug a listed post lives at, taken from the link its title carries."""
+    link = header.find("a", href=True)
+    if link is None:
+        return None
+    segments = [segment for segment in urlparse(str(link["href"])).path.split("/") if segment]
+    return segments[-1] if segments else None
+
+
+def _blog_post_published_at(header: Tag) -> Optional[datetime.datetime]:
+    """
+    The date in a listed post's byline, e.g. "Posted by Drew Wolfendale · April
+    15, 2026 10:49 AM", read in the site's own time zone. None when the byline
+    is missing or worded differently.
+    """
+    byline = header.find("p")
+    if byline is None or "·" not in byline.get_text():
+        return None
+    raw_date = " ".join(byline.get_text().rsplit("·", 1)[1].split())
+    try:
+        naive = datetime.datetime.strptime(raw_date, "%B %d, %Y %I:%M %p")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=ZoneInfo(settings.TIME_ZONE))
+
+
+def _without_read_more_button(blocks: List[dict], slug: str) -> List[dict]:
+    """
+    Drop the "Read more" button the legacy list appends to each excerpt. The
+    excerpt becomes the post's own intro, where a button linking back to the
+    post itself would be pointless; the feed's listing links to each post on
+    its own.
+    """
+    if blocks and blocks[-1]["type"] == BUTTON_BLOCK:
+        destination = urlparse(blocks[-1]["value"]["url"]).path.strip("/")
+        if destination == slug:
+            return blocks[:-1]
+    return blocks
+
+
+def extract_blog_post_listings(
+    document_soup: BeautifulSoup, legacy_id: Optional[str]
+) -> List[BlogPostListing]:
+    """
+    Read the posts out of a legacy blog page's ``<ul id="blog-page-<id>">``.
+
+    Each child ``<li>`` has a ``<header>`` (the title in its ``<h3>``, the slug
+    in that title's link, the author and date in its byline) and a ``<div>``
+    holding the post's excerpt, which is deconstructed exactly as a Basic
+    page's content is. An ``<li>`` missing either child, or whose header gives
+    no slug or title, is reported and left out.
+    """
+    post_list = document_soup.find("ul", id=f"blog-page-{legacy_id}")
+    if post_list is None:
+        logger.warning("No <ul id='blog-page-%s'> could be found for this blog.", legacy_id)
+        return []
+    listings = []
+    for item in post_list.find_all("li", recursive=False):
+        header = item.find("header", recursive=False)
+        excerpt = item.find("div", recursive=False)
+        if header is None or excerpt is None:
+            logger.warning("Skipping <li id='%s'>: no header or no excerpt.", item.get("id"))
+            continue
+        slug = _blog_post_slug(header)
+        heading = header.find("h3")
+        title = " ".join(heading.get_text().split()) if heading else ""
+        if not slug or not title:
+            logger.warning("Skipping <li id='%s'>: no slug or no title.", item.get("id"))
+            continue
+        author = header.find("span", class_="linked-signup-name")
+        listings.append(
+            BlogPostListing(
+                slug=slug,
+                title=title,
+                author_name=author.get_text(strip=True) if author else None,
+                published_at=_blog_post_published_at(header),
+                intro=_without_read_more_button(decompose_legacy_content(excerpt), slug),
+            )
+        )
+    return listings
+
+
+def build_blog_post_stubs(
+    document_soup: BeautifulSoup, attributes: Dict[str, Any], site: Site
+) -> List[BlogPost]:
+    """
+    Build an unsaved BlogPost for each post in a legacy blog page's list.
+
+    These are stubs: the list carries only each post's title, author, date and
+    excerpt (which becomes its `intro`), so the body is empty until the post's
+    own page is imported. The caller is responsible for saving them beneath the
+    blog's FeedPage.
+    """
+    stubs = []
+    for listing in extract_blog_post_listings(document_soup, attributes.get("id")):
+        author = (
+            get_ambiguous_admin_by_full_name(listing.author_name) if listing.author_name else None
+        )
+        stubs.append(
+            BlogPost(
+                title=listing.title,
+                slug=listing.slug,
+                owner=author,
+                author=author,
+                first_published_at=listing.published_at,
+                go_live_at=listing.published_at,
+                intro=json.dumps(listing.intro),
+            )
+        )
+    return stubs
 
 
 # Input types that aren't real user-facing fields, so extract_form_inputs()
@@ -840,6 +1062,25 @@ def build_registration_page(
     return RegistrationPage(**kwargs)
 
 
+# fetch_pages --with-pagination saves each further page of a listing as
+# "<slug>?page=<number>.html". They are read as part of the listing they belong
+# to, never imported as pages of their own.
+_PAGINATED_FILE_STEM = re.compile(r"^(?P<slug>.+)\?page=(?P<number>\d+)$")
+
+
+def find_paginated_pages(domain_dir: Path, slug: str) -> List[Path]:
+    """The further pages of the listing `slug` that were fetched into
+    `domain_dir`, in page order."""
+    found = []
+    for path in domain_dir.glob("*.html"):
+        match = _PAGINATED_FILE_STEM.match(path.stem)
+        if match and match["slug"] == slug:
+            found.append((int(match["number"]), path))
+    return [path for _, path in sorted(found)]
+
+
+BLOG_POST_TYPE_NAME = "Blog Post"
+
 PAGE_BUILDING_MAP: dict[str, Any] = {
     "Basic": build_underground_basic_page,
     # A legacy calendar is a feed of events, so it becomes a FeedPage whose
@@ -848,13 +1089,38 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
     "Donation": build_payment_page,
     "Event": build_event_page,
     "Blog": build_feed_page,
-    "Blog Post": build_blog_post,
+    BLOG_POST_TYPE_NAME: build_blog_post,
     "Redirect": build_redirection,
     "Signup": build_registration_page,
     "Volunteer Signup": build_form_page,
     "Feedback": build_form_page,
     "Suggestion Box": build_form_page,
     "Political Capital": build_underground_basic_page,
+}
+
+
+def get_unfilled_stub_intro(existing: Page, attributes: Dict[str, Any]) -> Optional[List[dict]]:
+    """
+    The intro of `existing` when it is a stub that importing a Blog Post can
+    fill in, otherwise None.
+
+    A page counts as such a stub when it is a BlogPost that has no meaningful
+    body yet, which is how build_blog_post_stubs leaves every post it makes.
+    Anything with a body of its own is never treated as one, so it is only
+    overwritten when the caller asks for that with --replace.
+    """
+    if get_page_type_attribute(attributes) != BLOG_POST_TYPE_NAME:
+        return None
+    post = existing.specific
+    if not isinstance(post, BlogPost) or blocks_have_content(post.body.get_prep_value()):
+        return None
+    return [
+        {"type": block["type"], "value": block["value"]} for block in post.intro.get_prep_value()
+    ]
+
+
+CHILD_STUB_BUILDING_MAP: dict[str, Any] = {
+    "Blog": build_blog_post_stubs,
 }
 
 
@@ -952,6 +1218,50 @@ class Command(BaseCommand):
         self.counter.increment_skipped()
         return None
 
+    def _get_child_stub_builder(
+        self, attributes: dict, stub_building_map: dict
+    ) -> Optional[Callable]:
+        """The function that builds stubs for the child pages a legacy page's
+        content lists, or None for a page type that lists none."""
+        return stub_building_map.get(get_page_type_attribute(attributes))
+
+    def _create_child_stubs(
+        self,
+        stub_builder: Callable,
+        document_soups: List[BeautifulSoup],
+        attributes: dict,
+        site: Site,
+        parent: Page,
+    ) -> None:
+        """
+        Save the stubs `stub_builder` makes beneath `parent`, from each of the
+        listing's pages in turn. A stub whose slug already belongs to a page is
+        left alone, so a post that was imported in full before its listing is
+        not overwritten (or made to collide) by its excerpt, and neither is a
+        post that shifted onto a second page between one page's fetch and the
+        next.
+        """
+        for document_soup in document_soups:
+            for stub in stub_builder(document_soup, attributes, site):
+                if Page.objects.filter(slug=stub.slug).exists():
+                    self.stderr.write(
+                        f"    [skip] stub '{stub.slug}': a page with that slug exists."
+                    )
+                    continue
+                parent.add_child(instance=stub)
+                stub.save_revision().publish()
+                self.stdout.write(
+                    f"    Created stub {stub.__class__.__name__} '{stub.slug}' under '{parent.title}'."
+                )
+
+    def _read_paginated_pages(self, domain_dir: Path, slug: str) -> List[BeautifulSoup]:
+        """The parsed further pages of the listing `slug`, in page order."""
+        soups = []
+        for path in find_paginated_pages(domain_dir, slug):
+            self.stdout.write(f"  Reading listing page '{path.name}'.")
+            soups.append(BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser"))
+        return soups
+
     def create_pages_from_path(
         self,
         domain_dir: Path,
@@ -959,9 +1269,11 @@ class Command(BaseCommand):
         page_building_map: Dict[str, Page],
         site: Site,
         slug: Optional[str],
+        child_stub_building_map: Optional[Dict[str, Callable]] = None,
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
+        child_stub_building_map = child_stub_building_map or {}
 
         importable_dir = domain_dir / "importable"
         importable_dir.mkdir(exist_ok=True)
@@ -990,6 +1302,8 @@ class Command(BaseCommand):
             return
 
         for html_file in html_files:
+            if _PAGINATED_FILE_STEM.match(html_file.stem):
+                continue
             current_slug = html_file.stem
             if slug and current_slug != slug:
                 continue
@@ -1007,8 +1321,20 @@ class Command(BaseCommand):
             if not page_builder:
                 continue
 
+            extracted = extract_importable_html(html_file, importable_dir)
+            if extracted is None:
+                self.stderr.write(
+                    f"  [skip] no element with id='content' found in '{html_file.name}'."
+                )
+                self.counter.increment_skipped()
+                continue
+
+            self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
+            document_soup, importable_html = extracted
+
             replacing_root = is_site_root(attributes)
             is_replacing = False
+            stub_intro: Optional[List[dict]] = None
 
             if replacing_root:
                 if root_page.slug == current_slug and not should_replace:
@@ -1026,7 +1352,9 @@ class Command(BaseCommand):
                     existing = Page.objects.filter(slug=current_slug).first()
 
                 if existing is not None:
-                    if not should_replace:
+                    if isinstance(existing, Page):
+                        stub_intro = get_unfilled_stub_intro(existing, attributes)
+                    if stub_intro is None and not should_replace:
                         self.stderr.write(
                             f"  [skip] page with slug '{current_slug}' already exists. "
                             "Pass --replace to overwrite it."
@@ -1034,28 +1362,22 @@ class Command(BaseCommand):
                         self.counter.increment_skipped()
                         continue
                     self.stdout.write(
-                        f"  Deleting existing page '{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
+                        f"  Deleting existing {'stub ' if stub_intro is not None else ''}page "
+                        f"'{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
                     )
                     existing.delete()
                     root_page.refresh_from_db()
                     is_replacing = True
 
-            extracted = extract_importable_html(html_file, importable_dir)
-            if extracted is None:
-                self.stderr.write(
-                    f"  [skip] no element with id='content' found in '{html_file.name}'."
-                )
-                self.counter.increment_skipped()
-                continue
-
-            self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
-            document_soup, importable_html = extracted
+            # Only a Blog Post builder can use a stub's intro.
+            builder_extras = {"existing_intro": stub_intro} if stub_intro is not None else {}
             new_page: UndergroundBasicPage = page_builder(
                 document_soup=document_soup,
                 importable_html=importable_html,
                 attributes=attributes,
                 slug=current_slug,
                 site=site,
+                **builder_extras,
             )
             if replacing_root:
                 old_root = root_page
@@ -1084,6 +1406,15 @@ class Command(BaseCommand):
                 # add_child() saves only the page row: the page would be live
                 # but have no revision, so no history and no live_revision.
                 new_page.save_revision().publish()
+                stub_builder = self._get_child_stub_builder(attributes, child_stub_building_map)
+                if stub_builder:
+                    self._create_child_stubs(
+                        stub_builder,
+                        [document_soup, *self._read_paginated_pages(domain_dir, current_slug)],
+                        attributes,
+                        site,
+                        parent=new_page,
+                    )
 
             if is_replacing:
                 self.counter.increment_replaced()
@@ -1102,4 +1433,5 @@ class Command(BaseCommand):
             page_building_map=PAGE_BUILDING_MAP,
             site=get_site_from_options(options),
             slug=options.get("slug"),
+            child_stub_building_map=CHILD_STUB_BUILDING_MAP,
         )

@@ -7,10 +7,16 @@ not a remote URL. So each ``<img src="...">`` pointing at a legacy asset host,
 encountered during a decomposition, has to be fetched once and registered as
 a Wagtail image before the block can point at it.
 
-The resolver is deliberately forgiving. Anything it cannot fetch — a source
-that isn't a legacy asset, a dead host, an SVG Wagtail is not configured to
-accept — returns None, and the decomposition keeps that one ``<img>`` in a
-Raw HTML block pointing at the original URL. A broken picture is not worth
+An absolute <img src> is only worth fetching when it's prefixed by one of
+LEGACY_ASSET_URLS or has "/uploads/" in its path -- and never when its host is
+one of SATISFACTORY_IMAGE_DOMAINS, which overrides both of those (an image
+already served from our own domain has nothing to fetch or duplicate). A
+relative src is always internalized, exempt from all three checks, since it
+was only ever relative to the legacy page itself.
+
+The resolver is deliberately forgiving. Anything it cannot or should not
+fetch returns None, and the decomposition keeps that one ``<img>`` in a Raw
+HTML block pointing at the original URL. A broken picture is not worth
 failing an import over.
 """
 
@@ -38,6 +44,19 @@ def legacy_asset_urls_from_env() -> tuple:
     """
     raw = os.environ.get("LEGACY_ASSET_URLS", "")
     return tuple(url.strip().rstrip("/") for url in raw.split(",") if url.strip())
+
+
+def satisfactory_image_domains_from_env() -> tuple:
+    """
+    Domains, defined in SATISFACTORY_IMAGE_DOMAINS, that our own site's images
+    are already properly served from. An absolute <img src> already pointing at
+    one of these is left exactly as it is rather than internalized -- it's
+    already ours, so there is nothing to fetch and duplicate into the image
+    library. This takes priority over LEGACY_ASSET_URLS and the "/uploads/"
+    rule below.
+    """
+    raw = os.environ.get("SATISFACTORY_IMAGE_DOMAINS", "")
+    return tuple(domain.strip().lower() for domain in raw.split(",") if domain.strip())
 
 
 # Wagtail rejects an upload whose extension is not in WAGTAILIMAGES_EXTENSIONS,
@@ -68,12 +87,18 @@ class RemoteImageResolver:
         self,
         base_url: str = "",
         legacy_asset_urls: Optional[tuple] = None,
+        satisfactory_image_domains: Optional[tuple] = None,
         timeout: int = DEFAULT_TIMEOUT,
         stdout=None,
     ):
         self.base_url = base_url
         self.legacy_asset_urls = (
             legacy_asset_urls if legacy_asset_urls is not None else legacy_asset_urls_from_env()
+        )
+        self.satisfactory_image_domains = (
+            satisfactory_image_domains
+            if satisfactory_image_domains is not None
+            else satisfactory_image_domains_from_env()
         )
         self.timeout = timeout
         self.stdout = stdout
@@ -117,10 +142,16 @@ class RemoteImageResolver:
         # relative to the legacy body it came from, needs to be internalized,
         # just like an image with the explicit legacy asset URL.
         was_relative = not urlparse(source).scheme
-        if not was_relative and not url.startswith(self.legacy_asset_urls):
-            self.skipped += 1
-            self._report(f"    [image] skipped '{url}': not a legacy asset URL.")
-            return None
+        if not was_relative:
+            host = urlparse(url).netloc.split(":")[0].lower()
+            if self._matches_domain(host, self.satisfactory_image_domains):
+                self.skipped += 1
+                self._report(f"    [image] skipped '{url}': already served from our own domain.")
+                return None
+            if not (url.startswith(self.legacy_asset_urls) or "/uploads/" in urlparse(url).path):
+                self.skipped += 1
+                self._report(f"    [image] skipped '{url}': not a legacy asset URL.")
+                return None
 
         filename = self._filename(url)
         if PurePosixPath(filename).suffix.lower() in UNSUPPORTED_SUFFIXES:
@@ -163,6 +194,11 @@ class RemoteImageResolver:
         self.fetched += 1
         self._report(f"    [image] stored '{image.title}' as image {image.pk}.")
         return image.pk
+
+    @staticmethod
+    def _matches_domain(host: str, domains: tuple) -> bool:
+        """True when `host` is one of `domains`, or a subdomain of one."""
+        return any(host == domain or host.endswith(f".{domain}") for domain in domains)
 
     @staticmethod
     def _image_model():

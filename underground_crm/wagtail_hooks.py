@@ -3,14 +3,54 @@ from django.utils.translation import gettext_lazy as _
 
 from django.contrib.auth.models import Group
 
+import wagtail.admin.rich_text.editors.draftail.features as draftail_features
 from wagtail import hooks
 from wagtail.admin.menu import MenuItem
 from wagtail.admin.panels import FieldPanel
+from wagtail.admin.rich_text.converters.html_to_contentstate import InlineStyleElementHandler
 from wagtail.contrib.redirects.permissions import permission_policy as redirects_permission_policy
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 
 from .models import Engagement, Tag
+
+
+@hooks.register("register_rich_text_features")
+def register_underline_feature(features):
+    """
+    Register ``<u>`` as an opt-in Draftail feature named "underline".
+
+    Wagtail does not ship this by default — only "bold" and "italic" are
+    built in. It is not added to ``features.default_features``, so it stays
+    opt-in: a RichTextField/RichTextBlock only gets the toolbar button and
+    the <u> <-> UNDERLINE conversion when it names "underline" in its own
+    features list (see BASIC_PAGE_BLOCKS in underground_crm/models/pages.py,
+    which underground_crm/legacy_html.py's decomposition relies on when it
+    re-expresses a legacy ``text-decoration: underline`` as <u>).
+    """
+    feature_name = "underline"
+    type_ = "UNDERLINE"
+    tag = "u"
+
+    features.register_editor_plugin(
+        "draftail",
+        feature_name,
+        draftail_features.InlineStyleFeature(
+            {
+                "type": type_,
+                "label": "U",
+                "description": _("Underline"),
+            }
+        ),
+    )
+    features.register_converter_rule(
+        "contentstate",
+        feature_name,
+        {
+            "from_database_format": {tag: InlineStyleElementHandler(type_)},
+            "to_database_format": {"style_map": {type_: tag}},
+        },
+    )
 
 
 @hooks.register("register_admin_menu_item")
