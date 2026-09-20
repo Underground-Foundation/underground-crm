@@ -11,6 +11,7 @@ from django.core.management.base import CommandError
 from wagtail.models import Page, Site
 
 from underground_crm.contactability import get_validated_email_address
+from underground_crm.legacy_html import IMAGE_BLOCK
 from underground_crm.management.commands.import_pages import (
     PAGE_BUILDING_MAP,
     Command,
@@ -708,6 +709,38 @@ class TestImportedPagesArePublished(django.test.TestCase):
             datetime.fromisoformat(self.LEGACY_PUBLICATION_DATE),
             msg="Feeds date a post by first_published_at, which should be when the legacy page was published",
         )
+
+    def test_images_are_internalized_when_an_image_resolver_is_given(self):
+        image_id = 42
+        html = self.PAGE_HTML.replace(
+            "<p>We are committed",
+            '<p><img src="/uploads/values.png" alt="Values"></p><p>We are committed',
+        )
+        requested = []
+
+        def resolver(source, alt):
+            requested.append((source, alt))
+            return image_id
+
+        with tempfile.TemporaryDirectory() as domain_dir:
+            self._write_legacy_page(Path(domain_dir), self.PAGE_SLUG, "Basic", html=html)
+            Command().create_pages_from_path(
+                domain_dir=Path(domain_dir),
+                should_replace=False,
+                page_building_map=PAGE_BUILDING_MAP,
+                site=Site.objects.first(),
+                slug=self.PAGE_SLUG,
+                image_resolver=resolver,
+            )
+        page = Page.objects.get(slug=self.PAGE_SLUG).specific
+
+        self.assertEqual(requested, [("/uploads/values.png", "Values")])
+        image_blocks = [b for b in page.body.get_prep_value() if b["type"] == IMAGE_BLOCK]
+        self.assertEqual([b["value"]["image"] for b in image_blocks], [image_id])
+
+    def test_no_image_internalization_option_gives_no_resolver(self):
+        self.assertIsNone(Command().build_image_resolver({"no_image_internalization": True}))
+        self.assertIsNotNone(Command().build_image_resolver({}))
 
     def test_page_imported_under_a_parent_slug_is_published_too(self):
         with tempfile.TemporaryDirectory() as domain_dir:

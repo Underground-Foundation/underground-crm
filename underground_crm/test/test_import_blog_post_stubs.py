@@ -19,7 +19,7 @@ from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 from wagtail.models import Page, Site
 
-from underground_crm.legacy_html import BUTTON_BLOCK, RICH_TEXT_BLOCK
+from underground_crm.legacy_html import BUTTON_BLOCK, IMAGE_BLOCK, RICH_TEXT_BLOCK
 from underground_crm.management.commands.import_pages import (
     build_blog_post_stubs,
     extract_blog_post_listings,
@@ -272,6 +272,29 @@ class ExtractBlogPostListingsTest(SimpleTestCase):
         intro = self.listings()[0].intro
         self.assertEqual([block["type"] for block in intro], [RICH_TEXT_BLOCK])
         self.assertIn(FIRST_POST_EXCERPT, intro[0]["value"])
+
+    def test_the_excerpts_images_are_internalized_with_the_resolver(self):
+        image_id = 42
+        items = [
+            blog_list_item(
+                slug=FIRST_POST_SLUG,
+                title=FIRST_POST_TITLE,
+                author=FIRST_POST_AUTHOR,
+                posted=FIRST_POST_POSTED,
+                excerpt=f'<img src="/uploads/banner.png" alt="Banner"> {FIRST_POST_EXCERPT}',
+            )
+        ]
+        soup = BeautifulSoup(blog_page_html(items), "html.parser")
+        requested = []
+
+        def resolver(source, alt):
+            requested.append((source, alt))
+            return image_id
+
+        [listing] = extract_blog_post_listings(soup, BLOG_LEGACY_ID, resolver)
+        self.assertEqual(requested, [("/uploads/banner.png", "Banner")])
+        images = [block for block in listing.intro if block["type"] == IMAGE_BLOCK]
+        self.assertEqual([block["value"]["image"] for block in images], [image_id])
 
     def test_a_read_more_button_pointing_at_the_post_itself_is_dropped(self):
         for listing in self.listings():
