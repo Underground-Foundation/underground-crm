@@ -54,9 +54,24 @@ from .form_submission import FormSubmission
 from .membership import MembershipType
 from .person import Tag
 from underground_crm.fields import DeclaredBlocksStreamField
+from underground_crm.image_alignment import DEFAULT_IMAGE_ALIGNMENT, ImageAlignment
 from underground_crm.panels import ReadOnlyPanel
 
 logger = logging.getLogger(__name__)
+
+# The choices of the Image block's alignment. The stored values are the
+# ImageAlignment enum, shared with underground_crm.legacy_html, which picks one
+# when importing legacy pages. Plain ``.value`` strings are used (rather than
+# the enum members) so that migrations serialize them as ordinary strings.
+IMAGE_ALIGNMENT_LABELS = {
+    ImageAlignment.FULL_WIDTH: _("Full width"),
+    ImageAlignment.LEFT: _("Left aligned"),
+    ImageAlignment.RIGHT: _("Right aligned"),
+    ImageAlignment.HALF_WIDTH: _("Half width"),
+}
+IMAGE_ALIGNMENT_CHOICES = [
+    (alignment.value, IMAGE_ALIGNMENT_LABELS[alignment]) for alignment in ImageAlignment
+]
 
 
 class PageWithMetadataForm(WagtailAdminPageForm):
@@ -265,13 +280,8 @@ BASIC_PAGE_BLOCKS = [
                 (
                     "alignment",
                     ChoiceBlock(
-                        choices=[
-                            ("full-width", _("Full width")),
-                            ("left", _("Left aligned")),
-                            ("right", _("Right aligned")),
-                            ("w-50", _("Half width")),
-                        ],
-                        default="full-width",
+                        choices=IMAGE_ALIGNMENT_CHOICES,
+                        default=DEFAULT_IMAGE_ALIGNMENT.value,
                     ),
                 ),
             ],

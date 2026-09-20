@@ -86,14 +86,7 @@ def fetch_page_html(domain: str, slug: str, html_opener, page_number: Optional[i
 
 def extract_pagination_page_numbers(html: Union[str, bytes]) -> Set[int]:
     """
-    The numbers of the pages that a listing's ``<ul class="pagination">`` links
-    to, along with the one it is currently on.
-
-    Each ``<li>`` holds a link whose ``page`` query parameter is the page it
-    goes to. The links that go nowhere are passed over: a "Previous" link on
-    the first page has an empty ``page=``, and the current page's own link is
-    only ``#``, so for that one the number is read from its text instead. A
-    document with no pagination gives an empty set.
+    The numbers of the pages listed in the ``<ul class="pagination">`` links.
     """
     pagination = BeautifulSoup(html, "html.parser").find("ul", class_="pagination")
     if pagination is None:
@@ -116,12 +109,10 @@ def fetch_all_page_html(
     domain: str, slug: str, html_opener
 ) -> Tuple[Dict[int, bytes], Optional[str]]:
     """
-    Fetch a listing's first page and every other page its pagination reaches.
+    Fetch a listing's first page and every other reachable page.
 
     A long listing may show only the pages near the current one, so the crawl
-    reads the pagination of each page it fetches, not just the first, until
-    there is no page left that it has not fetched. Returns (pages keyed by
-    number, None) on success, or ({}, error_string) as soon as any fetch fails.
+    reads the pagination of each page it fetches, not just the first.
     """
     pages: Dict[int, bytes] = {}
     pending: Set[int] = {FIRST_PAGE_NUMBER}

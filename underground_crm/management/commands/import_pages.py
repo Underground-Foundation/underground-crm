@@ -67,8 +67,9 @@ from underground_crm.blocks import registration_person_field_names
 from underground_crm.legacy_html import (
     BUTTON_BLOCK,
     RAW_HTML_BLOCK,
-    blocks_have_content,
+    do_blocks_have_visible_content,
     decompose_legacy_content,
+    get_body_soup,
     remove_duplicated_intro,
 )
 from underground_crm.models import Address, FeedPage, UndergroundBasicPage
@@ -160,32 +161,18 @@ def extract_importable_html(
     html_file: Path,
     importable_dir: Optional[Path],
 ) -> tuple[BeautifulSoup, str] | None:
-    """Extract the element that holds the page's actual content, write it to
+    """Extract the element that holds the page-specific content, write it to
     importable_dir, and return the full-page soup alongside the extracted
     HTML string.
 
     The page's own ``div.content`` is preferred when present: the outer
-    ``id="content"`` region it sits inside also picks up the byline and
-    table-of-contents elements alongside the article, and a page can be
-    simple enough that ``div.content`` holds the entire article with nothing
-    left outside it. Where ``div.content`` is absent, the nested
-    ``id="content"`` div is next best (extract_page_size relies on this same
-    nesting), then any ``div.container``, then the page's own ``id="content"``
-    region as the last resort.
-
-    Returns None if none of these are found.
+    ``id="content"`` region holds more extraneous elements.
     """
     document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
-    content = document_soup.find(id="content")
-    if content is None:
+    body_soup = get_body_soup(document_soup)
+    if body_soup is None:
         return None
-    body = (
-        content.find("div", class_="content")
-        or content.find("div", id="content")
-        or content.find("div", class_="container")
-        or content
-    )
-    html_content = _prettify(body)
+    html_content = _prettify(body_soup)
     if importable_dir:
         (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
     return document_soup, html_content
@@ -413,16 +400,7 @@ def extract_event_population(soup: BeautifulSoup):
 
 def build_body_blocks(document_soup: BeautifulSoup, importable_html: str) -> List[dict]:
     """
-    The page's article content as StreamField blocks.
-
-    decompose_legacy_content() does its own narrowing down to the article
-    container (see find_body_container), so it is handed the full,
-    un-narrowed ``id="content"`` element straight from the document rather
-    than the already-narrowed `importable_html` — narrowing it twice would
-    have decompose_legacy_content search for that container *inside itself*
-    and find nothing to descend into. `importable_html` is kept as the
-    fallback for when nothing could be decomposed (an empty content element,
-    or one this narrowing does not recognise at all).
+    Deconstructs the page's article content as StreamField blocks.
     """
     content_element = document_soup.find(id="content")
     blocks = decompose_legacy_content(content_element) if content_element is not None else []
@@ -554,9 +532,7 @@ def build_feed_body_blocks(document_soup: BeautifulSoup, legacy_id: Optional[str
     A FeedPage's template lists its children itself, so importing the legacy
     list into the body too would show every post twice. Whatever else the
     page holds (an introduction above the list, say) is kept; a page holding
-    nothing else gets an empty body, not the Raw HTML fallback that
-    build_body_blocks would otherwise reach for, since that would carry the
-    list in again.
+    nothing else gets an empty body.
 
     Works on a copy: the caller still needs the list to make the stubs (see
     build_blog_post_stubs) and to size the page.
@@ -722,7 +698,7 @@ class BlogPostListing(NamedTuple):
 
 
 def _blog_post_slug(header: Tag) -> Optional[str]:
-    """The slug a listed post lives at, taken from the link its title carries."""
+    """Extract the slug of a blog post from its intro in the feed."""
     link = header.find("a", href=True)
     if link is None:
         return None
@@ -749,10 +725,7 @@ def _blog_post_published_at(header: Tag) -> Optional[datetime.datetime]:
 
 def _without_read_more_button(blocks: List[dict], slug: str) -> List[dict]:
     """
-    Drop the "Read more" button the legacy list appends to each excerpt. The
-    excerpt becomes the post's own intro, where a button linking back to the
-    post itself would be pointless; the feed's listing links to each post on
-    its own.
+    Drop the "Read more" button that was added to each blog-post intro in the feed.
     """
     if blocks and blocks[-1]["type"] == BUTTON_BLOCK:
         destination = urlparse(blocks[-1]["value"]["url"]).path.strip("/")
@@ -1101,18 +1074,13 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
 
 def get_unfilled_stub_intro(existing: Page, attributes: Dict[str, Any]) -> Optional[List[dict]]:
     """
-    The intro of `existing` when it is a stub that importing a Blog Post can
-    fill in, otherwise None.
-
-    A page counts as such a stub when it is a BlogPost that has no meaningful
-    body yet, which is how build_blog_post_stubs leaves every post it makes.
-    Anything with a body of its own is never treated as one, so it is only
-    overwritten when the caller asks for that with --replace.
+    Get the `intro` of a stub blog post, if this Page is indeed a blog post with an
+    empty body. Otherwise None.
     """
     if get_page_type_attribute(attributes) != BLOG_POST_TYPE_NAME:
         return None
     post = existing.specific
-    if not isinstance(post, BlogPost) or blocks_have_content(post.body.get_prep_value()):
+    if not isinstance(post, BlogPost) or do_blocks_have_visible_content(post.body.get_prep_value()):
         return None
     return [
         {"type": block["type"], "value": block["value"]} for block in post.intro.get_prep_value()
@@ -1221,8 +1189,6 @@ class Command(BaseCommand):
     def _get_child_stub_builder(
         self, attributes: dict, stub_building_map: dict
     ) -> Optional[Callable]:
-        """The function that builds stubs for the child pages a legacy page's
-        content lists, or None for a page type that lists none."""
         return stub_building_map.get(get_page_type_attribute(attributes))
 
     def _create_child_stubs(
@@ -1234,12 +1200,8 @@ class Command(BaseCommand):
         parent: Page,
     ) -> None:
         """
-        Save the stubs `stub_builder` makes beneath `parent`, from each of the
-        listing's pages in turn. A stub whose slug already belongs to a page is
-        left alone, so a post that was imported in full before its listing is
-        not overwritten (or made to collide) by its excerpt, and neither is a
-        post that shifted onto a second page between one page's fetch and the
-        next.
+        Save the stubs from each of the listing's pages.Pre-existing stubs are
+        left alone.
         """
         for document_soup in document_soups:
             for stub in stub_builder(document_soup, attributes, site):

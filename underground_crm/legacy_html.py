@@ -23,11 +23,17 @@ from typing import Callable, List, NamedTuple, Optional, Tuple
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
+from underground_crm.image_alignment import DEFAULT_IMAGE_ALIGNMENT, ImageAlignment
+
 # Block names as registered in underground_crm.models.pages.BASIC_PAGE_BLOCKS.
 RICH_TEXT_BLOCK = "rich_text"
 RAW_HTML_BLOCK = "html"
 IMAGE_BLOCK = "image"
 BUTTON_BLOCK = "button"
+
+# The Image block's alignment for each CSS ``float`` value a legacy image may
+# carry. Any other value (or none) is judged on the image's width instead.
+_FLOAT_ALIGNMENTS = {"left": ImageAlignment.LEFT, "right": ImageAlignment.RIGHT}
 
 # Given (src, alt), return the primary key of a Wagtail image, or None when
 # the image cannot be brought across — in which case the <img> is preserved
@@ -286,30 +292,36 @@ def strip_presentational_markup(root: Tag) -> None:
             changed = True
 
 
-def find_body_container(content: Tag) -> Tag:
+def get_body_soup(document_or_content: Tag) -> Optional[Tag]:
     """
-    Narrow the extracted ``id="content"`` element down to the element that
-    actually holds the article.
+    Narrow a legacy page down to the element that holds its article.
 
-    The legacy CMS's own ``div.content`` — wrapping just the article body,
-    inside a ``div#intro`` — is preferred when present, since it excludes the
-    byline/headline elements that sit alongside it. Where that is absent,
-    the legacy CMS nests a second ``id="content"`` div inside the page's
-    ``<main id="content">`` (import_pages' extract_page_size relies on the
-    same nesting), but that div can itself still hold those elements, so it
-    is only the next-best guess. When both are absent, the container is the
-    best available guess.
+    `document_or_content` is either the whole parsed page or the page's own
+    ``id="content"`` element; both are accepted so that a caller which has
+    already extracted that element need not extract it a second time. Returns
+    None when the page has no ``id="content"`` region at all.
+
+    The ``id="content"`` region also picks up the byline and table-of-contents
+    elements alongside the article, so a tighter container is preferred when
+    one exists. The legacy CMS's own ``div.content`` (wrapping just the
+    article, inside a ``div#intro``) comes first, since it excludes those
+    elements. Next best is the second ``id="content"`` div that the legacy CMS
+    nests inside ``<main id="content">`` (import_pages' extract_page_size
+    relies on the same nesting), although it can still hold them. Then comes
+    any ``div.container``, and finally the ``id="content"`` region itself.
     """
-    article = content.find("div", class_="content")
-    if article is not None:
-        return article
-    inner = content.find("div", id="content")
-    if inner is not None:
-        return inner
-    container = content.find("div", class_="container")
-    if container is not None:
-        return container
-    return content
+    if document_or_content.get("id") == "content":
+        content = document_or_content
+    else:
+        content = document_or_content.find(id="content")
+    if content is None:
+        return None
+    return (
+        content.find("div", class_="content")
+        or content.find("div", id="content")
+        or content.find("div", class_="container")
+        or content
+    )
 
 
 def strip_extraneous_elements(container: Tag) -> None:
@@ -448,19 +460,19 @@ def _as_button(tag: Tag) -> Optional[dict]:
 def _image_alignment(img: Tag) -> str:
     """
     Choose an Image block alignment from however the legacy markup sized the
-    picture. The block offers full-width, left, right and w-50; a float maps
-    straight onto left/right, and anything else is judged on width, since
-    that is what the original authors reached for (``width="60%"``).
+    picture. A float maps straight onto a left or right alignment, and
+    anything else is judged on width, since that is what the original authors
+    reached for (``width="60%"``).
     """
     declarations = dict(parse_style(img.get("style", "")))
-    float_value = declarations.get("float", "")
-    if float_value in {"left", "right"}:
-        return float_value
+    float_alignment = _FLOAT_ALIGNMENTS.get(declarations.get("float", ""))
+    if float_alignment:
+        return float_alignment
     declared = declarations.get("width", "") or str(img.get("width", ""))
     match = _PERCENTAGE.match(declared)
     if match and float(match.group(1)) < 90:
-        return "w-50"
-    return "full-width"
+        return ImageAlignment.HALF_WIDTH
+    return DEFAULT_IMAGE_ALIGNMENT
 
 
 def _image_block(img: Tag, image_resolver: Optional[ImageResolver]) -> Optional[dict]:
@@ -520,8 +532,8 @@ def _sanitize_as_rich_text(tag: Tag) -> Tag:
     return clone
 
 
-def _has_content(tag: Tag) -> bool:
-    """False for the empty paragraphs legacy editors scatter between blocks."""
+def _has_visible_content(tag: Tag) -> bool:
+    """False for the empty paragraphs scattered between blocks by the legacy editor."""
     if tag.name == "hr" or tag.find("hr"):
         return True
     return bool(tag.get_text().replace("\xa0", " ").strip())
@@ -596,11 +608,14 @@ class _BlockCollector:
         self.blocks.append(block)
 
 
+MAX_DEPTH = 12
+
+
 def _collect(nodes: List, collector: _BlockCollector, image_resolver, depth: int = 0) -> None:
     """Walk a level of the document, appending a block for each node it finds."""
     # Legacy markup nests wrappers, but not indefinitely; the guard stops a
     # pathological document from recursing without bound.
-    if depth > 12:
+    if depth > MAX_DEPTH:
         for node in nodes:
             if isinstance(node, Tag):
                 collector.add_raw_html(fragment_html(node))
@@ -655,7 +670,7 @@ def _collect_flow_node(node: Tag, collector: _BlockCollector, image_resolver) ->
     if not runs:
         if not _is_rich_text_compatible(node):
             collector.add_raw_html(fragment_html(node))
-        elif _has_content(node):
+        elif _has_visible_content(node):
             collector.add_rich_text(str(_sanitize_as_rich_text(node)))
         return
 
@@ -673,7 +688,7 @@ def _collect_flow_node(node: Tag, collector: _BlockCollector, image_resolver) ->
         fragment = _new_tag(node.name)
         for child in payload:
             fragment.append(copy.copy(child))
-        if not _has_content(fragment):
+        if not _has_visible_content(fragment):
             continue
         if _is_rich_text_compatible(fragment):
             collector.add_rich_text(str(_sanitize_as_rich_text(fragment)))
@@ -686,9 +701,11 @@ def decompose_legacy_content(
     image_resolver: Optional[ImageResolver] = None,
 ) -> List[dict]:
     """
-    Rebuild an extracted legacy ``id="content"`` element as StreamField blocks.
+    Rebuild a legacy page's ``id="content"`` element as StreamField blocks.
 
-    `content` is left untouched; the work happens on a copy. `image_resolver`
+    `content` may be that element, the whole page (see get_body_soup, which
+    narrows either down to the article) or a fragment with no such element,
+    which is taken to be the article in full. It is left untouched; the work happens on a copy. `image_resolver`
     turns a remote image URL into the primary key of a Wagtail image — pass
     None (or return None from it) to leave every <img> in a Raw HTML block.
 
@@ -698,7 +715,11 @@ def decompose_legacy_content(
     keep the original raw HTML.
     """
     working = copy.copy(content)
-    body = find_body_container(working)
+    body = get_body_soup(working)
+    if body is None:
+        # A fragment such as a blog post's excerpt, not a whole page: there is
+        # no region to narrow down to, so the fragment is the article.
+        body = working
     strip_extraneous_elements(body)
     strip_presentational_markup(body)
 
@@ -711,7 +732,7 @@ def decompose_legacy_content(
 _TEXTLESS_CONTENT_TAGS = ["img", "hr", "iframe", "video", "audio", "embed", "object", "svg"]
 
 
-def blocks_have_content(blocks: List[dict]) -> bool:
+def do_blocks_have_visible_content(blocks: List[dict]) -> bool:
     """
     Whether any of `blocks` would show a reader something. A rich text or Raw
     HTML block holding only whitespace and empty tags does not count, but every
@@ -721,7 +742,7 @@ def blocks_have_content(blocks: List[dict]) -> bool:
         if block["type"] not in (RICH_TEXT_BLOCK, RAW_HTML_BLOCK):
             return True
         fragment = BeautifulSoup(str(block["value"]), "html.parser")
-        if fragment.find(_TEXTLESS_CONTENT_TAGS) or _has_content(fragment):
+        if fragment.find(_TEXTLESS_CONTENT_TAGS) or _has_visible_content(fragment):
             return True
     return False
 

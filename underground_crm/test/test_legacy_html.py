@@ -11,14 +11,15 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+from underground_crm.image_alignment import DEFAULT_IMAGE_ALIGNMENT, ImageAlignment
 from underground_crm.legacy_html import (
     BUTTON_BLOCK,
     IMAGE_BLOCK,
     RAW_HTML_BLOCK,
     RICH_TEXT_BLOCK,
     decompose_legacy_content,
-    blocks_have_content,
-    find_body_container,
+    do_blocks_have_visible_content,
+    get_body_soup,
     remove_duplicated_intro,
     strip_presentational_markup,
     summarise,
@@ -165,20 +166,22 @@ class TestRemoveDuplicatedIntro(unittest.TestCase):
 
 class TestBlocksHaveContent(unittest.TestCase):
     def test_no_blocks_have_no_content(self):
-        self.assertFalse(blocks_have_content([]))
+        self.assertFalse(do_blocks_have_visible_content([]))
 
     def test_a_rich_text_block_of_blank_paragraphs_has_no_content(self):
-        self.assertFalse(blocks_have_content([rich_text_block("<p>&nbsp;</p>", "<p> </p>")]))
+        self.assertFalse(
+            do_blocks_have_visible_content([rich_text_block("<p>&nbsp;</p>", "<p> </p>")])
+        )
 
     def test_a_paragraph_of_text_is_content(self):
-        self.assertTrue(blocks_have_content([rich_text_block(OPENING_PARAGRAPH)]))
+        self.assertTrue(do_blocks_have_visible_content([rich_text_block(OPENING_PARAGRAPH)]))
 
     def test_a_raw_html_block_with_only_an_image_is_content(self):
-        self.assertTrue(blocks_have_content([html_block(HEADER_IMAGE)]))
+        self.assertTrue(do_blocks_have_visible_content([html_block(HEADER_IMAGE)]))
 
     def test_a_button_is_content(self):
         button = {"type": BUTTON_BLOCK, "value": {"text": "Donate", "url": "/donate"}}
-        self.assertTrue(blocks_have_content([button]))
+        self.assertTrue(do_blocks_have_visible_content([button]))
 
 
 class TestStripPresentationalMarkup(unittest.TestCase):
@@ -266,7 +269,7 @@ class TestStripPresentationalMarkup(unittest.TestCase):
         self.assertIn("width: 60%", str(soup))
 
 
-class TestFindBodyContainer(unittest.TestCase):
+class TestGetBodySoup(unittest.TestCase):
 
     def test_content_class_div_is_preferred_over_inner_content_id_div(self):
         soup = parse(
@@ -277,7 +280,7 @@ class TestFindBodyContainer(unittest.TestCase):
             "</div>"
             "</main>"
         )
-        container = find_body_container(soup)
+        container = get_body_soup(soup)
         self.assertEqual(container.get("class"), ["content"])
         self.assertNotIn("byline", str(container))
 
@@ -285,17 +288,37 @@ class TestFindBodyContainer(unittest.TestCase):
         soup = parse(
             '<main id="content"><div id="headline"></div><div id="content"><p>Body</p></div></main>'
         )
-        container = find_body_container(soup)
+        container = get_body_soup(soup)
         self.assertEqual(container.get("id"), "content")
         self.assertEqual(container.name, "div")
 
     def test_container_div_is_the_fallback(self):
         soup = parse('<main id="content"><div class="container"><p>Body</p></div></main>')
-        self.assertEqual(find_body_container(soup).get("class"), ["container"])
+        self.assertEqual(get_body_soup(soup).get("class"), ["container"])
 
     def test_content_element_itself_is_the_last_resort(self):
         soup = parse('<main id="content"><p>Body</p></main>')
-        self.assertIs(find_body_container(soup), soup)
+        self.assertIs(get_body_soup(soup), soup.find(id="content"))
+
+    def test_the_content_element_may_be_passed_instead_of_the_document(self):
+        """Callers that have already extracted the region must get the same narrowing."""
+        soup = parse(
+            '<html><body><nav>Menu</nav><main id="content">'
+            '<section class="byline">By Priya Raman</section>'
+            '<div class="content"><p>Body</p></div>'
+            "</main></body></html>"
+        )
+        content_element = soup.find(id="content")
+        self.assertIs(
+            get_body_soup(content_element),
+            get_body_soup(soup),
+            "Narrowing the extracted region must find the same article as narrowing the document.",
+        )
+        self.assertEqual(get_body_soup(content_element).get("class"), ["content"])
+
+    def test_a_page_without_a_content_region_has_no_body(self):
+        soup = parse("<html><body><nav>Menu</nav><footer>Contact us</footer></body></html>")
+        self.assertIsNone(get_body_soup(soup))
 
 
 class TestDecomposition(unittest.TestCase):
@@ -414,6 +437,13 @@ class TestDecomposition(unittest.TestCase):
         )
         self.assertEqual(decompose_legacy_content(soup), [])
 
+    def test_a_fragment_without_a_content_region_is_taken_as_the_article(self):
+        """A blog post's excerpt is handed over on its own, not as part of a page."""
+        excerpt = parse("<div><p>Preselection nominations open on Monday.</p></div>").find("div")
+        blocks = decompose_legacy_content(excerpt)
+        self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
+        self.assertEqual(blocks[0]["value"], "<p>Preselection nominations open on Monday.</p>")
+
     def test_horizontal_rules_and_blockquotes_stay_rich_text(self):
         soup = parse(
             '<div id="content"><p>Before</p><hr/>'
@@ -457,17 +487,19 @@ class TestImages(unittest.TestCase):
         )
         blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual([block["type"] for block in blocks], [IMAGE_BLOCK])
-        self.assertEqual(blocks[0]["value"], {"image": 1, "caption": "", "alignment": "w-50"})
+        self.assertEqual(
+            blocks[0]["value"], {"image": 1, "caption": "", "alignment": ImageAlignment.HALF_WIDTH}
+        )
 
     def test_full_width_image(self):
         soup = parse('<div id="content"><p><img src="a.png" style="width: 100%;"/></p></div>')
         blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
-        self.assertEqual(blocks[0]["value"]["alignment"], "full-width")
+        self.assertEqual(blocks[0]["value"]["alignment"], DEFAULT_IMAGE_ALIGNMENT)
 
     def test_floated_image_keeps_its_side(self):
         soup = parse('<div id="content"><p><img src="a.png" style="float: right;"/></p></div>')
         blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
-        self.assertEqual(blocks[0]["value"]["alignment"], "right")
+        self.assertEqual(blocks[0]["value"]["alignment"], ImageAlignment.RIGHT)
 
     def test_alt_text_is_passed_to_the_resolver(self):
         seen = []
@@ -627,7 +659,7 @@ class TestSampleBlogPost(unittest.TestCase):
         self.assertNotIn("Great news!", rendered)
 
     def test_the_announcement_image_keeps_its_width(self):
-        self.assertEqual(self.blocks[1]["value"]["alignment"], "w-50")
+        self.assertEqual(self.blocks[1]["value"]["alignment"], ImageAlignment.HALF_WIDTH)
 
     def test_unsupported_neighbours_share_one_raw_html_block(self):
         fallback = self.blocks[5]["value"]
