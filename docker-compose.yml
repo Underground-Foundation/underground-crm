@@ -1,3 +1,5 @@
+# Notice that this file only specifies services used during development − for production,
+# you will also want to the Django web application (`web`), amongst other things.
 services:
   redis:
     image: redis:8-alpine

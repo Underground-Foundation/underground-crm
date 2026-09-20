@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime
@@ -630,3 +631,98 @@ class TestFormPageTypeMapping(unittest.TestCase):
                     build_form_page,
                     msg=f"'{legacy_type}' is a form-only legacy page type and should build a FormPage",
                 )
+
+
+class TestImportedPagesArePublished(django.test.TestCase):
+    """
+    add_child() saves a page's row and nothing else, so an imported page used
+    to be live yet have no revision: no history in the admin, no live
+    revision, and no first_published_at — which is the date feeds list and
+    order a post by. The import must publish what it creates, dating the
+    publication to when the legacy page was published rather than to the
+    import.
+
+    Uses a local-memory cache for the same reason as TestReplaceRootPage:
+    saving a page under a Site reads the site-root-paths cache.
+    """
+
+    LEGACY_PUBLICATION_DATE = "2019-03-14T09:30:00+11:00"
+    PAGE_SLUG = "our-values"
+    NEWS_SLUG = "news"
+    PAGE_HTML = (
+        "<html><head><title>Our values</title>"
+        '<meta property="og:image" content="https://example.org/values.jpg">'
+        '<meta property="og:type" content="article">'
+        '<meta property="og:description" content="What we stand for.">'
+        "</head><body>"
+        '<div id="content"><p>We are committed to evidence-based policy.</p></div>'
+        "</body></html>"
+    )
+    # A legacy blog lists its posts in a <ul>, from which the feed's page size is read.
+    NEWS_HTML = PAGE_HTML.replace(
+        "<p>We are committed to evidence-based policy.</p>",
+        "<ul><li>Our values</li><li>Our first year</li></ul>",
+    )
+
+    def _write_legacy_page(
+        self, domain_dir: Path, slug: str, page_type_name: str, html: str = PAGE_HTML, **attributes
+    ):
+        (domain_dir / f"{slug}.html").write_text(html, encoding="utf-8")
+        record = {
+            "id": 1,
+            "attributes": {"page_type_name": page_type_name, "title": "Our values", **attributes},
+        }
+        (domain_dir / f"{slug}.json").write_text(json.dumps(record), encoding="utf-8")
+
+    def _import(self, domain_dir: Path, slug: str):
+        Command().create_pages_from_path(
+            domain_dir=domain_dir,
+            should_replace=False,
+            page_building_map=PAGE_BUILDING_MAP,
+            site=Site.objects.first(),
+            slug=slug,
+        )
+        return Page.objects.get(slug=slug)
+
+    def test_imported_page_has_a_live_revision_and_its_legacy_publication_date(self):
+        with tempfile.TemporaryDirectory() as domain_dir:
+            self._write_legacy_page(
+                Path(domain_dir),
+                self.PAGE_SLUG,
+                "Basic",
+                published_at=self.LEGACY_PUBLICATION_DATE,
+            )
+            page = self._import(Path(domain_dir), self.PAGE_SLUG)
+
+        self.assertTrue(page.live, msg="An imported page should be visible on the site")
+        self.assertIsNotNone(
+            page.live_revision,
+            msg="Publishing creates the revision that the admin's history and 'live' status refer to",
+        )
+        self.assertFalse(
+            page.has_unpublished_changes,
+            msg="The live revision is the page as imported, so there is nothing unpublished",
+        )
+        self.assertEqual(
+            page.first_published_at,
+            datetime.fromisoformat(self.LEGACY_PUBLICATION_DATE),
+            msg="Feeds date a post by first_published_at, which should be when the legacy page was published",
+        )
+
+    def test_page_imported_under_a_parent_slug_is_published_too(self):
+        with tempfile.TemporaryDirectory() as domain_dir:
+            self._write_legacy_page(Path(domain_dir), self.NEWS_SLUG, "Blog", html=self.NEWS_HTML)
+            self._import(Path(domain_dir), self.NEWS_SLUG)
+            self._write_legacy_page(
+                Path(domain_dir),
+                self.PAGE_SLUG,
+                "Blog Post",
+                parent_slug=self.NEWS_SLUG,
+                published_at=self.LEGACY_PUBLICATION_DATE,
+            )
+            post = self._import(Path(domain_dir), self.PAGE_SLUG)
+
+        self.assertEqual(post.get_parent().slug, self.NEWS_SLUG)
+        self.assertIsNotNone(
+            post.live_revision, msg="A post nested under a feed should be published as well"
+        )

@@ -25,6 +25,10 @@ dependencies = [
     # should be a deliberate step that re-runs test_error_reporting.py's canary.
     "django-q2>=1.10,<2",
     "django-phonenumber-field[phonenumbers]",
+    # underground_crm/management/commands/import_pages.py and legacy_html.py parse
+    # legacy CMS HTML with this unconditionally at import time, so it has to be a
+    # core dependency, not just the "migration" extra those two also happen to need.
+    "beautifulsoup4>=4.12",
     "dnspython>=2.0",
     "email-validator",
     "feedparser>=6.0",
@@ -70,7 +74,6 @@ dev = [
     "pre-commit>=4.0",
 ]
 migration = [
-    "beautifulsoup4>=4.12",
     "boto3>=1.34",
 ]
 
