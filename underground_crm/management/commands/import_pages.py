@@ -67,11 +67,13 @@ from underground_crm.blocks import registration_person_field_names
 from underground_crm.legacy_html import (
     BUTTON_BLOCK,
     RAW_HTML_BLOCK,
+    ImageResolver,
     do_blocks_have_visible_content,
     decompose_legacy_content,
     get_body_soup,
     remove_duplicated_intro,
 )
+from underground_crm.legacy_images import RemoteImageResolver
 from underground_crm.models import Address, FeedPage, UndergroundBasicPage
 from underground_crm.models import Tag as CrmTag
 from underground_crm.models.pages import (
@@ -398,12 +400,21 @@ def extract_event_population(soup: BeautifulSoup):
     return None
 
 
-def build_body_blocks(document_soup: BeautifulSoup, importable_html: str) -> List[dict]:
+def build_body_blocks(
+    document_soup: BeautifulSoup,
+    importable_html: str,
+    image_resolver: Optional[ImageResolver] = None,
+) -> List[dict]:
     """
-    Deconstructs the page's article content as StreamField blocks.
+    Deconstructs the page's article content as StreamField blocks. Without an
+    `image_resolver`, every image is left in a Raw HTML block.
     """
     content_element = document_soup.find(id="content")
-    blocks = decompose_legacy_content(content_element) if content_element is not None else []
+    blocks = (
+        decompose_legacy_content(content_element, image_resolver=image_resolver)
+        if content_element is not None
+        else []
+    )
     if blocks:
         return blocks
     return [{"type": RAW_HTML_BLOCK, "value": importable_html}]
@@ -416,11 +427,13 @@ def get_page_args(
     slug: str,
     site,
     body_blocks: Optional[List[dict]] = None,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> dict:
     """
     The keyword arguments common to every imported page. `body_blocks` is the
     page's body when the caller has already built (and adjusted) it; otherwise
-    it is built here from the document.
+    it is built here from the document, with `image_resolver` internalizing its
+    images.
     """
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
@@ -451,7 +464,7 @@ def get_page_args(
         "body": json.dumps(
             body_blocks
             if body_blocks is not None
-            else build_body_blocks(document_soup, importable_html)
+            else build_body_blocks(document_soup, importable_html, image_resolver)
         ),
         "show_toc": should_show_toc(document_soup),
         "legacy_id": int(legacy_id) if legacy_id is not None else None,
@@ -465,6 +478,7 @@ def build_underground_basic_page(
     slug: str,
     site: Site,
     return_class=UndergroundBasicPage,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> UndergroundBasicPage:
     """
     Build and return an unsaved Wagtail page from imported HTML content.
@@ -473,7 +487,11 @@ def build_underground_basic_page(
     Subclasses of UndergroundBasicPage are accepted; any fields they add
     beyond the base set must be set on the returned instance before saving.
     """
-    return return_class(**get_page_args(document_soup, importable_html, attributes, slug, site))
+    return return_class(
+        **get_page_args(
+            document_soup, importable_html, attributes, slug, site, image_resolver=image_resolver
+        )
+    )
 
 
 def build_event_page(
@@ -483,6 +501,7 @@ def build_event_page(
     slug: str,
     site: Site,
     return_class=EventPage,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> EventPage:
     kwargs = get_page_args(
         document_soup=document_soup,
@@ -490,6 +509,7 @@ def build_event_page(
         attributes=attributes,
         slug=slug,
         site=site,
+        image_resolver=image_resolver,
     )
     kwargs.pop("show_toc")
     # EventPage descends from FormServingPage, not BasicPage, so it has no
@@ -524,7 +544,11 @@ def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
     return len(list_items)
 
 
-def build_feed_body_blocks(document_soup: BeautifulSoup, legacy_id: Optional[str]) -> List[dict]:
+def build_feed_body_blocks(
+    document_soup: BeautifulSoup,
+    legacy_id: Optional[str],
+    image_resolver: Optional[ImageResolver] = None,
+) -> List[dict]:
     """
     The body of a legacy Blog page, without its ``<ul id="blog-page-<id>">``
     of posts.
@@ -542,7 +566,11 @@ def build_feed_body_blocks(document_soup: BeautifulSoup, legacy_id: Optional[str
     if post_list is not None:
         post_list.decompose()
     content_element = without_list.find(id="content")
-    return decompose_legacy_content(content_element) if content_element is not None else []
+    return (
+        decompose_legacy_content(content_element, image_resolver=image_resolver)
+        if content_element is not None
+        else []
+    )
 
 
 def build_feed_page(
@@ -553,6 +581,7 @@ def build_feed_page(
     site: Site,
     return_class=FeedPage,
     ordering: str = FeedPage.Ordering.NEWEST_FIRST,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> FeedPage:
     kwargs = get_page_args(
         document_soup=document_soup,
@@ -561,10 +590,11 @@ def build_feed_page(
         slug=slug,
         site=site,
         body_blocks=(
-            build_feed_body_blocks(document_soup, attributes.get("id"))
+            build_feed_body_blocks(document_soup, attributes.get("id"), image_resolver)
             if ordering == FeedPage.Ordering.NEWEST_FIRST
             else None
         ),
+        image_resolver=image_resolver,
     )
     kwargs.pop("show_toc")
     page = cast(
@@ -583,6 +613,7 @@ def build_redirection(
     slug: str,
     site: Site,
     return_class=Redirect,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> Redirect:
     destination = attributes.get("parent_slug")
     try:
@@ -632,8 +663,11 @@ def build_payment_page(
     slug: str,
     site: Site,
     return_class=PaymentPage,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> PaymentPage:
-    kwargs = get_page_args(document_soup, importable_html, attributes, slug, site)
+    kwargs = get_page_args(
+        document_soup, importable_html, attributes, slug, site, image_resolver=image_resolver
+    )
     kwargs.pop("show_toc")
     page = return_class(**kwargs)
     page.allow_monthly_payments, page.allow_annual_payments = extract_donation_frequency(
@@ -650,6 +684,7 @@ def build_blog_post(
     site: Site,
     return_class=BlogPost,
     existing_intro: Optional[List[dict]] = None,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> BlogPost:
     """
     Build and return an unsaved BlogPost from imported HTML content.
@@ -658,8 +693,11 @@ def build_blog_post(
     made for this post (see build_blog_post_stubs), or None when there was no
     stub. The post keeps that intro, and whatever the intro already says is cut
     from the start of the body so that it is not shown twice.
+
+    `image_resolver` internalizes the body's images (see
+    underground_crm.legacy_images).
     """
-    body_blocks = build_body_blocks(document_soup, importable_html)
+    body_blocks = build_body_blocks(document_soup, importable_html, image_resolver)
     if existing_intro is not None:
         body_blocks, duplicated = remove_duplicated_intro(body_blocks, existing_intro)
         logger.info(
@@ -735,7 +773,9 @@ def _without_read_more_button(blocks: List[dict], slug: str) -> List[dict]:
 
 
 def extract_blog_post_listings(
-    document_soup: BeautifulSoup, legacy_id: Optional[str]
+    document_soup: BeautifulSoup,
+    legacy_id: Optional[str],
+    image_resolver: Optional[ImageResolver] = None,
 ) -> List[BlogPostListing]:
     """
     Read the posts out of a legacy blog page's ``<ul id="blog-page-<id>">``.
@@ -770,14 +810,19 @@ def extract_blog_post_listings(
                 title=title,
                 author_name=author.get_text(strip=True) if author else None,
                 published_at=_blog_post_published_at(header),
-                intro=_without_read_more_button(decompose_legacy_content(excerpt), slug),
+                intro=_without_read_more_button(
+                    decompose_legacy_content(excerpt, image_resolver=image_resolver), slug
+                ),
             )
         )
     return listings
 
 
 def build_blog_post_stubs(
-    document_soup: BeautifulSoup, attributes: Dict[str, Any], site: Site
+    document_soup: BeautifulSoup,
+    attributes: Dict[str, Any],
+    site: Site,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> List[BlogPost]:
     """
     Build an unsaved BlogPost for each post in a legacy blog page's list.
@@ -788,7 +833,7 @@ def build_blog_post_stubs(
     blog's FeedPage.
     """
     stubs = []
-    for listing in extract_blog_post_listings(document_soup, attributes.get("id")):
+    for listing in extract_blog_post_listings(document_soup, attributes.get("id"), image_resolver):
         author = (
             get_ambiguous_admin_by_full_name(listing.author_name) if listing.author_name else None
         )
@@ -884,6 +929,7 @@ def build_form_page(
     slug: str,
     site: Site,
     return_class=FormPage,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> FormPage:
     """
     Build a FormPage from a legacy form-bearing page ("Volunteer Signup",
@@ -963,6 +1009,7 @@ def build_registration_page(
     attributes: Dict[str, Any],
     slug: str,
     site: Site,
+    image_resolver: Optional[ImageResolver] = None,
 ) -> RegistrationPage:
     """
     Build a RegistrationPage from a legacy "Signup" page. A signup <form>
@@ -1144,6 +1191,38 @@ class Command(BaseCommand):
             required=False,
             help="The slug of the page to be imported",
         )
+        parser.add_argument(
+            "--no-image-internalization",
+            action="store_true",
+            help=(
+                "Do not download the images a page references. Each <img> is left in a Raw "
+                "HTML block pointing at its original URL instead of becoming an Image block."
+            ),
+        )
+        parser.add_argument(
+            "--image-base-url",
+            required=False,
+            default="",
+            help=(
+                "Base URL for resolving relative image sources found in legacy bodies. "
+                "Defaults to settings.WAGTAILADMIN_BASE_URL. Sources that stay relative are "
+                "left as raw HTML."
+            ),
+        )
+
+    def build_image_resolver(self, options) -> Optional[RemoteImageResolver]:
+        """
+        The resolver that internalizes the images of every page in this run, or
+        None when --no-image-internalization was passed. Which images are worth
+        fetching is decided by LEGACY_ASSET_URLS and SATISFACTORY_IMAGE_DOMAINS
+        (see underground_crm.legacy_images).
+        """
+        if options.get("no_image_internalization"):
+            return None
+        return RemoteImageResolver(
+            base_url=options.get("image_base_url") or settings.WAGTAILADMIN_BASE_URL,
+            stdout=self.stdout,
+        )
 
     def _replace_root_page(self, site: Site, old_root: Page, new_page: Page) -> Page:
         """
@@ -1198,13 +1277,14 @@ class Command(BaseCommand):
         attributes: dict,
         site: Site,
         parent: Page,
+        image_resolver: Optional[ImageResolver] = None,
     ) -> None:
         """
         Save the stubs from each of the listing's pages.Pre-existing stubs are
         left alone.
         """
         for document_soup in document_soups:
-            for stub in stub_builder(document_soup, attributes, site):
+            for stub in stub_builder(document_soup, attributes, site, image_resolver):
                 if Page.objects.filter(slug=stub.slug).exists():
                     self.stderr.write(
                         f"    [skip] stub '{stub.slug}': a page with that slug exists."
@@ -1232,6 +1312,7 @@ class Command(BaseCommand):
         site: Site,
         slug: Optional[str],
         child_stub_building_map: Optional[Dict[str, Callable]] = None,
+        image_resolver: Optional[ImageResolver] = None,
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
@@ -1333,6 +1414,8 @@ class Command(BaseCommand):
 
             # Only a Blog Post builder can use a stub's intro.
             builder_extras = {"existing_intro": stub_intro} if stub_intro is not None else {}
+            if image_resolver is not None:
+                builder_extras["image_resolver"] = image_resolver
             new_page: UndergroundBasicPage = page_builder(
                 document_soup=document_soup,
                 importable_html=importable_html,
@@ -1376,6 +1459,7 @@ class Command(BaseCommand):
                         attributes,
                         site,
                         parent=new_page,
+                        image_resolver=image_resolver,
                     )
 
             if is_replacing:
@@ -1385,6 +1469,8 @@ class Command(BaseCommand):
 
         if slug and not self.counter.has_evaluated_any_pages():
             raise CommandError(f"'{slug}' was not available for importing.")
+        if isinstance(image_resolver, RemoteImageResolver):
+            self.stdout.write(f"Images: {image_resolver.get_summary()}.")
         self.stdout.write(self.style.SUCCESS(f"Done. {self.counter.get_summary()}"))
 
     def handle(self, *args, **options) -> None:
@@ -1396,4 +1482,5 @@ class Command(BaseCommand):
             site=get_site_from_options(options),
             slug=options.get("slug"),
             child_stub_building_map=CHILD_STUB_BUILDING_MAP,
+            image_resolver=self.build_image_resolver(options),
         )
