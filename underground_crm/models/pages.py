@@ -251,6 +251,7 @@ BASIC_PAGE_BLOCKS = [
                 "bold",
                 "italic",
                 "underline",
+                "subscript",
                 "link",
                 "ol",
                 "ul",

@@ -15,31 +15,23 @@ from wagtail.snippets.views.snippets import SnippetViewSet
 from .models import Engagement, Tag
 
 
-@hooks.register("register_rich_text_features")
-def register_underline_feature(features):
+def _register_inline_style_feature(features, feature_name, type_, tag, label, description):
     """
-    Register ``<u>`` as an opt-in Draftail feature named "underline".
+    Register `tag` as an opt-in Draftail inline style named `feature_name`.
 
-    Wagtail does not ship this by default — only "bold" and "italic" are
-    built in. It is not added to ``features.default_features``, so it stays
+    The feature is not added to ``features.default_features``, so it stays
     opt-in: a RichTextField/RichTextBlock only gets the toolbar button and
-    the <u> <-> UNDERLINE conversion when it names "underline" in its own
-    features list (see BASIC_PAGE_BLOCKS in underground_crm/models/pages.py,
-    which underground_crm/legacy_html.py's decomposition relies on when it
-    re-expresses a legacy ``text-decoration: underline`` as <u>).
+    the `tag` <-> `type_` conversion when it names `feature_name` in its own
+    features list (see BASIC_PAGE_BLOCKS in underground_crm/models/pages.py).
     """
-    feature_name = "underline"
-    type_ = "UNDERLINE"
-    tag = "u"
-
     features.register_editor_plugin(
         "draftail",
         feature_name,
         draftail_features.InlineStyleFeature(
             {
                 "type": type_,
-                "label": "U",
-                "description": _("Underline"),
+                "label": label,
+                "description": description,
             }
         ),
     )
@@ -51,6 +43,27 @@ def register_underline_feature(features):
             "to_database_format": {"style_map": {type_: tag}},
         },
     )
+
+
+@hooks.register("register_rich_text_features")
+def register_underline_feature(features):
+    """
+    Register ``<u>`` as the Draftail feature "underline". Wagtail does not ship
+    it — only "bold" and "italic" are built in.
+
+    underground_crm/legacy_html.py's decomposition relies on it when it
+    re-expresses a legacy ``text-decoration: underline`` as <u>.
+    """
+    _register_inline_style_feature(features, "underline", "UNDERLINE", "u", "U", _("Underline"))
+
+
+@hooks.register("register_rich_text_features")
+def register_subscript_feature(features):
+    """
+    Register ``<sub>`` as the Draftail feature "subscript", for chemical
+    formulas such as CO<sub>2</sub>. Draftail styles the SUBSCRIPT type itself.
+    """
+    _register_inline_style_feature(features, "subscript", "SUBSCRIPT", "sub", "x₂", _("Subscript"))
 
 
 @hooks.register("register_admin_menu_item")

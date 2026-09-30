@@ -67,12 +67,14 @@ from underground_crm.blocks import registration_person_field_names
 from underground_crm.legacy_html import (
     BUTTON_BLOCK,
     RAW_HTML_BLOCK,
+    ExtraReconstructor,
     ImageResolver,
     do_blocks_have_visible_content,
-    decompose_legacy_content,
+    recompose_legacy_content,
     get_body_soup,
     remove_duplicated_intro,
 )
+from underground_crm.legacy_documents import RemoteDocumentResolver, rewrite_document_links
 from underground_crm.legacy_images import RemoteImageResolver
 from underground_crm.models import Address, FeedPage, UndergroundBasicPage
 from underground_crm.models import Tag as CrmTag
@@ -162,6 +164,7 @@ def _load_page_attributes(json_path: Path) -> dict | None:
 def extract_importable_html(
     html_file: Path,
     importable_dir: Optional[Path],
+    document_resolver: Optional[RemoteDocumentResolver] = None,
 ) -> tuple[BeautifulSoup, str] | None:
     """Extract the element that holds the page-specific content, write it to
     importable_dir, and return the full-page soup alongside the extracted
@@ -169,8 +172,14 @@ def extract_importable_html(
 
     The page's own ``div.content`` is preferred when present: the outer
     ``id="content"`` region holds more extraneous elements.
+
+    With a `document_resolver`, links to legacy documents are first pointed at
+    the stored documents, so that the page, the extract and everything built
+    from them refer to the copies we hold.
     """
     document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
+    if document_resolver is not None:
+        rewrite_document_links(document_soup, document_resolver)
     body_soup = get_body_soup(document_soup)
     if body_soup is None:
         return None
@@ -404,14 +413,20 @@ def build_body_blocks(
     document_soup: BeautifulSoup,
     importable_html: str,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> List[dict]:
     """
-    Deconstructs the page's article content as StreamField blocks. Without an
-    `image_resolver`, every image is left in a Raw HTML block.
+    Reconstructs the page's article content as StreamField blocks. Without an
+    `image_resolver`, every image is left in a Raw HTML block. A theme's
+    `extra_reconstructor` claims the markup it has its own blocks for.
     """
     content_element = document_soup.find(id="content")
     blocks = (
-        decompose_legacy_content(content_element, image_resolver=image_resolver)
+        recompose_legacy_content(
+            content_element,
+            image_resolver=image_resolver,
+            extra_reconstructor=extra_reconstructor,
+        )
         if content_element is not None
         else []
     )
@@ -428,12 +443,14 @@ def get_page_args(
     site,
     body_blocks: Optional[List[dict]] = None,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> dict:
     """
     The keyword arguments common to every imported page. `body_blocks` is the
     page's body when the caller has already built (and adjusted) it; otherwise
     it is built here from the document, with `image_resolver` internalizing its
-    images.
+    images and `extra_reconstructor` (see build_body_blocks) claiming any
+    markup a theme has its own blocks for.
     """
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
@@ -464,7 +481,9 @@ def get_page_args(
         "body": json.dumps(
             body_blocks
             if body_blocks is not None
-            else build_body_blocks(document_soup, importable_html, image_resolver)
+            else build_body_blocks(
+                document_soup, importable_html, image_resolver, extra_reconstructor
+            )
         ),
         "show_toc": should_show_toc(document_soup),
         "legacy_id": int(legacy_id) if legacy_id is not None else None,
@@ -479,6 +498,7 @@ def build_underground_basic_page(
     site: Site,
     return_class=UndergroundBasicPage,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> UndergroundBasicPage:
     """
     Build and return an unsaved Wagtail page from imported HTML content.
@@ -489,7 +509,13 @@ def build_underground_basic_page(
     """
     return return_class(
         **get_page_args(
-            document_soup, importable_html, attributes, slug, site, image_resolver=image_resolver
+            document_soup,
+            importable_html,
+            attributes,
+            slug,
+            site,
+            image_resolver=image_resolver,
+            extra_reconstructor=extra_reconstructor,
         )
     )
 
@@ -567,7 +593,7 @@ def build_feed_body_blocks(
         post_list.decompose()
     content_element = without_list.find(id="content")
     return (
-        decompose_legacy_content(content_element, image_resolver=image_resolver)
+        recompose_legacy_content(content_element, image_resolver=image_resolver)
         if content_element is not None
         else []
     )
@@ -685,6 +711,7 @@ def build_blog_post(
     return_class=BlogPost,
     existing_intro: Optional[List[dict]] = None,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> BlogPost:
     """
     Build and return an unsaved BlogPost from imported HTML content.
@@ -695,9 +722,12 @@ def build_blog_post(
     from the start of the body so that it is not shown twice.
 
     `image_resolver` internalizes the body's images (see
-    underground_crm.legacy_images).
+    underground_crm.legacy_images). `extra_reconstructor` claims the markup a
+    theme has its own blocks for (see build_body_blocks).
     """
-    body_blocks = build_body_blocks(document_soup, importable_html, image_resolver)
+    body_blocks = build_body_blocks(
+        document_soup, importable_html, image_resolver, extra_reconstructor
+    )
     if existing_intro is not None:
         body_blocks, duplicated = remove_duplicated_intro(body_blocks, existing_intro)
         logger.info(
@@ -782,7 +812,7 @@ def extract_blog_post_listings(
 
     Each child ``<li>`` has a ``<header>`` (the title in its ``<h3>``, the slug
     in that title's link, the author and date in its byline) and a ``<div>``
-    holding the post's excerpt, which is deconstructed exactly as a Basic
+    holding the post's excerpt, which is reconstructed exactly as a Basic
     page's content is. An ``<li>`` missing either child, or whose header gives
     no slug or title, is reported and left out.
     """
@@ -811,7 +841,7 @@ def extract_blog_post_listings(
                 author_name=author.get_text(strip=True) if author else None,
                 published_at=_blog_post_published_at(header),
                 intro=_without_read_more_button(
-                    decompose_legacy_content(excerpt, image_resolver=image_resolver), slug
+                    recompose_legacy_content(excerpt, image_resolver=image_resolver), slug
                 ),
             )
         )
@@ -1200,6 +1230,14 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--no-document-internalization",
+            action="store_true",
+            help=(
+                "Do not download the documents (PDFs and the like) that a page links to. "
+                "Each link is left pointing at its original URL."
+            ),
+        )
+        parser.add_argument(
             "--image-base-url",
             required=False,
             default="",
@@ -1208,6 +1246,18 @@ class Command(BaseCommand):
                 "Defaults to settings.WAGTAILADMIN_BASE_URL. Sources that stay relative are "
                 "left as raw HTML."
             ),
+        )
+
+    def build_document_resolver(self, options) -> Optional[RemoteDocumentResolver]:
+        """
+        The resolver that internalizes the documents that every page in this run
+        links to, or None when --no-document-internalization was passed.
+        """
+        if options.get("no_document_internalization"):
+            return None
+        return RemoteDocumentResolver(
+            base_url=options.get("image_base_url") or settings.WAGTAILADMIN_BASE_URL,
+            stdout=self.stdout,
         )
 
     def build_image_resolver(self, options) -> Optional[RemoteImageResolver]:
@@ -1313,6 +1363,7 @@ class Command(BaseCommand):
         slug: Optional[str],
         child_stub_building_map: Optional[Dict[str, Callable]] = None,
         image_resolver: Optional[ImageResolver] = None,
+        document_resolver: Optional[RemoteDocumentResolver] = None,
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
@@ -1364,7 +1415,7 @@ class Command(BaseCommand):
             if not page_builder:
                 continue
 
-            extracted = extract_importable_html(html_file, importable_dir)
+            extracted = extract_importable_html(html_file, importable_dir, document_resolver)
             if extracted is None:
                 self.stderr.write(
                     f"  [skip] no element with id='content' found in '{html_file.name}'."
@@ -1471,6 +1522,8 @@ class Command(BaseCommand):
             raise CommandError(f"'{slug}' was not available for importing.")
         if isinstance(image_resolver, RemoteImageResolver):
             self.stdout.write(f"Images: {image_resolver.get_summary()}.")
+        if isinstance(document_resolver, RemoteDocumentResolver):
+            self.stdout.write(f"Documents: {document_resolver.get_summary()}.")
         self.stdout.write(self.style.SUCCESS(f"Done. {self.counter.get_summary()}"))
 
     def handle(self, *args, **options) -> None:
@@ -1483,4 +1536,5 @@ class Command(BaseCommand):
             slug=options.get("slug"),
             child_stub_building_map=CHILD_STUB_BUILDING_MAP,
             image_resolver=self.build_image_resolver(options),
+            document_resolver=self.build_document_resolver(options),
         )

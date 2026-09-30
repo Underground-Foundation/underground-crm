@@ -6,7 +6,7 @@ element into a single Raw HTML block. That is a faithful archive but hardcodes
 the styling from the time of import, which may include artifacts created due to
 an import from Google Docs.
 
-Here we therefore deconstruct the content into Wagtail blocks, falling back to
+Here we therefore reconstruct the content into Wagtail blocks, falling back to
 a Raw HTML block for the parts it cannot recreate. The fallback is per-tag,
 not for the whole page.
 
@@ -40,13 +40,19 @@ _FLOAT_ALIGNMENTS = {"left": ImageAlignment.LEFT, "right": ImageAlignment.RIGHT}
 # verbatim in a Raw HTML block instead.
 ImageResolver = Callable[[str, str], Optional[object]]
 
+# A theme's own recognizer for markup it has a dedicated block for. It is offered
+# each element the walk reaches, before the library's own handling. Given the
+# element, return the blocks that replace it (the walk then skips its
+# descendants), or None to decline and let the library handle it as usual.
+ExtraReconstructor = Callable[[Tag], Optional[List[dict]]]
+
 # The tags a RichTextBlock built from BASIC_PAGE_BLOCKS' feature list can
-# actually hold: features are h2/h3/h4, bold, italic, underline, link, ol,
-# ul, hr, blockquote and image. Anything outside this set would be discarded
+# actually hold: features are h2/h3/h4, bold, italic, underline, subscript,
+# link, ol, ul, hr, blockquote and image. Anything outside this set would be discarded
 # the first time an editor opened the page in Draftail, so a node containing
 # one is sent to a Raw HTML block instead, where it survives intact.
 RICH_TEXT_BLOCK_TAGS = frozenset({"p", "h2", "h3", "h4", "ul", "ol", "li", "hr", "blockquote"})
-RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "u", "br"})
+RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "u", "sub", "br"})
 
 # Legacy bodies carry their own <h1> (the headline is also the page title) and
 # occasionally an <h5>/<h6>. Draftail offers h2–h4 only, so they are moved to
@@ -611,7 +617,13 @@ class _BlockCollector:
 MAX_DEPTH = 12
 
 
-def _collect(nodes: List, collector: _BlockCollector, image_resolver, depth: int = 0) -> None:
+def _collect(
+    nodes: List,
+    collector: _BlockCollector,
+    image_resolver,
+    depth: int = 0,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
+) -> None:
     """Walk a level of the document, appending a block for each node it finds."""
     # Legacy markup nests wrappers, but not indefinitely; the guard stops a
     # pathological document from recursing without bound.
@@ -631,18 +643,37 @@ def _collect(nodes: List, collector: _BlockCollector, image_resolver, depth: int
             collector.add_rich_text(str(paragraph))
             continue
 
+        if extra_reconstructor is not None:
+            extra_blocks = extra_reconstructor(node)
+            if extra_blocks is not None:
+                for block in extra_blocks:
+                    collector.add(block)
+                continue
+
         button = _as_button(node)
         if button is not None:
             collector.add(button)
             continue
 
         if _is_transparent_container(node):
-            _collect(_meaningful_children(node), collector, image_resolver, depth + 1)
+            _collect(
+                _meaningful_children(node),
+                collector,
+                image_resolver,
+                depth + 1,
+                extra_reconstructor,
+            )
             continue
 
         cell = _single_cell(node)
         if cell is not None:
-            _collect(_meaningful_children(cell), collector, image_resolver, depth + 1)
+            _collect(
+                _meaningful_children(cell),
+                collector,
+                image_resolver,
+                depth + 1,
+                extra_reconstructor,
+            )
             continue
 
         if node.name == "img":
@@ -696,9 +727,10 @@ def _collect_flow_node(node: Tag, collector: _BlockCollector, image_resolver) ->
             collector.add_raw_html(fragment_html(fragment))
 
 
-def decompose_legacy_content(
+def recompose_legacy_content(
     content: Tag,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> List[dict]:
     """
     Rebuild a legacy page's ``id="content"`` element as StreamField blocks.
@@ -708,6 +740,8 @@ def decompose_legacy_content(
     which is taken to be the article in full. It is left untouched; the work happens on a copy. `image_resolver`
     turns a remote image URL into the primary key of a Wagtail image — pass
     None (or return None from it) to leave every <img> in a Raw HTML block.
+    `extra_reconstructor` lets a theme claim markup for its own blocks (see
+    ExtraReconstructor).
 
     Returns a list of ``{"type": ..., "value": ...}`` dicts ready to be JSON
     encoded into a page's body, or an empty list when the content element
@@ -724,7 +758,12 @@ def decompose_legacy_content(
     strip_presentational_markup(body)
 
     collector = _BlockCollector()
-    _collect(_meaningful_children(body), collector, image_resolver)
+    _collect(
+        _meaningful_children(body),
+        collector,
+        image_resolver,
+        extra_reconstructor=extra_reconstructor,
+    )
     return collector.blocks
 
 
