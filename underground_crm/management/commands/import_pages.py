@@ -1282,6 +1282,11 @@ class Command(BaseCommand):
         (now childless) once it is no longer the site's root page.
         """
         children = list(old_root.get_children())
+        if old_root.slug == new_page.slug:
+            # Both pages are siblings until `old_root` is deleted below, so
+            # Wagtail would reject `new_page` for reusing the slug.
+            old_root.slug = f"{old_root.slug}-replaced-{old_root.pk}"
+            old_root.save()
         old_root.get_parent().add_child(instance=new_page)
         for child in children:
             child.move(new_page, pos="last-child")
