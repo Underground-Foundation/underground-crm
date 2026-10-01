@@ -173,9 +173,8 @@ def extract_importable_html(
     The page's own ``div.content`` is preferred when present: the outer
     ``id="content"`` region holds more extraneous elements.
 
-    With a `document_resolver`, links to legacy documents are first pointed at
-    the stored documents, so that the page, the extract and everything built
-    from them refer to the copies we hold.
+    With a `document_resolver`, links to legacy documents are replaced with
+    links to our migrated documents before the extraction occurs.
     """
     document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
     if document_resolver is not None:
@@ -416,9 +415,9 @@ def build_body_blocks(
     extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> List[dict]:
     """
-    Reconstructs the page's article content as StreamField blocks. Without an
+    Reconstructs the page's content as StreamField blocks. Without an
     `image_resolver`, every image is left in a Raw HTML block. A theme's
-    `extra_reconstructor` claims the markup it has its own blocks for.
+    `extra_reconstructor` function can create custom blocks (not just StreamField).
     """
     content_element = document_soup.find(id="content")
     blocks = (
@@ -449,8 +448,8 @@ def get_page_args(
     The keyword arguments common to every imported page. `body_blocks` is the
     page's body when the caller has already built (and adjusted) it; otherwise
     it is built here from the document, with `image_resolver` internalizing its
-    images and `extra_reconstructor` (see build_body_blocks) claiming any
-    markup a theme has its own blocks for.
+    images and `extra_reconstructor` (see build_body_blocks) reconstructing any
+    custom blocks.
     """
     head = document_soup.find("head")
     seo_title = attributes.get("title", "")
@@ -1233,8 +1232,8 @@ class Command(BaseCommand):
             "--no-document-internalization",
             action="store_true",
             help=(
-                "Do not download the documents (PDFs and the like) that a page links to. "
-                "Each link is left pointing at its original URL."
+                "Do not download the documents (PDFs and the like) referenced by a page. "
+                "Each linked document remains in its original document store."
             ),
         )
         parser.add_argument(

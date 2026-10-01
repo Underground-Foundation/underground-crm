@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 # Images that Wagtail's image library cannot hold, so they are handed to the
 # uploader instead. (".dat" is what some legacy image attachments are named.)
-FILE_IMAGE_EXTENSIONS = {"svg", "dat"}
+FILE_IMAGE_EXTENSIONS = {"svg", "svgz", "dat"}
 # The migration of these assets should have been handled during the recreation of the theme
 HTML_EXTENSIONS = {"css", "js", "scss"}
 

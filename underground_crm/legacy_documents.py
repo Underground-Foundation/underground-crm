@@ -17,7 +17,7 @@ from django.core.files.base import ContentFile
 
 from underground_crm.legacy_files import RemoteFileResolver
 
-# What legacy pages upload as attachments other than images.
+# The extensions for non-image files which are to be treated as internalizable documents.
 DOCUMENT_EXTENSIONS = frozenset({"pdf", "ics"})
 
 

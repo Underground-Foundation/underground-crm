@@ -8,22 +8,15 @@ registered before it can point at a library file instead.
 
 A source is only worth fetching when it's prefixed by one of LEGACY_ASSET_URLS
 or has "/uploads/" in its path -- and never when its host is one of
-SATISFACTORY_IMAGE_DOMAINS, which overrides both of those (a file already served
-from our own domain has nothing to fetch or duplicate). A relative source is
-always internalized, exempt from all three checks, since it was only ever
-relative to the legacy page itself.
+SATISFACTORY_IMAGE_DOMAINS. A relative source is always internalized, exempt
+from all three checks.
 
 A file that is already in our own media storage is adopted rather than copied:
-the storage is asked for it (not the network), and the library gets a record
-pointing at the file that is already there. That covers a source served from the
-storage's own URL, and a download that turns out to be byte-for-byte the file
-already stored under the name an upload would get. (The storage alone cannot make
-that call: with file_overwrite off it only checks that the name is taken, and
-would file the upload again under a suffixed name.)
+our storage is consulted, and we get a record of the file that is already there.
+We use the SHA1 hash of the documents themselves to see if they're identical.
 
 The resolvers are deliberately forgiving. Anything they cannot or should not
-fetch returns None, and the caller keeps the original reference. A broken
-picture or link is not worth failing an import over.
+fetch returns None, and the caller keeps the original reference.
 """
 
 import hashlib
@@ -40,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 def legacy_asset_urls_from_env() -> tuple:
     """
-    The base URLs that will trigger internalisation of files, when the source is
+    The base URLs that will trigger internalization of files, when the source is
     *absolute*. This is defined in LEGACY_ASSET_URLS. Any absolute paths using
     other prefixes are left as they are. A *relative* source was only ever
     relative to the legacy page itself, so it's always internalized.

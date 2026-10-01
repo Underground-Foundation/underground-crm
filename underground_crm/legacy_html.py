@@ -40,9 +40,9 @@ _FLOAT_ALIGNMENTS = {"left": ImageAlignment.LEFT, "right": ImageAlignment.RIGHT}
 # verbatim in a Raw HTML block instead.
 ImageResolver = Callable[[str, str], Optional[object]]
 
-# A theme's own recognizer for markup it has a dedicated block for. It is offered
-# each element the walk reaches, before the library's own handling. Given the
-# element, return the blocks that replace it (the walk then skips its
+# A theme's own recognizer for markup which can be reconstructed as a custom block.
+# It is offered each element along the walk, before the library's own handling.
+# Given the element, return the blocks that replace it (the walk then skips its
 # descendants), or None to decline and let the library handle it as usual.
 ExtraReconstructor = Callable[[Tag], Optional[List[dict]]]
 
@@ -63,10 +63,10 @@ HEADING_DEMOTIONS = {"h1": "h2", "h5": "h4", "h6": "h4"}
 # and treats their children as though they had been written at the top level.
 TRANSPARENT_CONTAINER_TAGS = frozenset({"div", "section", "article", "main", "center"})
 
-# Classes that only position a transparent wrapper — Bootstrap's grid and
+# Classes that only serve to position a transparent wrapper — Bootstrap's grid and
 # spacing utilities, plus the handful of legacy CMS layout hooks. A
-# wrapper whose classes are all in here (or that has no classes at all) is
-# descended through; one with a class we do not recognise is left alone and
+# wrapper whose classes are all in here (or who has no classes at all) is
+# descended through; one with a class we do not recognize is left alone and
 # preserved as raw HTML, because the class may well be doing something.
 _LAYOUT_CLASS_PATTERN = re.compile(
     r"""^(
@@ -103,6 +103,7 @@ _EXTRANEOUS_IDENTIFIERS = frozenset(
         "like-and-share",
     }
 )
+# These tags don't relate to the specific page; they're artifacts of the overall site's theme.
 _EXTRANEOUS_TAGS = frozenset({"script", "style", "noscript", "nav", "header", "footer"})
 
 # CSS properties that never survive into a Wagtail block and never meant
@@ -126,8 +127,8 @@ _DISCARDABLE_PROPERTIES = frozenset(
     }
 )
 
-# Properties that are noise only at certain values: font-weight: 400 is the
-# Google Docs artifact, font-weight: 700 is a genuine bold.
+# Properties that are noise only at certain values: font-weight: 400 is an artifact
+# from Google Docs, font-weight: 700 is genuinely bold.
 _DISCARDABLE_VALUES = {
     "font-weight": frozenset({"400", "normal", "inherit", "initial", "unset"}),
     "font-style": frozenset({"normal", "inherit", "initial", "unset"}),
@@ -142,15 +143,11 @@ _ITALIC_STYLES = frozenset({"italic", "oblique"})
 _UNDERLINE_PROPERTIES = frozenset({"text-decoration", "text-decoration-line"})
 _UNDERLINE_VALUES = frozenset({"underline"})
 
-# Attributes a <span> may carry and still be treated as a pure wrapper. class
-# and id are included because neither can be represented in a Wagtail block:
-# the legacy stylesheet is not coming with us, so a class here is already
-# inert — keeping the span would only push its paragraph into raw HTML for
-# nothing.
-_UNWRAPPABLE_SPAN_ATTRIBUTES = frozenset({"style", "class", "id", "lang", "dir"})
+# Attributes of a <span> which can be dropped during the internalization process.
+_DISCARDABLE_SPAN_ATTRIBUTES = frozenset({"style", "class", "id", "lang", "dir"})
 
-# Inline wrappers that are always redundant once their styling is gone.
-_UNWRAPPABLE_TAGS = frozenset({"span", "font"})
+# Inline wrapper tags that are always redundant once their styling is gone.
+_DISCARDABLE_TAGS = frozenset({"span", "font"})
 
 _STYLE_DECLARATION = re.compile(r"([-a-zA-Z]+)\s*:\s*([^;]+)")
 _PERCENTAGE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*%\s*$")
@@ -193,9 +190,7 @@ def parse_style(value: str) -> List[Tuple[str, str]]:
 
 def is_hidden(tag: Tag) -> bool:
     """
-    Whether `tag`, or an element that holds it, is not displayed: it has the
-    ``hidden`` attribute or ``display: none`` in its style, or it is an
-    ``<input type="hidden">``.
+    Is this tag hidden thanks to its style, its attributes, or these properties of its ancestors?
     """
     return any(
         element.has_attr("hidden")
@@ -289,7 +284,7 @@ def strip_presentational_markup(root: Tag) -> None:
                     tag["style"] = format_style(kept)
                 else:
                     del tag["style"]
-            if tag.name not in _UNWRAPPABLE_TAGS:
+            if tag.name not in _DISCARDABLE_TAGS:
                 # A block tag keeps its identity; only the noise went away.
                 # Bold/italic/underline expressed as CSS on a <p> applies to
                 # the whole paragraph, so re-express it inside the paragraph.
@@ -300,7 +295,7 @@ def strip_presentational_markup(root: Tag) -> None:
                 if is_underline:
                     _wrap_contents(tag, "u")
                 continue
-            if kept or set(tag.attrs) - _UNWRAPPABLE_SPAN_ATTRIBUTES:
+            if kept or set(tag.attrs) - _DISCARDABLE_SPAN_ATTRIBUTES:
                 continue
             if is_bold:
                 _wrap_contents(tag, "strong")

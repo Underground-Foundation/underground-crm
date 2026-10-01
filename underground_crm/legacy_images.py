@@ -9,8 +9,8 @@ a Wagtail image before the block can point at it.
 
 How a source is judged, deduplicated and adopted from the media storage is the
 same for every kind of file, and described in underground_crm/legacy_files.py.
-Here, an image that Wagtail cannot hold (an SVG) is left where it is, as raw
-HTML, and a response that is not an image is not stored as one.
+Here, an image that Wagtail cannot hold (such as an SVG) is left where it is,
+as raw HTML.
 """
 
 from io import BytesIO
@@ -26,9 +26,7 @@ from underground_crm.legacy_files import (  # pylint: disable=unused-import
     satisfactory_image_domains_from_env,
 )
 
-# Wagtail rejects an upload whose extension is not in WAGTAILIMAGES_EXTENSIONS,
-# which does not include SVG unless a project opts in. Rather than guess, these
-# are left as raw HTML.
+# Wagtail rejects an upload whose extension is not in WAGTAILIMAGES_EXTENSIONS
 UNSUPPORTED_SUFFIXES = frozenset({".svg", ".svgz"})
 
 

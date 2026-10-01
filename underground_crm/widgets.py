@@ -178,10 +178,8 @@ class SameAsHomeAddressCheckbox(forms.CheckboxInput):
 
 class UUIDSnippetChooser(AdminSnippetChooser):
     """
-    A snippet chooser whose value data carries the primary key as a string.
-    BlockWidget.render_with_errors serialises that data with plain json.dumps
-    (bypassing telepath), which cannot encode the UUID primary keys that this
-    library's models use.
+    This allows a Wagtail snippet to be chosen when the snippet has a UUID as its
+    primary key − it would typically be rendered with json.dumps which would throw an error.
     """
 
     def get_value_data_from_instance(self, instance: Any) -> dict[str, Any]:

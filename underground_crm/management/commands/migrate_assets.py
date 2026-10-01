@@ -1,16 +1,15 @@
 """
-Management command to bring the assets referenced by fetched legacy pages across.
+A management command to bring the assets referenced by fetched legacy pages across.
 
 Usage:
     python manage.py migrate_assets --domain <domain>             # bring across, leave pages alone
     python manage.py migrate_assets --domain <domain> --replace   # also rewrite src/href
     python manage.py migrate_assets --domain <domain> --dry-run   # report only, touch nothing
 
-Images Wagtail can hold become Wagtail images, and PDFs become Wagtail documents
-(in the media storage and their libraries); other assets, such as SVGs, are put in
-place by the asset uploader (see build_asset_uploader). Which URLs count as legacy assets is set by
-LEGACY_ASSET_URLS, and LEGACY_USER_AGENT is sent when fetching them. See
-underground_crm/legacy_assets.py.
+Images which Wagtail can hold will become Wagtail images, and PDFs become Wagtail documents
+(in the media storage and their libraries). Other assets, such as SVGs, are put in
+place by the asset uploader (see build_asset_uploader). The determination of which
+URLs are indicative of legacy assets is defined in underground_crm/legacy_assets.py.
 """
 
 import logging
