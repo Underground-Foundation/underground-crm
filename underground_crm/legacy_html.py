@@ -191,6 +191,20 @@ def parse_style(value: str) -> List[Tuple[str, str]]:
     ]
 
 
+def is_hidden(tag: Tag) -> bool:
+    """
+    Whether `tag`, or an element that holds it, is not displayed: it has the
+    ``hidden`` attribute or ``display: none`` in its style, or it is an
+    ``<input type="hidden">``.
+    """
+    return any(
+        element.has_attr("hidden")
+        or ("display", "none") in parse_style(element.get("style", ""))
+        or (element.name == "input" and element.get("type", "").lower() == "hidden")
+        for element in [tag, *tag.parents]
+    )
+
+
 def format_style(declarations: List[Tuple[str, str]]) -> str:
     return "; ".join(f"{prop}: {value}" for prop, value in declarations)
 

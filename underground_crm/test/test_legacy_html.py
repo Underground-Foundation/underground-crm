@@ -19,6 +19,7 @@ from underground_crm.legacy_html import (
     RICH_TEXT_BLOCK,
     recompose_legacy_content,
     do_blocks_have_visible_content,
+    is_hidden,
     get_body_soup,
     remove_duplicated_intro,
     strip_presentational_markup,
@@ -162,6 +163,23 @@ class TestRemoveDuplicatedIntro(unittest.TestCase):
         body = [html_block(f"{HEADER_IMAGE}\n{CLOSING_PARAGRAPH}")]
         remaining, _ = remove_duplicated_intro(body, [html_block(HEADER_IMAGE)])
         self.assertEqual(remaining, [html_block(CLOSING_PARAGRAPH)])
+
+
+class TestIsHidden(unittest.TestCase):
+    def hidden(self, html):
+        return is_hidden(BeautifulSoup(html, "html.parser").find("input"))
+
+    def test_display_none_on_the_element_or_an_ancestor(self):
+        self.assertTrue(self.hidden('<input style="color: red; Display : NONE;">'))
+        self.assertTrue(self.hidden('<div style="display:none;"><p><input></p></div>'))
+
+    def test_hidden_attribute_and_hidden_inputs(self):
+        self.assertTrue(self.hidden("<div hidden><input></div>"))
+        self.assertTrue(self.hidden('<input type="hidden">'))
+
+    def test_other_elements_are_displayed(self):
+        self.assertFalse(self.hidden('<div style="display: block"><input></div>'))
+        self.assertFalse(self.hidden('<input type="text">'))
 
 
 class TestBlocksHaveContent(unittest.TestCase):

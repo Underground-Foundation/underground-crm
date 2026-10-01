@@ -3,6 +3,7 @@ from typing import Any, NamedTuple
 from django import forms
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
+from wagtail.snippets.widgets import AdminSnippetChooser
 
 from underground_crm.addressr import MINIMUM_QUERY_LENGTH
 
@@ -173,3 +174,16 @@ class SameAsHomeAddressCheckbox(forms.CheckboxInput):
 
     class Media:
         js = ["underground_crm/js/same_as_home_address.js"]
+
+
+class UUIDSnippetChooser(AdminSnippetChooser):
+    """
+    A snippet chooser whose value data carries the primary key as a string.
+    BlockWidget.render_with_errors serialises that data with plain json.dumps
+    (bypassing telepath), which cannot encode the UUID primary keys that this
+    library's models use.
+    """
+
+    def get_value_data_from_instance(self, instance: Any) -> dict[str, Any]:
+        data = super().get_value_data_from_instance(instance)
+        return {**data, "id": str(data["id"])}
