@@ -17,8 +17,9 @@ from underground_crm.legacy_html import (
     IMAGE_BLOCK,
     RAW_HTML_BLOCK,
     RICH_TEXT_BLOCK,
-    decompose_legacy_content,
+    recompose_legacy_content,
     do_blocks_have_visible_content,
+    is_hidden,
     get_body_soup,
     remove_duplicated_intro,
     strip_presentational_markup,
@@ -164,6 +165,23 @@ class TestRemoveDuplicatedIntro(unittest.TestCase):
         self.assertEqual(remaining, [html_block(CLOSING_PARAGRAPH)])
 
 
+class TestIsHidden(unittest.TestCase):
+    def hidden(self, html):
+        return is_hidden(BeautifulSoup(html, "html.parser").find("input"))
+
+    def test_display_none_on_the_element_or_an_ancestor(self):
+        self.assertTrue(self.hidden('<input style="color: red; Display : NONE;">'))
+        self.assertTrue(self.hidden('<div style="display:none;"><p><input></p></div>'))
+
+    def test_hidden_attribute_and_hidden_inputs(self):
+        self.assertTrue(self.hidden("<div hidden><input></div>"))
+        self.assertTrue(self.hidden('<input type="hidden">'))
+
+    def test_other_elements_are_displayed(self):
+        self.assertFalse(self.hidden('<div style="display: block"><input></div>'))
+        self.assertFalse(self.hidden('<input type="text">'))
+
+
 class TestBlocksHaveContent(unittest.TestCase):
     def test_no_blocks_have_no_content(self):
         self.assertFalse(do_blocks_have_visible_content([]))
@@ -233,6 +251,13 @@ class TestStripPresentationalMarkup(unittest.TestCase):
             str(soup),
             "<p><u>If you are a member, now is the time to act like it matters.</u></p>",
         )
+
+    def test_subscript_stays_in_rich_text(self):
+        """<sub> is a registered Draftail feature (register_subscript_feature), so it is kept."""
+        soup = parse('<div id="content"><p>Remove excess CO<sub>2</sub> from the air</p></div>')
+        blocks = recompose_legacy_content(soup)
+        self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
+        self.assertEqual(blocks[0]["value"], "<p>Remove excess CO<sub>2</sub> from the air</p>")
 
     def test_underline_combines_with_bold(self):
         soup = parse(
@@ -325,7 +350,7 @@ class TestDecomposition(unittest.TestCase):
 
     def test_consecutive_paragraphs_merge_into_one_rich_text_block(self):
         soup = parse('<div id="content"><p>One</p><p>Two</p><h2>Three</h2></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0]["type"], RICH_TEXT_BLOCK)
         self.assertEqual(blocks[0]["value"], "<p>One</p><p>Two</p><h2>Three</h2>")
@@ -335,22 +360,42 @@ class TestDecomposition(unittest.TestCase):
             '<div id="content"><p class="mt-2" style="text-align: center;">'
             'See <a class="text-reset" href="/join" target="_blank">joining</a></p></div>'
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], '<p>See <a href="/join">joining</a></p>')
+
+    def test_extra_reconstructor_claims_elements_and_skips_their_descendants(self):
+        soup = parse(
+            '<div id="content"><p>Before</p>'
+            '<div class="row"><div data-kind="promo"><p>Inside</p></div><p>Beside</p></div></div>'
+        )
+        offered = []
+
+        def claim_promo(node):
+            offered.append(node.name)
+            if node.get("data-kind") == "promo":
+                return [{"type": "promo", "value": "claimed"}]
+            return None
+
+        blocks = recompose_legacy_content(soup, extra_reconstructor=claim_promo)
+        self.assertEqual(
+            [block["type"] for block in blocks], [RICH_TEXT_BLOCK, "promo", RICH_TEXT_BLOCK]
+        )
+        # The claimed element's own <p> was never offered.
+        self.assertEqual(offered, ["p", "div", "div", "p"])
 
     def test_body_h1_is_demoted_to_h2(self):
         soup = parse('<div id="content"><h1>What happens next</h1></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], "<h2>What happens next</h2>")
 
     def test_h5_and_h6_are_demoted_to_the_lowest_available_heading(self):
         soup = parse('<div id="content"><h5>Small</h5><h6>Smaller</h6></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], "<h4>Small</h4><h4>Smaller</h4>")
 
     def test_empty_paragraphs_are_dropped(self):
         soup = parse('<div id="content"><p>Real</p><p> </p><p> </p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], "<p>Real</p>")
 
     def test_unsupported_inline_markup_falls_back_for_that_node_only(self):
@@ -360,7 +405,7 @@ class TestDecomposition(unittest.TestCase):
             "<p>Published at <code>/membership</code></p>"
             "<p>After</p></div>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(
             [block["type"] for block in blocks],
             [RICH_TEXT_BLOCK, RAW_HTML_BLOCK, RICH_TEXT_BLOCK],
@@ -375,7 +420,7 @@ class TestDecomposition(unittest.TestCase):
             '<div class="embedded-widget"><iframe src="https://example.test/embed"></iframe></div>'
             "<p>After</p></div>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(
             [block["type"] for block in blocks],
             [RICH_TEXT_BLOCK, RAW_HTML_BLOCK, RICH_TEXT_BLOCK],
@@ -387,7 +432,7 @@ class TestDecomposition(unittest.TestCase):
             '<div id="content"><div class="widget-a"><iframe src="a"></iframe></div>'
             '<div class="widget-b"><iframe src="b"></iframe></div></div>'
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
         self.assertIn("widget-a", blocks[0]["value"])
         self.assertIn("widget-b", blocks[0]["value"])
@@ -396,7 +441,7 @@ class TestDecomposition(unittest.TestCase):
         soup = parse(
             '<div id="content"><div class="mb-2"><div class="row"><p>Inside</p></div></div></div>'
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
         self.assertEqual(blocks[0]["value"], "<p>Inside</p>")
 
@@ -405,7 +450,7 @@ class TestDecomposition(unittest.TestCase):
             '<div id="content"><table border="0" width="100%"><tbody><tr><td align="left">'
             "<p>Framed prose</p></td></tr></tbody></table></div>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
         self.assertEqual(blocks[0]["value"], "<p>Framed prose</p>")
 
@@ -415,7 +460,7 @@ class TestDecomposition(unittest.TestCase):
             "<tr><td>VIC</td><td>800</td></tr><tr><td>NSW</td><td>900</td></tr>"
             "</tbody></table></div>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
         self.assertIn("<table>", blocks[0]["value"])
 
@@ -427,7 +472,7 @@ class TestDecomposition(unittest.TestCase):
             '<div id="comments"><p>Great news!</p></div>'
             "</div></main>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
         self.assertEqual(blocks[0]["value"], "<p>Article</p>")
 
@@ -435,12 +480,12 @@ class TestDecomposition(unittest.TestCase):
         soup = parse(
             '<div id="content"><div id="comments"><p>Only extraneous content</p></div></div>'
         )
-        self.assertEqual(decompose_legacy_content(soup), [])
+        self.assertEqual(recompose_legacy_content(soup), [])
 
     def test_a_fragment_without_a_content_region_is_taken_as_the_article(self):
         """A blog post's excerpt is handed over on its own, not as part of a page."""
         excerpt = parse("<div><p>Preselection nominations open on Monday.</p></div>").find("div")
-        blocks = decompose_legacy_content(excerpt)
+        blocks = recompose_legacy_content(excerpt)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
         self.assertEqual(blocks[0]["value"], "<p>Preselection nominations open on Monday.</p>")
 
@@ -449,7 +494,7 @@ class TestDecomposition(unittest.TestCase):
             '<div id="content"><p>Before</p><hr/>'
             "<blockquote>A <em>quoted</em> remark</blockquote></div>"
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
         self.assertEqual(
             blocks[0]["value"],
@@ -461,19 +506,19 @@ class TestDecomposition(unittest.TestCase):
         soup = parse(
             '<div id="content"><ul><li>Look: <img src="https://a.test/b.png"/></li></ul></div>'
         )
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
         self.assertIn("<li>", blocks[0]["value"])
 
     def test_raw_html_keeps_inline_whitespace_exactly(self):
         """Prettifying a fallback would pad the inside of its inline elements."""
         soup = parse('<div id="content"><p>at <code>/membership</code> each month</p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], "<p>at <code>/membership</code> each month</p>")
 
     def test_bare_text_between_blocks_becomes_a_paragraph(self):
         soup = parse('<div id="content">Loose sentence.<p>Proper one.</p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["value"], "<p>Loose sentence.</p><p>Proper one.</p>")
 
 
@@ -485,7 +530,7 @@ class TestImages(unittest.TestCase):
             '<img alt="A banner" src="https://assets.example.test/banner.png" width="60%"/>'
             "</span></p></div>"
         )
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual([block["type"] for block in blocks], [IMAGE_BLOCK])
         self.assertEqual(
             blocks[0]["value"], {"image": 1, "caption": "", "alignment": ImageAlignment.HALF_WIDTH}
@@ -493,12 +538,12 @@ class TestImages(unittest.TestCase):
 
     def test_full_width_image(self):
         soup = parse('<div id="content"><p><img src="a.png" style="width: 100%;"/></p></div>')
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual(blocks[0]["value"]["alignment"], DEFAULT_IMAGE_ALIGNMENT)
 
     def test_floated_image_keeps_its_side(self):
         soup = parse('<div id="content"><p><img src="a.png" style="float: right;"/></p></div>')
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual(blocks[0]["value"]["alignment"], ImageAlignment.RIGHT)
 
     def test_alt_text_is_passed_to_the_resolver(self):
@@ -506,14 +551,14 @@ class TestImages(unittest.TestCase):
         soup = parse(
             '<div id="content"><p><img alt="A banner" src="https://a.test/b.png"/></p></div>'
         )
-        decompose_legacy_content(soup, image_resolver=stub_resolver(seen))
+        recompose_legacy_content(soup, image_resolver=stub_resolver(seen))
         self.assertEqual(seen, [("https://a.test/b.png", "A banner")])
 
     def test_unresolvable_image_falls_back_to_raw_html(self):
         soup = parse(
             '<div id="content"><p>Before</p><p><img src="image.png"/></p><p>After</p></div>'
         )
-        blocks = decompose_legacy_content(soup, image_resolver=lambda source, alt: None)
+        blocks = recompose_legacy_content(soup, image_resolver=lambda source, alt: None)
         self.assertEqual(
             [block["type"] for block in blocks],
             [RICH_TEXT_BLOCK, RAW_HTML_BLOCK, RICH_TEXT_BLOCK],
@@ -522,7 +567,7 @@ class TestImages(unittest.TestCase):
 
     def test_no_resolver_leaves_every_image_as_raw_html(self):
         soup = parse('<div id="content"><p><img src="https://a.test/b.png"/></p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
 
     def test_prose_around_an_inline_image_keeps_its_reading_order(self):
@@ -530,7 +575,7 @@ class TestImages(unittest.TestCase):
             '<div id="content"><p>Words before '
             '<img src="https://a.test/b.png"/> and words after.</p></div>'
         )
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual(
             [block["type"] for block in blocks],
             [RICH_TEXT_BLOCK, IMAGE_BLOCK, RICH_TEXT_BLOCK],
@@ -543,7 +588,7 @@ class TestImages(unittest.TestCase):
         soup = parse(
             '<div id="content"><p><a href="/join"><img src="https://a.test/b.png"/></a></p></div>'
         )
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver())
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver())
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
         self.assertIn('href="/join"', blocks[0]["value"])
 
@@ -553,7 +598,7 @@ class TestImages(unittest.TestCase):
             '<div id="content"><p><img src="https://a.test/b.png"/></p>'
             '<p><img src="https://a.test/b.png"/></p></div>'
         )
-        blocks = decompose_legacy_content(soup, image_resolver=stub_resolver(seen))
+        blocks = recompose_legacy_content(soup, image_resolver=stub_resolver(seen))
         self.assertEqual([block["value"]["image"] for block in blocks], [1, 1])
         self.assertEqual(len(seen), 2, msg="The resolver itself owns the caching")
 
@@ -570,7 +615,7 @@ class TestButtons(unittest.TestCase):
     )
 
     def test_editor_button_becomes_a_button_block(self):
-        blocks = decompose_legacy_content(parse(self.editor_button))
+        blocks = recompose_legacy_content(parse(self.editor_button))
         self.assertEqual([block["type"] for block in blocks], [BUTTON_BLOCK])
         self.assertEqual(
             blocks[0]["value"],
@@ -587,19 +632,19 @@ class TestButtons(unittest.TestCase):
         soup = parse(
             '<div id="content"><p><a class="btn btn-info w-100" href="/donate">Donate</a></p></div>'
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual(blocks[0]["type"], BUTTON_BLOCK)
         self.assertEqual(blocks[0]["value"]["width"], "w-100")
         self.assertEqual(blocks[0]["value"]["text"], "Donate")
 
     def test_an_ordinary_link_in_prose_is_not_a_button(self):
         soup = parse('<div id="content"><p>Read the <a href="/bill">bill</a> yourself</p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
 
     def test_a_paragraph_that_is_only_a_plain_link_stays_rich_text(self):
         soup = parse('<div id="content"><p><a href="/bill">The bill</a></p></div>')
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RICH_TEXT_BLOCK])
 
     def test_two_links_to_different_places_are_not_a_button(self):
@@ -607,7 +652,7 @@ class TestButtons(unittest.TestCase):
             '<div id="content"><div class="nb-btn">'
             '<a class="btn" href="/a">A</a><a class="btn" href="/b">B</a></div></div>'
         )
-        blocks = decompose_legacy_content(soup)
+        blocks = recompose_legacy_content(soup)
         self.assertEqual([block["type"] for block in blocks], [RAW_HTML_BLOCK])
 
 
@@ -618,7 +663,7 @@ class TestSampleBlogPost(unittest.TestCase):
     def setUpClass(cls):
         document = BeautifulSoup(SAMPLE.read_text(encoding="utf-8"), "html.parser")
         cls.content = document.find(id="content")
-        cls.blocks = decompose_legacy_content(cls.content, image_resolver=stub_resolver())
+        cls.blocks = recompose_legacy_content(cls.content, image_resolver=stub_resolver())
 
     def test_block_sequence(self):
         self.assertEqual(

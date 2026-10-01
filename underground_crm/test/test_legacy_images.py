@@ -302,7 +302,8 @@ class TestStoringImages(unittest.TestCase):
         resolver("relative.png", "")
         self.assertEqual(
             resolver.get_summary(),
-            "1 image(s) fetched, 0 reused from the library, 1 left as raw HTML",
+            "1 image(s) fetched, 0 reused from the library, 0 adopted from the media storage, "
+            "1 left as raw HTML",
         )
 
 

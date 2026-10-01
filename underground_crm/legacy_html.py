@@ -6,7 +6,7 @@ element into a single Raw HTML block. That is a faithful archive but hardcodes
 the styling from the time of import, which may include artifacts created due to
 an import from Google Docs.
 
-Here we therefore deconstruct the content into Wagtail blocks, falling back to
+Here we therefore reconstruct the content into Wagtail blocks, falling back to
 a Raw HTML block for the parts it cannot recreate. The fallback is per-tag,
 not for the whole page.
 
@@ -40,13 +40,19 @@ _FLOAT_ALIGNMENTS = {"left": ImageAlignment.LEFT, "right": ImageAlignment.RIGHT}
 # verbatim in a Raw HTML block instead.
 ImageResolver = Callable[[str, str], Optional[object]]
 
+# A theme's own recognizer for markup which can be reconstructed as a custom block.
+# It is offered each element along the walk, before the library's own handling.
+# Given the element, return the blocks that replace it (the walk then skips its
+# descendants), or None to decline and let the library handle it as usual.
+ExtraReconstructor = Callable[[Tag], Optional[List[dict]]]
+
 # The tags a RichTextBlock built from BASIC_PAGE_BLOCKS' feature list can
-# actually hold: features are h2/h3/h4, bold, italic, underline, link, ol,
-# ul, hr, blockquote and image. Anything outside this set would be discarded
+# actually hold: features are h2/h3/h4, bold, italic, underline, subscript,
+# link, ol, ul, hr, blockquote and image. Anything outside this set would be discarded
 # the first time an editor opened the page in Draftail, so a node containing
 # one is sent to a Raw HTML block instead, where it survives intact.
 RICH_TEXT_BLOCK_TAGS = frozenset({"p", "h2", "h3", "h4", "ul", "ol", "li", "hr", "blockquote"})
-RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "u", "br"})
+RICH_TEXT_INLINE_TAGS = frozenset({"a", "b", "strong", "i", "em", "u", "sub", "br"})
 
 # Legacy bodies carry their own <h1> (the headline is also the page title) and
 # occasionally an <h5>/<h6>. Draftail offers h2–h4 only, so they are moved to
@@ -57,10 +63,10 @@ HEADING_DEMOTIONS = {"h1": "h2", "h5": "h4", "h6": "h4"}
 # and treats their children as though they had been written at the top level.
 TRANSPARENT_CONTAINER_TAGS = frozenset({"div", "section", "article", "main", "center"})
 
-# Classes that only position a transparent wrapper — Bootstrap's grid and
+# Classes that only serve to position a transparent wrapper — Bootstrap's grid and
 # spacing utilities, plus the handful of legacy CMS layout hooks. A
-# wrapper whose classes are all in here (or that has no classes at all) is
-# descended through; one with a class we do not recognise is left alone and
+# wrapper whose classes are all in here (or who has no classes at all) is
+# descended through; one with a class we do not recognize is left alone and
 # preserved as raw HTML, because the class may well be doing something.
 _LAYOUT_CLASS_PATTERN = re.compile(
     r"""^(
@@ -97,6 +103,7 @@ _EXTRANEOUS_IDENTIFIERS = frozenset(
         "like-and-share",
     }
 )
+# These tags don't relate to the specific page; they're artifacts of the overall site's theme.
 _EXTRANEOUS_TAGS = frozenset({"script", "style", "noscript", "nav", "header", "footer"})
 
 # CSS properties that never survive into a Wagtail block and never meant
@@ -120,8 +127,8 @@ _DISCARDABLE_PROPERTIES = frozenset(
     }
 )
 
-# Properties that are noise only at certain values: font-weight: 400 is the
-# Google Docs artifact, font-weight: 700 is a genuine bold.
+# Properties that are noise only at certain values: font-weight: 400 is an artifact
+# from Google Docs, font-weight: 700 is genuinely bold.
 _DISCARDABLE_VALUES = {
     "font-weight": frozenset({"400", "normal", "inherit", "initial", "unset"}),
     "font-style": frozenset({"normal", "inherit", "initial", "unset"}),
@@ -136,15 +143,11 @@ _ITALIC_STYLES = frozenset({"italic", "oblique"})
 _UNDERLINE_PROPERTIES = frozenset({"text-decoration", "text-decoration-line"})
 _UNDERLINE_VALUES = frozenset({"underline"})
 
-# Attributes a <span> may carry and still be treated as a pure wrapper. class
-# and id are included because neither can be represented in a Wagtail block:
-# the legacy stylesheet is not coming with us, so a class here is already
-# inert — keeping the span would only push its paragraph into raw HTML for
-# nothing.
-_UNWRAPPABLE_SPAN_ATTRIBUTES = frozenset({"style", "class", "id", "lang", "dir"})
+# Attributes of a <span> which can be dropped during the internalization process.
+_DISCARDABLE_SPAN_ATTRIBUTES = frozenset({"style", "class", "id", "lang", "dir"})
 
-# Inline wrappers that are always redundant once their styling is gone.
-_UNWRAPPABLE_TAGS = frozenset({"span", "font"})
+# Inline wrapper tags that are always redundant once their styling is gone.
+_DISCARDABLE_TAGS = frozenset({"span", "font"})
 
 _STYLE_DECLARATION = re.compile(r"([-a-zA-Z]+)\s*:\s*([^;]+)")
 _PERCENTAGE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*%\s*$")
@@ -183,6 +186,18 @@ def parse_style(value: str) -> List[Tuple[str, str]]:
         (prop.strip().lower(), val.strip().lower())
         for prop, val in _STYLE_DECLARATION.findall(value)
     ]
+
+
+def is_hidden(tag: Tag) -> bool:
+    """
+    Is this tag hidden thanks to its style, its attributes, or these properties of its ancestors?
+    """
+    return any(
+        element.has_attr("hidden")
+        or ("display", "none") in parse_style(element.get("style", ""))
+        or (element.name == "input" and element.get("type", "").lower() == "hidden")
+        for element in [tag, *tag.parents]
+    )
 
 
 def format_style(declarations: List[Tuple[str, str]]) -> str:
@@ -269,7 +284,7 @@ def strip_presentational_markup(root: Tag) -> None:
                     tag["style"] = format_style(kept)
                 else:
                     del tag["style"]
-            if tag.name not in _UNWRAPPABLE_TAGS:
+            if tag.name not in _DISCARDABLE_TAGS:
                 # A block tag keeps its identity; only the noise went away.
                 # Bold/italic/underline expressed as CSS on a <p> applies to
                 # the whole paragraph, so re-express it inside the paragraph.
@@ -280,7 +295,7 @@ def strip_presentational_markup(root: Tag) -> None:
                 if is_underline:
                     _wrap_contents(tag, "u")
                 continue
-            if kept or set(tag.attrs) - _UNWRAPPABLE_SPAN_ATTRIBUTES:
+            if kept or set(tag.attrs) - _DISCARDABLE_SPAN_ATTRIBUTES:
                 continue
             if is_bold:
                 _wrap_contents(tag, "strong")
@@ -611,7 +626,13 @@ class _BlockCollector:
 MAX_DEPTH = 12
 
 
-def _collect(nodes: List, collector: _BlockCollector, image_resolver, depth: int = 0) -> None:
+def _collect(
+    nodes: List,
+    collector: _BlockCollector,
+    image_resolver,
+    depth: int = 0,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
+) -> None:
     """Walk a level of the document, appending a block for each node it finds."""
     # Legacy markup nests wrappers, but not indefinitely; the guard stops a
     # pathological document from recursing without bound.
@@ -631,18 +652,37 @@ def _collect(nodes: List, collector: _BlockCollector, image_resolver, depth: int
             collector.add_rich_text(str(paragraph))
             continue
 
+        if extra_reconstructor is not None:
+            extra_blocks = extra_reconstructor(node)
+            if extra_blocks is not None:
+                for block in extra_blocks:
+                    collector.add(block)
+                continue
+
         button = _as_button(node)
         if button is not None:
             collector.add(button)
             continue
 
         if _is_transparent_container(node):
-            _collect(_meaningful_children(node), collector, image_resolver, depth + 1)
+            _collect(
+                _meaningful_children(node),
+                collector,
+                image_resolver,
+                depth + 1,
+                extra_reconstructor,
+            )
             continue
 
         cell = _single_cell(node)
         if cell is not None:
-            _collect(_meaningful_children(cell), collector, image_resolver, depth + 1)
+            _collect(
+                _meaningful_children(cell),
+                collector,
+                image_resolver,
+                depth + 1,
+                extra_reconstructor,
+            )
             continue
 
         if node.name == "img":
@@ -696,9 +736,10 @@ def _collect_flow_node(node: Tag, collector: _BlockCollector, image_resolver) ->
             collector.add_raw_html(fragment_html(fragment))
 
 
-def decompose_legacy_content(
+def recompose_legacy_content(
     content: Tag,
     image_resolver: Optional[ImageResolver] = None,
+    extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> List[dict]:
     """
     Rebuild a legacy page's ``id="content"`` element as StreamField blocks.
@@ -708,6 +749,8 @@ def decompose_legacy_content(
     which is taken to be the article in full. It is left untouched; the work happens on a copy. `image_resolver`
     turns a remote image URL into the primary key of a Wagtail image — pass
     None (or return None from it) to leave every <img> in a Raw HTML block.
+    `extra_reconstructor` lets a theme claim markup for its own blocks (see
+    ExtraReconstructor).
 
     Returns a list of ``{"type": ..., "value": ...}`` dicts ready to be JSON
     encoded into a page's body, or an empty list when the content element
@@ -724,7 +767,12 @@ def decompose_legacy_content(
     strip_presentational_markup(body)
 
     collector = _BlockCollector()
-    _collect(_meaningful_children(body), collector, image_resolver)
+    _collect(
+        _meaningful_children(body),
+        collector,
+        image_resolver,
+        extra_reconstructor=extra_reconstructor,
+    )
     return collector.blocks
 
 
