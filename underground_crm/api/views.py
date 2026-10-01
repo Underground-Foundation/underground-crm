@@ -121,7 +121,7 @@ def me(request):
         "authenticated": True,
         "name": user.full_name,
         "first_name": user.first_name,
-        "preferred_name": user.prefered_name,
+        "preferred_name": user.preferred_name,
         "last_name": user.last_name,
         "email_address": user.email,
     }
