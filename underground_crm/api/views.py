@@ -117,7 +117,14 @@ def me(request):
         return Response({"authenticated": False})
 
     user = cast(settings.AUTH_USER_MODEL, request.user)
-    data: dict = {"authenticated": True, "name": user.full_name, "email_address": user.email}
+    data: dict = {
+        "authenticated": True,
+        "name": user.full_name,
+        "first_name": user.first_name,
+        "preferred_name": user.prefered_name,
+        "last_name": user.last_name,
+        "email_address": user.email,
+    }
 
     # ?has-tag=<slug> (repeatable) lets subscription UI ask whether the
     # visitor already carries specific mailing-list tags without a page render
@@ -138,10 +145,8 @@ def me(request):
         billing = user.billing_address
         data.update(
             {
-                "first_name": user.first_name or "",
-                "middle_name": user.middle_name or "",
-                "last_name": user.last_name or "",
-                "phone": str(user.mobile_number or user.phone_number or ""),
+                "middle_name": user.middle_name,
+                "phone": str(user.mobile_number or user.phone_number),
                 "billing_address": UnverifiedAddressSerializer(billing).data if billing else None,
             }
         )
