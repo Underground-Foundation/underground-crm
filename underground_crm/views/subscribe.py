@@ -1,5 +1,7 @@
 import json
+import logging
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -14,6 +16,8 @@ from ..models.person import Tag
 from ..signals import subscription_created
 
 Person = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 
 def _page_offers_tag(page, tag: Tag) -> bool:
@@ -55,9 +59,9 @@ def subscribe_view(request):
     """
     try:
         data = json.loads(request.body)
-        tag_slug = str(data["tag"])
+        tag_name = str(data["tag_name"])
         page_id = int(data["page_id"])
-        email = str(data.get("email", "")).strip()
+        email_address = str(data.get("email", "")).strip()
         first_name = str(data.get("first_name", "")).strip()[:100]
         last_name = str(data.get("last_name", "")).strip()[:100]
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
@@ -65,27 +69,50 @@ def subscribe_view(request):
 
     page = Page.objects.live().filter(pk=page_id).first()
     page = page.specific if page else None
-    tag = Tag.objects.filter(slug=tag_slug).first()
-    if page is None or tag is None or not _page_offers_tag(page, tag):
+    if not page:
+        logger.error(
+            "No such page %s could be found, so %s (%s) shall not be subscribed",
+            page_id,
+            request.user,
+            email_address,
+        )
+        return JsonResponse({"error": _("Internal error")})
+    tag = Tag.objects.filter(name=tag_name).first()
+    if not tag:
+        logger.error(
+            "No such tag %s found, so %s (%s) shall not be subscribed",
+            tag_name,
+            email_address,
+            request.user,
+        )
+        return JsonResponse({"error": _("Internal error")})
+    if tag.name not in settings.SELF_QUERYABLE_TAGS and not _page_offers_tag(page, tag):
+        logger.error(
+            "The page %s does not offer tag %s, so %s (%s) shall not be subscribed",
+            page_id,
+            tag,
+            request.user,
+            email_address,
+        )
         return JsonResponse({"error": _("This subscription is not available.")}, status=404)
 
     is_authenticated = request.user.is_authenticated
-    person_created = False
+    should_create = False
     if is_authenticated:
         target_person: Person = request.user
     else:
-        if not email:
+        if not email_address:
             return JsonResponse({"error": _("Email address is required.")}, status=400)
         try:
-            validate_email(email)
+            validate_email(email_address)
         except ValidationError:
             return JsonResponse({"error": _("Please enter a valid email address.")}, status=400)
-        conflict = find_identity_conflict(email, first_name, last_name)
+        conflict = find_identity_conflict(email_address, first_name, last_name)
         if conflict:
             return JsonResponse({"error": str(conflict)}, status=409)
-        email = Person.objects.normalize_email(email)
-        person_created = not Person.objects.filter(email=email).exists()
-        target_person: Person = get_or_create_person(email, first_name, last_name)
+        email_address = Person.objects.normalize_email(email_address)
+        should_create = not Person.objects.filter(email=email_address).exists()
+        target_person: Person = get_or_create_person(email_address, first_name, last_name)
 
     already_subscribed = target_person.tags.filter(pk=tag.pk).exists()
 
@@ -93,7 +120,7 @@ def subscribe_view(request):
     if is_authenticated:
         submission.person = request.user
     else:
-        submission.email_address = email
+        submission.email_address = email_address
         submission.ip_address = request.META.get("REMOTE_ADDR") or None
         submission.language_preferences = request.META.get("HTTP_ACCEPT_LANGUAGE", "")[:128]
     submission.full_clean()
@@ -109,8 +136,9 @@ def subscribe_view(request):
         person=target_person,
         tag=tag,
         was_authenticated=is_authenticated,
-        person_created=person_created,
+        person_created=should_create,
     )
+    logger.info("%s has subscribed to tag %s at %s", request.user, tag, email_address)
 
     return JsonResponse(
         {
@@ -118,6 +146,6 @@ def subscribe_view(request):
             "already_subscribed": already_subscribed,
             # True when a confirm-your-subscription email is on its way (see
             # the subscription_created receiver in signals.py).
-            "pending_confirmation": person_created,
+            "pending_confirmation": should_create,
         }
     )
