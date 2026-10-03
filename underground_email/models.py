@@ -15,6 +15,7 @@ from wagtail.rich_text import expand_db_html
 from underground_crm.models import PeopleFilter
 from underground_crm.models.person import Tag
 from .blocks import EmailBodyBlock, _RICH_TEXT_FEATURES
+from .forms import EmailSenderForm
 
 
 class RichTextPreviewPanel(HelpPanel):
@@ -44,7 +45,7 @@ class EmailSender(models.Model):
         on_delete=models.CASCADE,
         verbose_name=_("Attributed sender"),
         help_text=_(
-            "Emails will be sent from this user's email address. This assumes the domain has been registered with SMTP2Go"
+            "Emails will be sent from this user's email address. This assumes the domain has been registered with SMTP2Go. Choose someone who is a staff member or who has an email address at one of the domains specified in DJANGO_ALLOWED_HOSTS."
         ),
     )
     sending_permission_group = models.ForeignKey(
@@ -69,6 +70,8 @@ class EmailSender(models.Model):
         RichTextPreviewPanel("signature", heading="Signature preview"),
     ]
 
+    base_form_class = EmailSenderForm
+
     class Meta:
         verbose_name = "email sender"
         verbose_name_plural = "email senders"
@@ -84,7 +87,7 @@ class TemplatedGreeting(models.Model):
         verbose_name=_("greeting"),
         # Notice in tasks.py that these name options are the only ones provided to render_greeting
         help_text=_(
-            "Use {{ first_name }}, {{ last_name }}, or {{ full_name }}, along with a greeting. "
+            "Use {{ first_name }}, {{ preferred_or_first_name }}, {{ last_name }}, or {{ full_name }}, along with a greeting. "
             "This will be included in every email."
         ),
     )

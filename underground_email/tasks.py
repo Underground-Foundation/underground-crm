@@ -59,6 +59,7 @@ def _render_greeting(greeting_template: str, person) -> str:
     return t.render(
         Context(
             {
+                "preferred_or_first_name": person.preferred_name or person.first_name,
                 "first_name": person.first_name or "",
                 "last_name": person.last_name or "",
                 "full_name": person.full_name,
@@ -124,7 +125,9 @@ def send_emails(campaign_utm_id: str) -> None:
     sender_person = campaign.sender.sender
     sender_str = f"{sender_person.full_name} <{sender_person.email}>"
 
-    all_recipients = list(recipients_qs.only("id", "email", "first_name", "last_name"))
+    all_recipients = list(
+        recipients_qs.only("id", "email", "preferred_name," "first_name", "last_name")
+    )
     sent_count = 0
 
     for person in all_recipients:

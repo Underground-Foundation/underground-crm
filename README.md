@@ -151,6 +151,46 @@ python manage.py test -v 3 --keepdb underground_crm.test underground_email.test 
 The tests use SQLite and do not require the Docker services to be running. `--keepdb` avoids recreating the test 
 database on each run, which makes subsequent runs faster.
 
+### Backing up the remote database
+
+`backup_remote_postgresql.sh` writes a backup of the remote PostgreSQL database to a
+local file. It expects the SSH tunnel to be running already at `127.0.0.1:15432`, so
+start this with tmux first. Then run the script:
+
+```shell
+./backup_remote_postgresql.sh --env-file …
+```
+
+The `pg_dump` client must be installed locally.
+
+The backup is named `<database>-<timestamp>.dump`, in `pg_dump`'s custom format, which
+is compressed and can be restored selectively. It is written under a temporary name and
+renamed only on success, so an interrupted run never leaves a truncated file that looks
+complete. To restore it, see the next section.
+
+The backup contains personal data about members and donors, so store it accordingly.
+
+### Restoring a backup
+
+`restore_postgresql.sh` loads a backup made by `backup_remote_postgresql.sh` into a
+database on a local or a remote server, creating the database first.
+
+```bash
+# Into a local database
+./restore_postgresql.sh --backup-file backups/fusion_underground-<timestamp>.dump \
+  --database fusion_underground_restored
+```
+
+The destination is chosen through the same `PG*` environment variables, which
+`--env-file` can load. Unlike the backup script, nothing defaults to the production
+tunnel: with `PGHOST` and `PGPORT` unset, `libpq` connects to the local server. To
+restore to a remote server, start the tunnel and supply the corresponding envirionment
+variables.
+
+The restoration runs in a single transaction and stops at the first error, so
+a failure leaves the new database empty rather than half-populated. Ownership and
+privileges are not carried over, so the source's roles need not exist at the destination;
+the connecting role will own everything.
 ---
 
 ## Data migration
@@ -230,7 +270,7 @@ These scripts read their configuration from `../.env` automatically.
 
 ### Import CMS pages
 
-Pages are imported in three steps: fetch, parse, then import.
+Pages are imported in three steps: fetching, parsing, then importing.
 
 **Step 1 — fetch each page's JSON and HTML from the legacy CRM:**
 
@@ -254,6 +294,34 @@ python manage.py fetch_pages --domain fusionparty.org.au --slug news --with-pagi
 
 The further pages are saved beside the first as `<slug>?page=<number>.html`
 (for example `news?page=2.html`).
+
+#### Fetching every page of the site
+
+To retrieve the whole site rather than individual slugs, we can use the legacy API to
+build a page graph which will be used for both the fetching, then the later importing.
+
+```bash
+mkdir -p fusionparty.org.au
+python manage.py build_page_graph --domain fusionparty.org.au --fetch-latest
+```
+
+This will use the legacy endpoint `/api/v2/pages` and write the page graph to
+`<domain>/all_pages.json`.
+
+This page graph can then be used to guide the fetching of legacy pages:
+
+```bash
+python manage.py fetch_pages --pages-file fusionparty.org.au/all_pages.json --domain fusionparty.org.au --with-pagination
+```
+
+Each page is saved as soon as it arrives, in a directory named after the site
+(for example `./fusionparty.org.au/`) that mirrors the site's URL structure. A
+page that is already saved is skipped, so an interrupted run
+is resumed by repeating the same command.
+
+A related command is fetch_legacy_site, which uses robots.txt and doesn't use cookies.
+By using robots.txt instead of all_pages.json We would be skipping draft pages and various
+"pages" that are actually meant to represent redirections.
 
 **Step 2 — parse the HTML and import into Wagtail:**
 
