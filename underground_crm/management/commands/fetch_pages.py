@@ -80,10 +80,7 @@ def _make_html_opener(cookie_file, user_agent):
 
 
 class Command(BaseCommand):
-    help = (
-        "Fetch a legacy page's JSON and HTML from the legacy website: one page given by "
-        "--slug, or every page listed in an all_pages.json given by --pages-file."
-    )
+    help = "Fetch a legacy page's JSON and HTML from the legacy website"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -101,10 +98,9 @@ class Command(BaseCommand):
             type=Path,
             help=(
                 "Fetch every page in this file, as written by build_page_graph "
-                "(<domain>/all_pages.json). Each page's record is saved from the file "
-                "without a further API request, and its HTML is fetched from the page's "
-                "url_path. A page that is already saved is skipped, which is what lets an "
-                "interrupted run resume."
+                "(<domain>/all_pages.json). Each page's JSON is copied from this source file, "
+                "and its HTML is fetched from the page's url_path. A page that is already "
+                "saved is skipped."
             ),
         )
         parser.add_argument(
