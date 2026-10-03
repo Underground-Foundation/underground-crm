@@ -7,7 +7,7 @@ from wagtail import hooks
 from wagtail.admin.ui.tables import Column
 from wagtail.snippets.bulk_actions.snippet_bulk_action import SnippetBulkAction
 from wagtail.snippets.models import register_snippet
-from wagtail.snippets.views.snippets import SnippetViewSet
+from wagtail.snippets.views.snippets import SnippetViewSet, SnippetViewSetGroup
 
 from .models import EmailCampaign, EmailSender, TemplatedGreeting
 
@@ -26,7 +26,6 @@ class EmailSenderViewSet(SnippetViewSet):
     model = EmailSender
     icon = "user"
     menu_label = "Email senders"
-    menu_order = 220
     list_display = ["sender"]
     search_fields = ["sender__email", "sender__first_name", "sender__last_name"]
 
@@ -35,7 +34,6 @@ class TemplatedGreetingViewSet(SnippetViewSet):
     model = TemplatedGreeting
     icon = "openquote"
     menu_label = "Email greetings"
-    menu_order = 210
     list_display = ["greeting"]
     search_fields = ["greeting"]
 
@@ -44,8 +42,6 @@ class EmailCampaignViewSet(SnippetViewSet):
     model = EmailCampaign
     icon = "mail"
     menu_label = "Email campaigns"
-    menu_order = 200
-    add_to_admin_menu = True
     list_display = [
         "subject",
         "sender",
@@ -57,9 +53,20 @@ class EmailCampaignViewSet(SnippetViewSet):
     preview_modes = [("", "Email preview")]
 
 
-register_snippet(EmailSenderViewSet)
-register_snippet(TemplatedGreetingViewSet)
-register_snippet(EmailCampaignViewSet)
+class EmailViewSetGroup(SnippetViewSetGroup):
+    """
+    Gives campaigns, senders and greetings one "Email" entry in the sidebar, so
+    that editors can reach (and add) each of them without going through the
+    generic Snippets menu.
+    """
+
+    menu_label = _("Email")
+    menu_icon = "mail"
+    menu_order = 200
+    items = [EmailCampaignViewSet, EmailSenderViewSet, TemplatedGreetingViewSet]
+
+
+register_snippet(EmailViewSetGroup)
 
 
 class ScheduleEmailCampaignAction(SnippetBulkAction):
