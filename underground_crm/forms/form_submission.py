@@ -1,5 +1,5 @@
 import copy
-from typing import Any
+from typing import Any, Optional
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -46,7 +46,16 @@ def apply_bootstrap_classes(widget: forms.Widget) -> None:
         widget.attrs["class"] = " ".join(existing + [css_class])
 
 
-def find_identity_conflict(email: str, first_name: str, last_name: str) -> str | None:
+def _normalized(name: Optional[str]) -> str:
+    return (name or "").strip().casefold()
+
+
+def find_identity_conflict(
+    email: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    preferred_name: Optional[str] = None,
+) -> Optional[str]:
     """
     Returns an error message if a Person already exists for this email address
     and the supplied names don't match it, else None. This stops an anonymous
@@ -58,14 +67,29 @@ def find_identity_conflict(email: str, first_name: str, last_name: str) -> str |
     existing = Person.objects.filter(email=Person.objects.normalize_email(email)).first()
     if existing is None:
         return None
-    if (first_name or "").strip().casefold() != (existing.first_name or "").strip().casefold() or (
-        last_name or ""
-    ).strip().casefold() != (existing.last_name or "").strip().casefold():
+
+    existing_first_name = _normalized(existing.first_name)
+    existing_preferred_name = _normalized(existing.preferred_name) or existing_first_name
+    given_names_match = True
+    if _normalized(first_name) or _normalized(preferred_name):
+        if _normalized(first_name):
+            given_names_match &= _normalized(first_name) == existing_first_name
+        if _normalized(preferred_name):
+            given_names_match &= _normalized(preferred_name) == existing_preferred_name
+    else:
+        given_names_match = not existing_first_name
+
+    if not given_names_match or _normalized(last_name) != _normalized(existing.last_name):
         return _("An account already exists for this email address. Please log in to continue.")
     return None
 
 
-def get_or_create_person(email: str, first_name: str, last_name: str) -> Any:
+def get_or_create_person(
+    email: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    preferred_name: Optional[str] = None,
+) -> Any:
     """
     Resolves the Person an anonymous submission's tags and engagement should
     apply to. Never attached to FormSubmission.person (see that field's
@@ -80,8 +104,9 @@ def get_or_create_person(email: str, first_name: str, last_name: str) -> Any:
     person, _created = Person.objects.get_or_create(
         email=Person.objects.normalize_email(email),
         defaults={
-            "first_name": first_name or "",
-            "last_name": last_name or "",
+            "first_name": first_name or None,
+            "preferred_name": preferred_name or None,
+            "last_name": last_name or None,
             "is_active": True,
         },
     )
@@ -188,7 +213,10 @@ class FormSubmissionForm(forms.Form):
             return cleaned
 
         conflict = find_identity_conflict(
-            email, cleaned.get("first_name") or "", cleaned.get("last_name") or ""
+            email,
+            first_name=cleaned.get("first_name") or None,
+            last_name=cleaned.get("last_name") or None,
+            preferred_name=cleaned.get("preferred_name") or None,
         )
         if conflict:
             self.add_error(None, conflict)
@@ -215,8 +243,9 @@ class FormSubmissionForm(forms.Form):
             submission.language_preferences = self.request.META.get("HTTP_ACCEPT_LANGUAGE", "")
             target_person = get_or_create_person(
                 email,
-                self.cleaned_data.get("first_name") or "",
-                self.cleaned_data.get("last_name") or "",
+                first_name=self.cleaned_data.get("first_name") or None,
+                last_name=self.cleaned_data.get("last_name") or None,
+                preferred_name=self.cleaned_data.get("preferred_name") or None,
             )
 
         submission.full_clean()

@@ -12,7 +12,11 @@ from django.core.management.base import CommandError
 from django.test import RequestFactory
 from wagtail.models import Page
 
-from underground_crm.forms.form_submission import FormSubmissionForm
+from underground_crm.forms.form_submission import (
+    FormSubmissionForm,
+    find_identity_conflict,
+    get_or_create_person,
+)
 from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from underground_crm.models.form_submission import FormSubmission
@@ -332,3 +336,54 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
             call_command(
                 "get_volunteers_with_field", field="Not a real input field", output="/dev/null"
             )
+
+
+class FindIdentityConflictTest(django.test.TestCase):
+    def setUp(self):
+        self.member = Person.objects.create_user(
+            email="rebecca@example.com",
+            password="password",
+            first_name="Rebecca",
+            last_name="Smith",
+        )
+
+    def test_first_name_alone_must_match_first_name(self):
+        self.assertIsNone(find_identity_conflict(self.member.email, "rebecca", "SMITH"))
+        self.assertIsNotNone(find_identity_conflict(self.member.email, "Bex", "Smith"))
+
+    def test_preferred_name_matches_first_name_when_no_preferred_name_is_recorded(self):
+        self.assertIsNone(
+            find_identity_conflict(self.member.email, last_name="Smith", preferred_name="Rebecca")
+        )
+        self.assertIsNotNone(
+            find_identity_conflict(self.member.email, last_name="Smith", preferred_name="Bex")
+        )
+
+    def test_preferred_name_matches_recorded_preferred_name(self):
+        self.member.preferred_name = "Bex"
+        self.member.save()
+        self.assertIsNone(
+            find_identity_conflict(self.member.email, last_name="Smith", preferred_name="bex")
+        )
+        self.assertIsNotNone(
+            find_identity_conflict(self.member.email, last_name="Smith", preferred_name="Rebecca")
+        )
+
+    def test_both_names_must_each_match_when_both_are_supplied(self):
+        self.member.preferred_name = "Bex"
+        self.member.save()
+        self.assertIsNone(find_identity_conflict(self.member.email, "Rebecca", "Smith", "Bex"))
+        self.assertIsNotNone(find_identity_conflict(self.member.email, "Rebecca", "Smith", "Becky"))
+
+    def test_last_name_must_always_match(self):
+        self.assertIsNotNone(
+            find_identity_conflict(self.member.email, preferred_name="Rebecca", last_name="Jones")
+        )
+
+    def test_unknown_email_never_conflicts(self):
+        self.assertIsNone(find_identity_conflict("new@example.com", preferred_name="Bex"))
+
+    def test_get_or_create_person_stores_preferred_name(self):
+        person = get_or_create_person("new@example.com", last_name="Jones", preferred_name="Bex")
+        self.assertEqual(person.preferred_name, "Bex")
+        self.assertIsNone(person.first_name)

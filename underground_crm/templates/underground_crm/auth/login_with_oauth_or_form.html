@@ -14,15 +14,15 @@
     {% endif %}
 
     <div class="form-group">
-      <label for="{{ form.login.id_for_label }}">{% trans "Email address" %}</label>
+      <label for="{{ form.email.id_for_label }}">{% trans "Email address" %}</label>
       <input type="email"
-             class="form-control{% if form.login.errors %} is-invalid{% endif %}"
-             id="{{ form.login.id_for_label }}"
-             name="{{ form.login.html_name }}"
-             value="{{ form.login.value|default:'' }}"
+             class="form-control{% if form.email.errors %} is-invalid{% endif %}"
+             id="{{ form.email.id_for_label }}"
+             name="{{ form.email.html_name }}"
+             value="{{ form.email.value|default:'' }}"
              autocomplete="email"
              autofocus>
-      {% for error in form.login.errors %}
+      {% for error in form.email.errors %}
         <div class="invalid-feedback">{{ error }}</div>
       {% endfor %}
     </div>

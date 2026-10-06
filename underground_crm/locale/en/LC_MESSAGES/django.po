@@ -1441,6 +1441,14 @@ msgstr ""
 msgid "Postcode"
 msgstr ""
 
+#: forms/auth.py:57
+msgid "Invalid email address or password."
+msgstr ""
+
+#: forms/auth.py:59
+msgid "This account has been deactivated."
+msgstr ""
+
 #~ msgid "Enter a valid date."
 #~ msgstr "Please enter a valid date."
 
