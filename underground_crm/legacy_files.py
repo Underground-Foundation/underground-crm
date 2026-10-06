@@ -51,6 +51,10 @@ def satisfactory_image_domains_from_env() -> tuple:
     This takes priority over LEGACY_ASSET_URLS and the "/uploads/" rule above.
     """
     raw = os.environ.get("SATISFACTORY_IMAGE_DOMAINS", "")
+    if not raw:
+        logger.warning(
+            "No SATISFACTORY_IMAGE_DOMAINS were set. This will result in image blocks being internalized as RawHTML"
+        )
     return tuple(domain.strip().lower() for domain in raw.split(",") if domain.strip())
 
 
