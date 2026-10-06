@@ -57,6 +57,7 @@ class PersonManager(BaseUserManager):
 
 
 PARTIAL_EMAIL_ADDRESS_LENGTH = 5
+NAME_FIELD_LENGTH = 100
 
 
 class Person(AbstractBaseUser, PermissionsMixin):
@@ -101,21 +102,31 @@ class Person(AbstractBaseUser, PermissionsMixin):
     )
     prefix = models.CharField(max_length=25, null=True, blank=True, verbose_name=_("Name prefix"))
     first_name = models.CharField(
-        max_length=100, null=True, blank=True, help_text=_("First name (for the electoral roll)")
+        max_length=NAME_FIELD_LENGTH,
+        null=True,
+        blank=True,
+        help_text=_("As per the electoral roll"),
     )
     middle_name = models.CharField(
-        max_length=100, null=True, blank=True, verbose_name=_("Middle name")
+        max_length=NAME_FIELD_LENGTH, null=True, blank=True, verbose_name=_("Middle name")
     )
-    last_name = models.CharField(max_length=100, null=True, blank=True, verbose_name=_("Last name"))
+    last_name = models.CharField(
+        max_length=NAME_FIELD_LENGTH,
+        null=True,
+        blank=True,
+        verbose_name=_("Last name"),
+        help_text=_("Family name"),
+    )
     suffix = models.CharField(max_length=20, null=True, blank=True, verbose_name=_("Name suffix"))
     legal_name = models.CharField(
         max_length=200, null=True, blank=True, verbose_name=_("Legal name")
-    )
+    )  # The AEC separates the family name from other names, so this concatenated "legal_name" is merely a legacy field
     preferred_name = models.CharField(
-        max_length=100,
+        max_length=NAME_FIELD_LENGTH,
         null=True,
         blank=True,
-        verbose_name=_("Preferred name / nickname"),
+        verbose_name=_("Preferred name"),
+        help_text=_("First name / nickname"),
     )
     record_type = models.SmallIntegerField(
         choices=ENTITY_TYPES,

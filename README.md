@@ -178,13 +178,13 @@ database on a local or a remote server, creating the database first.
 ```bash
 # Into a local database
 ./restore_postgresql.sh --backup-file backups/fusion_underground-<timestamp>.dump \
-  --database fusion_underground_restored
+  --database fusion_underground
 ```
 
 The destination is chosen through the same `PG*` environment variables, which
 `--env-file` can load. Unlike the backup script, nothing defaults to the production
 tunnel: with `PGHOST` and `PGPORT` unset, `libpq` connects to the local server. To
-restore to a remote server, start the tunnel and supply the corresponding envirionment
+restore to a remote server, start the tunnel and supply the corresponding environment
 variables.
 
 The restoration runs in a single transaction and stops at the first error, so

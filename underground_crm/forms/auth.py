@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
+from django.utils.translation import gettext_lazy as _
 
 Person = get_user_model()
 
@@ -17,7 +18,8 @@ class SignupForm(forms.ModelForm):
 
     class Meta:
         model = Person
-        fields = ["email", "first_name", "last_name"]
+        # Avoid having too many fields here, so that we don't push the OAuth methods too far down
+        fields = ["email", "preferred_name", "last_name"]
 
     def clean(self):
         cleaned = super().clean()
@@ -53,9 +55,9 @@ class LoginForm(forms.Form):
         if email and password:
             self._person = authenticate(self.request, username=email, password=password)
             if self._person is None:
-                raise forms.ValidationError("Invalid email or password.")
+                raise forms.ValidationError(_("Invalid email address or password."))
             if not self._person.is_active:
-                raise forms.ValidationError("This account has been deactivated.")
+                raise forms.ValidationError(_("This account has been deactivated."))
         return cleaned
 
     def get_person(self):

@@ -12,7 +12,7 @@ from wagtail.models import Page
 
 from ..forms.form_submission import find_identity_conflict, get_or_create_person
 from ..models.form_submission import FormSubmission
-from ..models.person import Tag
+from ..models.person import Tag, NAME_FIELD_LENGTH
 from ..signals import subscription_created
 
 Person = get_user_model()
@@ -41,16 +41,17 @@ def _page_offers_tag(page, tag: Tag) -> bool:
 
 
 @require_POST
-def subscribe_view(request):
+def subscription_view(request):
     """
     Subscribe the visitor to a mailing list by applying a Tag to their Person
     record. JSON body:
 
-        tag         str   Slug of the Tag to apply
-        page_id     int   The page hosting the subscription block
-        email       str   Required for unauthenticated requests
-        first_name  str   Identity guard for unauthenticated requests
-        last_name   str   Identity guard for unauthenticated requests
+        tag             str   Slug of the Tag to apply
+        page_id         int   The page hosting the subscription block
+        email           str   Required for unauthenticated requests
+        first_name      str   Identity guard for unauthenticated requests
+        preferred_name  str   Alternative to first_name; either or both may be sent
+        last_name       str   Identity guard for unauthenticated requests
 
     Follows FormSubmissionForm's identity rules: authenticated visitors are
     tagged directly; unauthenticated visitors resolve to a placeholder or
@@ -62,8 +63,9 @@ def subscribe_view(request):
         tag_name = str(data["tag_name"])
         page_id = int(data["page_id"])
         email_address = str(data.get("email", "")).strip()
-        first_name = str(data.get("first_name", "")).strip()[:100]
-        last_name = str(data.get("last_name", "")).strip()[:100]
+        first_name = str(data.get("first_name") or "").strip()[:NAME_FIELD_LENGTH] or None
+        preferred_name = str(data.get("preferred_name") or "").strip()[:NAME_FIELD_LENGTH] or None
+        last_name = str(data.get("last_name") or "").strip()[:NAME_FIELD_LENGTH] or None
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return JsonResponse({"error": _("Invalid request body.")}, status=400)
 
@@ -107,12 +109,16 @@ def subscribe_view(request):
             validate_email(email_address)
         except ValidationError:
             return JsonResponse({"error": _("Please enter a valid email address.")}, status=400)
-        conflict = find_identity_conflict(email_address, first_name, last_name)
+        conflict = find_identity_conflict(
+            email_address, first_name=first_name, last_name=last_name, preferred_name=preferred_name
+        )
         if conflict:
             return JsonResponse({"error": str(conflict)}, status=409)
         email_address = Person.objects.normalize_email(email_address)
         should_create = not Person.objects.filter(email=email_address).exists()
-        target_person: Person = get_or_create_person(email_address, first_name, last_name)
+        target_person: Person = get_or_create_person(
+            email_address, first_name, last_name, preferred_name
+        )
 
     already_subscribed = target_person.tags.filter(pk=tag.pk).exists()
 

@@ -124,8 +124,25 @@ psql --no-psqlrc --quiet --dbname postgres --set ON_ERROR_STOP=1 --set db="$DATA
   <<< 'CREATE DATABASE :"db"'
 
 echo "Restoring..." >&2
-if ! pg_restore --no-owner --no-privileges --exit-on-error --single-transaction \
-    --dbname "$DATABASE" "$BACKUP_FILE"; then
+# A pg_restore from PostgreSQL 17 or later begins its output with "SET transaction_timeout",
+# a setting that older servers reject. When the destination is older than that, the archive
+# is rendered to SQL instead, minus that one statement, and fed to psql. The result is the
+# same single-transaction, stop-at-first-error restore.
+server_major="$(psql --no-psqlrc --tuples-only --no-align --dbname postgres \
+  <<< "SHOW server_version_num")"
+server_major=$((server_major / 10000))
+restore_archive() {
+  if (( server_major >= 17 )); then
+    pg_restore --no-owner --no-privileges --exit-on-error --single-transaction \
+      --dbname "$DATABASE" "$BACKUP_FILE"
+  else
+    pg_restore --no-owner --no-privileges --file - "$BACKUP_FILE" \
+      | sed '/^SET transaction_timeout = /d' \
+      | psql --no-psqlrc --quiet --dbname "$DATABASE" --single-transaction \
+          --set ON_ERROR_STOP=1 --output /dev/null
+  fi
+}
+if ! restore_archive; then
   echo "ERROR: the restore failed; \"$DATABASE\" was created but is empty." >&2
   exit 1
 fi
