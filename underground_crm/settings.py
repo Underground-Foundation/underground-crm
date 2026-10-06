@@ -21,6 +21,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_ROOT = BASE_DIR / "static"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Ensure that Wagtail does not needlessly convert images
+# https://docs.wagtail.org/en/7.0/advanced_topics/images/image_file_formats.html#customizing-output-formats
+WAGTAILIMAGES_FORMAT_CONVERSIONS = {"avif": "avif", "webp": "webp"}
+
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "dev-secret-key-replace-before-deploying-to-production",
