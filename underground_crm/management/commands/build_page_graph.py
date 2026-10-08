@@ -1,29 +1,21 @@
 import io
 import json
-from typing import Dict, List, Optional
+from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 
 from underground_crm.management.commands.legacy_api_client import (
     MAX_PAGE_SIZE,
+    # noqa: F401 (re-exported)
     fetch_pages_json,
     get_api_headers,
-    get_pages_file_path,
-    require_env,
 )
-
-
-class PageNode:
-    id: int
-    parent_id: Optional[int]
-    slug: str
-
-    def __init__(self, id, parent_id, slug):
-        self.id = int(id)
-        self.parent_id = int(parent_id) if parent_id is not None else parent_id
-        self.slug = slug
-        self.parent: Optional["PageNode"] = None
-        self.children: List["PageNode"] = []
+from underground_crm.management.commands.importing import (
+    require_env,
+    PageNode,
+    get_pages_file_path,
+    read_page_graph,
+)
 
 
 class Command(BaseCommand):
@@ -57,29 +49,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Wrote {len(all_pages)} pages to {pages_file_path}")
 
     def build_graph_from_stored_pages(self, domain: str):
-        with io.open(get_pages_file_path(domain)) as input_io:
-            pages = json.load(input_io)
-        page_mapping: Dict[int, PageNode] = {}
-        for page in pages:
-            node = PageNode(
-                id=page["id"],
-                parent_id=page["attributes"]["parent_id"],
-                slug=page["attributes"]["slug"],
-            )
-            page_mapping[node.id] = node
-        orphans = []
-        for page in page_mapping.values():
-            if page.parent_id:
-                page.parent = page_mapping.get(page.parent_id)
-                if page.parent:
-                    page.parent.children.append(page)  # Doubly linked
-                else:
-                    print(
-                        f"Page {page.slug} is being skipped from the graph because its parent {page.parent_id} is not here"
-                    )
-            else:
-                orphans.append(page)
-        return orphans  # There should be at least 1 orphan
+        return read_page_graph(get_pages_file_path(domain))
 
     def add_arguments(self, parser):
         parser.add_argument(

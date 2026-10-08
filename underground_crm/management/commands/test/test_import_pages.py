@@ -7,6 +7,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import django.test
+from django.conf import settings
 from django.core.management.base import CommandError
 from wagtail.models import Page, Site
 
@@ -75,6 +76,29 @@ class TestParseEventDatetime(unittest.TestCase):
             mock_settings.TIME_ZONE = "UTC"
             start, _ = parse_event_datetime("January 1, 2026 at 10:00 - 2pm (ZZZ timezone)")
         self.assertEqual(start.utcoffset().total_seconds(), 0)
+
+    def test_legacy_format_without_end_time_or_timezone(self):
+        """Older pages give a weekday, day-first date and 12-hour start, with no end or timezone."""
+        site_timezone = ZoneInfo(settings.TIME_ZONE)
+        start, end = parse_event_datetime("Sunday 15 January, 2023 at  5:30pm")
+        self.assertEqual(
+            start,
+            datetime(2023, 1, 15, 17, 30, tzinfo=site_timezone),
+            msg="5:30pm on 15 January 2023, in the site's timezone since none was given",
+        )
+        self.assertIsNone(end, msg="The page stated no end time, so none should be invented")
+
+    def test_end_time_without_timezone_label(self):
+        site_timezone = ZoneInfo(settings.TIME_ZONE)
+        start, end = parse_event_datetime("May 16, 2026 at 18:00 - 11pm")
+        self.assertEqual(start, datetime(2026, 5, 16, 18, 0, tzinfo=site_timezone))
+        self.assertEqual(end, datetime(2026, 5, 16, 23, 0, tzinfo=site_timezone))
+
+    def test_timezone_label_without_end_time(self):
+        qld = ZoneInfo("Australia/Brisbane")
+        start, end = parse_event_datetime("July 4, 2026 at 14:00 (QLD timezone)")
+        self.assertEqual(start, datetime(2026, 7, 4, 14, 0, tzinfo=qld))
+        self.assertIsNone(end)
 
     def test_leading_whitespace_is_stripped(self):
         clean = parse_event_datetime("May 16, 2026 at 18:00 - 11pm (VIC timezone)")

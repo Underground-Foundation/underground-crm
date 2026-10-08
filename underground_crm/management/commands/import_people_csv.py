@@ -58,8 +58,11 @@ from django.db.models import Q
 from phonenumbers import PhoneNumberFormat, PhoneNumberType, phonenumberutil
 from phonenumbers.phonenumber import PhoneNumber
 
-from underground_crm.management.commands.importing import build_cookie_opener, fetch_private_notes
-from underground_crm.management.commands.legacy_api_client import require_env
+from underground_crm.management.commands.importing import (
+    build_cookie_opener,
+    fetch_private_notes,
+    require_env,
+)
 from underground_crm.models import Interaction, Membership, MembershipType, Person, PersonNote, Tag
 from underground_crm.models.address import Address
 from underground_crm.contactability import (

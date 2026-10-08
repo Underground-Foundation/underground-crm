@@ -1,21 +1,12 @@
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from bs4 import BeautifulSoup
-from django.core.management import CommandError
 
-
-def require_env(name):
-    val = os.environ.get(name)
-    if not val:
-        raise CommandError(f"{name} environment variable is not set.")
-    return val
-
+from underground_crm.management.commands.importing import require_env
 
 MAX_PAGE_SIZE = 100
 
@@ -139,10 +130,3 @@ def get_api_headers() -> dict:
         "Content-Type": "application/vnd.api+json",
         "User-Agent": user_agent,
     }
-
-
-def get_pages_file_path(domain: str):
-    domain_dir = Path(domain)
-    if not domain_dir.is_dir():
-        raise CommandError(f"'{domain_dir}' is not a directory.")
-    return domain_dir / "all_pages.json"

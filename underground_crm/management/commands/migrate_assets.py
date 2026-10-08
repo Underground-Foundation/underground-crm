@@ -27,6 +27,7 @@ from underground_crm.legacy_assets import (
 )
 from underground_crm.legacy_documents import RemoteDocumentResolver
 from underground_crm.legacy_images import RemoteImageResolver, legacy_asset_urls_from_env
+from underground_crm.management.commands.importing import require_env
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ class Command(BaseCommand):
         if not site_dir.is_dir():
             raise CommandError(f"{site_dir} is not a directory")
 
-        session = build_legacy_session(os.environ.get("LEGACY_USER_AGENT", ""))
+        session = build_legacy_session(require_env("LEGACY_USER_AGENT"))
         asset_urls = legacy_asset_urls_from_env()
         resolvers = []
         for resolver_class in (RemoteImageResolver, RemoteDocumentResolver):
