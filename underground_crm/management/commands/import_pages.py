@@ -41,12 +41,13 @@ import html
 import json
 import logging
 import re
+from string import punctuation
 
 import phonenumbers
 from dataclasses import dataclass
 from dateutil import parser
 from pathlib import Path
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, cast
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple, cast
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -84,9 +85,11 @@ from underground_crm.models.pages import (
     FormPage,
     FormPageTag,
     RegistrationPage,
+    DEFAULT_PAGE_SIZE,
 )
 from underground_payments.models import PaymentPage
 from underground_crm.numbers import parse_localized_number
+from underground_crm.management.commands.importing import read_page_graph, iter_pages_breadth_first
 
 logger = logging.getLogger(__name__)
 
@@ -290,11 +293,11 @@ def extract_event_time(
 ) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
     event_pairs = get_event_detail_pairs(soup)
     if not event_pairs:
-        print(f"Event time element was not found")
+        logger.info(f"Event time element was not found")
         return None, None
     time_contents = get_substantial_child_strings(event_pairs[0])
     if time_contents[0] != "When":
-        print(f"Unable to determine time from wrong event detail")
+        logger.info(f"Unable to determine time from wrong event detail")
         return None, None
     return parse_event_datetime(time_contents[1])
 
@@ -302,12 +305,12 @@ def extract_event_time(
 def extract_event_venue(soup: BeautifulSoup, create_if_not_found=True) -> Optional[Address]:
     pairs = get_event_detail_pairs(soup)
     if len(pairs) < 2:
-        print("Unable to determine event location")
+        logger.info("Unable to determine event location")
         return None
     location_pair = pairs[1]
     location_contents = get_substantial_child_strings(location_pair)
     if location_contents[0] != "Where":
-        print("Unable to determine location from wrong event detail")
+        logger.info("Unable to determine location from wrong event detail")
         return None
     address = parse_address(location_contents[1])
     try:
@@ -345,13 +348,13 @@ def get_host_by_phone(raw_phone: str) -> Optional[settings.AUTH_USER_MODEL]:
     try:
         phone = phonenumbers.parse(raw_phone)
     except phonenumbers.NumberParseException as e:
-        print(f"Unable to determine an event host: {e}")
+        logger.info(f"Unable to determine an event host: {e}")
         return None
     User = get_user_model()
     try:
         return User.objects.get(phone_number=phone)
     except User.DoesNotExist:
-        print(f"Unable to find a user with phone number {phone}")
+        logger.info(f"Unable to find a user with phone number {phone}")
         return None
 
 
@@ -361,22 +364,24 @@ def extract_host_attributes(soup: BeautifulSoup) -> Optional[List[str]]:
     # revealing the email address on the page. It is therefore not extracted here.
     pairs = get_event_detail_pairs(soup)
     if len(pairs) < 3:
-        print(f"Unable to determine event host. Only {len(pairs)} event pairs")
+        logger.info(f"Unable to determine event host. Only {len(pairs)} event pairs")
         return None
     host_pair = pairs[2]
     host_contents = get_substantial_child_strings(host_pair)
     if not host_contents or len(host_contents) != 2 or not host_contents[0] == "Contact":
-        print("Unable to determine host from wrong event detail")
+        logger.info("Unable to determine host from wrong event detail")
         return None
-    print(f"Host contents: {host_contents}")
+    logger.info(f"Host contents: {host_contents}")
     host_text = host_contents[1]
-    print(f"Raw host: {host_text}")
+    logger.info(f"Raw host: {host_text}")
     return host_text.split("·")
 
 
 def extract_event_host(soup: BeautifulSoup) -> Optional[settings.AUTH_USER_MODEL]:
     host_parts = extract_host_attributes(soup)
-    print(f"Host parts: {host_parts}")
+    logger.info(f"Host parts: {host_parts}")
+    if not host_parts:
+        return None
     if host_parts and len(host_parts) > 1:
         host = get_host_by_email_address(host_parts[1])
         if host:
@@ -396,7 +401,7 @@ def extract_event_host(soup: BeautifulSoup) -> Optional[settings.AUTH_USER_MODEL
 def extract_event_population(soup: BeautifulSoup):
     pairs = get_event_detail_pairs(soup)
     if len(pairs) < 4:
-        print(f"Unable to determine event population. Only {len(pairs)} event pairs")
+        logger.info(f"Unable to determine event population. Only {len(pairs)} event pairs")
         return None
     for pair in pairs:
         subhead = pair.find("p", class_="subhead")
@@ -404,7 +409,7 @@ def extract_event_population(soup: BeautifulSoup):
             result = parse_localized_number(subhead.text.split(" ")[0])
             if result is not None:
                 return int(result)
-    print("Unable to determine event population")
+    logger.info("Unable to determine event population")
     return None
 
 
@@ -554,17 +559,17 @@ def build_event_page(
 def extract_page_size(soup: BeautifulSoup) -> Optional[int]:
     content_div = soup.find("div", id="content")
     if not content_div:
-        print(f"No content div could be found for this blog")
+        logger.info(f"No content div could be found for this blog")
         return None
     ul = content_div.find(
         "ul"
     )  # The highest list in the content soup will be the list of blog posts
     if not ul:
-        print(f"No ul could be found for this blog")
+        logger.info(f"No ul could be found for this blog")
         return None
     list_items = ul.find_all("li", recursive=False)
     if not list_items:
-        print(f"No list items for this blog")
+        logger.info(f"No list items for this blog")
         return None
     return len(list_items)
 
@@ -626,7 +631,7 @@ def build_feed_page(
         FeedPage,
         return_class(**kwargs),
     )
-    page.page_size = extract_page_size(document_soup)
+    page.page_size = extract_page_size(document_soup) or DEFAULT_PAGE_SIZE
     page.ordering = ordering
     return page
 
@@ -644,7 +649,7 @@ def build_redirection(
     try:
         destination_page = Page.objects.get(slug=destination)
     except Page.DoesNotExist:
-        print(f"Cannot create redirection at {slug}: page {destination} does not exist")
+        logger.info(f"Cannot create redirection at {slug}: page {destination} does not exist")
         return None
     return cast(
         Redirect,
@@ -729,9 +734,7 @@ def build_blog_post(
     )
     if existing_intro is not None:
         body_blocks, duplicated = remove_duplicated_intro(body_blocks, existing_intro)
-        logger.info(
-            "    [intro] cut %s duplicated element(s) from the body of '%s'.", duplicated, slug
-        )
+        logger.info("[intro] cut %s duplicated element(s) from the body of '%s'.", duplicated, slug)
     page = cast(
         BlogPost,
         return_class(
@@ -1111,6 +1114,27 @@ def build_registration_page(
     return RegistrationPage(**kwargs)
 
 
+def iter_html_files_breadth_first(domain_dir: Path, pages_file: Path) -> Iterator[Path]:
+    """The `*.html` files of `domain_dir`, each after the file of its parent page.
+
+    `pages_file` is the page graph that build_page_graph writes (`all_pages.json`).
+    A redirection is listed beneath the page that it redirects to, so it too follows its
+    destination.
+
+    A page in the graph that was never fetched is passed over. A fetched file that the
+    graph does not reach (it is absent from the graph, or its parent is) comes last,
+    in name order.
+    """
+    available = {path.stem: path for path in domain_dir.glob("*.html")}
+    visited: set[str] = set()
+    for node in iter_pages_breadth_first(read_page_graph(pages_file)):
+        visited.add(node.slug)
+        if node.slug in available:
+            yield available[node.slug]
+    for stem in sorted(available.keys() - visited):
+        yield available[stem]
+
+
 # fetch_pages --with-pagination saves each further page of a listing as
 # "<slug>?page=<number>.html". They are read as part of the listing they belong
 # to, never imported as pages of their own.
@@ -1136,6 +1160,7 @@ PAGE_BUILDING_MAP: dict[str, Any] = {
     # ordering is soonest-first rather than a blog's newest-first.
     "Calendar": functools.partial(build_feed_page, ordering=FeedPage.Ordering.SOONEST_FIRST),
     "Donation": build_payment_page,
+    "Donation (v2)": build_payment_page,
     "Event": build_event_page,
     "Blog": build_feed_page,
     BLOG_POST_TYPE_NAME: build_blog_post,
@@ -1198,12 +1223,23 @@ def get_site_from_options(options):
 class Command(BaseCommand):
     help = "Parse and import legacy CMS pages into Wagtail from pre-fetched HTML files."
     counter = ImportCounter()
+    skipped_slugs = set()
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--domain",
             required=True,
             help="Domain directory to import from (e.g. fusionparty.org.au).",
+        )
+        parser.add_argument(
+            "--pages-file",
+            type=Path,
+            required=False,
+            help=(
+                "The page graph written by build_page_graph (<domain>/all_pages.json). "
+                "Pages are imported breadth-first through it, so that each parent page is "
+                "imported before its children. Without it, the files are imported in name order."
+            ),
         )
         parser.add_argument(
             "--replace",
@@ -1297,14 +1333,14 @@ class Command(BaseCommand):
     def _should_continue_with_json_path(self, json_path: Path, slug: str):
         if json_path.exists():
             return True
-        self.stderr.write(f"  [skip] no JSON metadata file for slug '{slug}'.")
+        logger.error(f"[skip] no JSON metadata file for slug '{slug}'.")
         self.counter.increment_skipped()
         return False
 
     def _get_attributes_for_continuation(self, json_path: Path) -> dict | None:
         attributes = _load_page_attributes(json_path)
         if attributes is None:
-            self.stderr.write(f"  [skip] could not read attributes from '{json_path.name}'.")
+            logger.error(f"[skip] could not read attributes from '{json_path.name}'.")
             self.counter.increment_skipped()
             return None
         return attributes
@@ -1315,8 +1351,9 @@ class Command(BaseCommand):
         type_name = get_page_type_attribute(attributes)
         if type_name in page_building_map:
             return page_building_map[type_name]
-        self.stderr.write(f"  [skip] unsupported page type '{type_name}' for slug '{slug}'.")
+        logger.warning(f"[skip] unsupported page type '{type_name}' for slug '{slug}'.")
         self.counter.increment_skipped()
+        self.skipped_slugs.add(slug)
         return None
 
     def _get_child_stub_builder(
@@ -1340,23 +1377,32 @@ class Command(BaseCommand):
         for document_soup in document_soups:
             for stub in stub_builder(document_soup, attributes, site, image_resolver):
                 if Page.objects.filter(slug=stub.slug).exists():
-                    self.stderr.write(
-                        f"    [skip] stub '{stub.slug}': a page with that slug exists."
-                    )
+                    logger.warning(f"[skip] stub '{stub.slug}': a page with that slug exists.")
                     continue
                 parent.add_child(instance=stub)
                 stub.save_revision().publish()
-                self.stdout.write(
-                    f"    Created stub {stub.__class__.__name__} '{stub.slug}' under '{parent.title}'."
+                logger.info(
+                    f"Created stub {stub.__class__.__name__} '{stub.slug}' under '{parent.title}'."
                 )
 
     def _read_paginated_pages(self, domain_dir: Path, slug: str) -> List[BeautifulSoup]:
         """The parsed further pages of the listing `slug`, in page order."""
         soups = []
         for path in find_paginated_pages(domain_dir, slug):
-            self.stdout.write(f"  Reading listing page '{path.name}'.")
+            logger.info(f"Reading listing page '{path.name}'.")
             soups.append(BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser"))
         return soups
+
+    def is_accounts_url(self, slug: str):
+        if not slug:
+            return False
+        from underground_crm.urls import urlpatterns as underground_urls
+
+        for urlpattern in underground_urls:
+            matched = urlpattern.pattern.match(f"{slug.strip(punctuation)}/")
+            if matched:
+                return True
+        return False
 
     def create_pages_from_path(
         self,
@@ -1368,6 +1414,7 @@ class Command(BaseCommand):
         child_stub_building_map: Optional[Dict[str, Callable]] = None,
         image_resolver: Optional[ImageResolver] = None,
         document_resolver: Optional[RemoteDocumentResolver] = None,
+        pages_file: Optional[Path] = None,
     ) -> None:
         if not domain_dir.is_dir():
             raise CommandError(f"'{domain_dir}' is not a directory.")
@@ -1391,12 +1438,16 @@ class Command(BaseCommand):
                 "beneath that tree root — repoint the site's root page (Wagtail admin: "
                 "Settings > Sites, or via the Django shell) before importing pages."
             )
-        self.stdout.write(f"Importing pages under '{root_page.title}' (pk={root_page.pk}).")
+        logger.info(f"Importing pages under '{root_page.title}' (pk={root_page.pk}).")
 
         # Note that even redirections will need the HTML here (for the resultant page in the redirection)
-        html_files = sorted(domain_dir.glob("*.html"))
+        html_files = (
+            iter_html_files_breadth_first(domain_dir, pages_file)
+            if pages_file
+            else sorted(domain_dir.glob("*.html"))
+        )
         if not html_files:
-            self.stderr.write(self.style.WARNING(f"No .html files found in '{domain_dir}'."))
+            logger.error(f"No .html files found in '{domain_dir}'.")
             return
 
         for html_file in html_files:
@@ -1418,16 +1469,15 @@ class Command(BaseCommand):
             )
             if not page_builder:
                 continue
+            logger.info("Importing page %s", current_slug)
 
             extracted = extract_importable_html(html_file, importable_dir, document_resolver)
             if extracted is None:
-                self.stderr.write(
-                    f"  [skip] no element with id='content' found in '{html_file.name}'."
-                )
+                logger.warning(f"[skip] no element with id='content' found in '{html_file.name}'.")
                 self.counter.increment_skipped()
                 continue
 
-            self.stdout.write(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
+            logger.info(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
             document_soup, importable_html = extracted
 
             replacing_root = is_site_root(attributes)
@@ -1436,8 +1486,8 @@ class Command(BaseCommand):
 
             if replacing_root:
                 if root_page.slug == current_slug and not should_replace:
-                    self.stderr.write(
-                        f"  [skip] the site's root page is already '{current_slug}'. "
+                    logger.warning(
+                        f"[skip] the site's root page is already '{current_slug}'. "
                         "Pass --replace to overwrite it."
                     )
                     self.counter.increment_skipped()
@@ -1453,13 +1503,13 @@ class Command(BaseCommand):
                     if isinstance(existing, Page):
                         stub_intro = get_unfilled_stub_intro(existing, attributes)
                     if stub_intro is None and not should_replace:
-                        self.stderr.write(
-                            f"  [skip] page with slug '{current_slug}' already exists. "
+                        logger.warning(
+                            f"[skip] page with slug '{current_slug}' already exists. "
                             "Pass --replace to overwrite it."
                         )
                         self.counter.increment_skipped()
                         continue
-                    self.stdout.write(
+                    logger.info(
                         f"  Deleting existing {'stub ' if stub_intro is not None else ''}page "
                         f"'{current_slug}' (pk={getattr(existing, 'pk', None)}) for replacement."
                     )
@@ -1483,7 +1533,7 @@ class Command(BaseCommand):
                 old_root = root_page
                 new_page = self._replace_root_page(site, old_root, new_page)
                 root_page = new_page
-                self.stdout.write(
+                logger.info(
                     f"  Updated the site's root page (was '{old_root.title}') to "
                     f"{new_page.__class__.__name__} (slug='{current_slug}'), keeping its subpages in place."
                 )
@@ -1492,14 +1542,25 @@ class Command(BaseCommand):
                 if isinstance(new_page, Page):
                     parent_slug = attributes.get("parent_slug")
                     if parent_slug:
-                        immediate_parent = Page.objects.get(slug=parent_slug)
+                        try:
+                            potential_parent = Page.objects.get(slug=parent_slug)
+                            immediate_parent = potential_parent
+                        except Page.DoesNotExist as e:
+                            if self.is_accounts_url(parent_slug):
+                                logger.info(
+                                    f"%s shall be a child of the root, rather than a child of %s",
+                                    slug,
+                                    parent_slug,
+                                )
+                            else:
+                                raise FileNotFoundError(f"Parent page {parent_slug} does not exist")
                     immediate_parent.add_child(instance=new_page)
                 elif isinstance(new_page, Redirect):
                     new_page.save()
 
-                self.stdout.write(
-                    f"  Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
-                    f" (slug='{current_slug}') under '{immediate_parent.title}' (pk={immediate_parent.pk})."
+                logger.info(
+                    f"Created {new_page.__class__.__name__} '{getattr(new_page, 'slug', None) or getattr(new_page, 'old_path', None)}'"
+                    f"(slug='{current_slug}') under '{immediate_parent.title}' (pk={immediate_parent.pk})."
                 )
 
             if isinstance(new_page, Page):
@@ -1525,10 +1586,10 @@ class Command(BaseCommand):
         if slug and not self.counter.has_evaluated_any_pages():
             raise CommandError(f"'{slug}' was not available for importing.")
         if isinstance(image_resolver, RemoteImageResolver):
-            self.stdout.write(f"Images: {image_resolver.get_summary()}.")
+            logger.info(f"Images: {image_resolver.get_summary()}.")
         if isinstance(document_resolver, RemoteDocumentResolver):
-            self.stdout.write(f"Documents: {document_resolver.get_summary()}.")
-        self.stdout.write(self.style.SUCCESS(f"Done. {self.counter.get_summary()}"))
+            logger.info(f"Documents: {document_resolver.get_summary()}.")
+        logger.info("Done. %s", self.counter.get_summary())
 
     def handle(self, *args, **options) -> None:
         domain_dir = Path(options["domain"])
@@ -1541,4 +1602,5 @@ class Command(BaseCommand):
             child_stub_building_map=CHILD_STUB_BUILDING_MAP,
             image_resolver=self.build_image_resolver(options),
             document_resolver=self.build_document_resolver(options),
+            pages_file=options.get("pages_file"),
         )

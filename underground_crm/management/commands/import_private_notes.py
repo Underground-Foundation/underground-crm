@@ -25,8 +25,8 @@ from underground_crm.management.commands.importing import (
     fetch_private_notes_via_cookie,
     read_jsonl,
     require_legacy_admin_env,
+    require_env,
 )
-from underground_crm.management.commands.legacy_api_client import require_env
 from underground_crm.models import PersonNote
 
 LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")

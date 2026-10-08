@@ -741,6 +741,9 @@ class FeedItem:
         )
 
 
+DEFAULT_PAGE_SIZE = 10
+
+
 class FeedPage(FeedRoutedIndexMixin, BasicPage):
     """
     A paginated index page listing dated items: its own live descendants
@@ -764,7 +767,7 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
     SOURCE_LOCAL = "local"
 
     page_size = models.PositiveIntegerField(
-        default=10,
+        default=DEFAULT_PAGE_SIZE,
         help_text=_("Number of items to display per page."),
     )
     ordering = models.CharField(
@@ -1022,8 +1025,8 @@ class EventPage(FeedChildPageMixin, FormPage):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    start_time = models.DateTimeField(null=True)
-    end_time = models.DateTimeField(null=True)
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
     venue = models.ForeignKey(Address, null=True, blank=True, on_delete=models.SET_NULL)
     # todo: keep this in sync
     population = models.PositiveIntegerField(

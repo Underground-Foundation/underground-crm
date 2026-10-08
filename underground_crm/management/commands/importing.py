@@ -5,16 +5,26 @@ Shared utilities for legacy CRM import management commands.
 import html
 import http.cookiejar
 import json
+import os
 import random
 import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
+from pathlib import Path
+from typing import Optional, List, Dict, Iterator
 
 from django.core.management.base import CommandError
 
-from underground_crm.management.commands.legacy_api_client import require_env
+
+def require_env(name):
+    val = os.environ.get(name)
+    if not val:
+        raise CommandError(f"{name} environment variable is not set.")
+    return val
+
 
 LEGACY_USER_AGENT: str = require_env("LEGACY_USER_AGENT")
 
@@ -259,3 +269,65 @@ def fetch_interactions_via_api(
         raise CommandError(f"Legacy CRM request failed: {e.code} {e.reason} — {e.url}") from e
     except urllib.error.URLError as e:
         raise CommandError(f"Network error reaching legacy CRM: {e.reason}") from e
+
+
+class PageNode:
+    id: int
+    parent_id: Optional[int]
+    slug: str
+
+    def __init__(self, id, parent_id, slug):
+        self.id = int(id)
+        self.parent_id = int(parent_id) if parent_id is not None else parent_id
+        self.slug = slug
+        self.parent: Optional["PageNode"] = None
+        self.children: List["PageNode"] = []
+
+
+def get_pages_file_path(domain: str):
+    domain_dir = Path(domain)
+    if not domain_dir.is_dir():
+        raise CommandError(f"'{domain_dir}' is not a directory.")
+    return domain_dir / "all_pages.json"
+
+
+def read_page_graph(pages_file: Path) -> List[PageNode]:
+    """The roots of the page graph stored in `pages_file`, as written by build_page_graph.
+
+    A page whose parent is absent from the file is left out of the graph."""
+    try:
+        pages = json.loads(pages_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CommandError(f"Could not read '{pages_file}': {error}")
+    if not isinstance(pages, list):
+        raise CommandError(f"'{pages_file}' does not hold a list of page records.")
+    page_mapping: Dict[int, PageNode] = {}
+    for page in pages:
+        node = PageNode(
+            id=page["id"],
+            parent_id=page["attributes"]["parent_id"],
+            slug=page["attributes"]["slug"],
+        )
+        page_mapping[node.id] = node
+    orphans = []
+    for page in page_mapping.values():
+        if page.parent_id:
+            page.parent = page_mapping.get(page.parent_id)
+            if page.parent:
+                page.parent.children.append(page)  # Doubly linked
+            else:
+                print(
+                    f"Page {page.slug} is being skipped from the graph because its parent {page.parent_id} is not here"
+                )
+        else:
+            orphans.append(page)
+    return orphans  # There should be at least 1 orphan
+
+
+def iter_pages_breadth_first(roots: List[PageNode]) -> Iterator[PageNode]:
+    """Every page beneath `roots` (and the roots), each after its parent."""
+    queue = deque(roots)
+    while queue:
+        node = queue.popleft()
+        yield node
+        queue.extend(node.children)

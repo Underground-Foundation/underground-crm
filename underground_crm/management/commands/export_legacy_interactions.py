@@ -18,8 +18,8 @@ from underground_crm.management.commands.importing import (
     fetch_interactions_via_api,
     make_legacy_api_headers,
     write_jsonl,
+    require_env,
 )
-from underground_crm.management.commands.legacy_api_client import require_env
 
 LEGACY_ADMIN_URL = require_env("LEGACY_ADMIN_URL").rstrip("/")
 LEGACY_API_TOKEN = require_env("LEGACY_API_TOKEN")

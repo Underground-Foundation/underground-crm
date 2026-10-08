@@ -17,9 +17,8 @@ from underground_crm.management.commands.legacy_api_client import (
     fetch_page_html,
     fetch_page_json,
     get_api_headers,
-    require_env,
 )
-
+from underground_crm.management.commands.importing import require_env
 
 # Statuses by which a site asks us to slow down, rather than telling us about the page.
 THROTTLED_STATUSES = frozenset({429, 503})

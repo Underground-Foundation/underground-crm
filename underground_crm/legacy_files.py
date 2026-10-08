@@ -28,6 +28,8 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
+from underground_crm.management.commands.importing import require_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ def legacy_asset_urls_from_env() -> tuple:
     other prefixes are left as they are. A *relative* source was only ever
     relative to the legacy page itself, so it's always internalized.
     """
-    raw = os.environ.get("LEGACY_ASSET_URLS", "")
+    raw = require_env("LEGACY_ASSET_URLS")
     return tuple(url.strip().rstrip("/") for url in raw.split(",") if url.strip())
 
 
@@ -162,6 +164,12 @@ class RemoteFileResolver:
             return None
         return urljoin(self.base_url, source)
 
+    def _is_legacy_asset_url(self, url):
+        for legacy_url in self.legacy_asset_urls:
+            if url.startswith(legacy_url):
+                return True
+        return False
+
     def _resolve(
         self, source: str, title_hint: str, filename: Optional[str] = None
     ) -> Optional[object]:
@@ -185,7 +193,7 @@ class RemoteFileResolver:
                 self.skipped += 1
                 self._report(f"skipped '{url}': already served from our own domain.")
                 return None
-            if not (url.startswith(self.legacy_asset_urls) or "/uploads/" in urlparse(url).path):
+            if not (self._is_legacy_asset_url(url) or "/uploads" in urlparse(url).path):
                 self.skipped += 1
                 self._report(f"skipped '{url}': not a legacy asset URL.")
                 return None
