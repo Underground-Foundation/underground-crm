@@ -250,13 +250,9 @@ def parse_event_datetime(
     """
     event_string = event_string.strip()
 
-    parts = event_string.split(" - ")
-    start_part = parts[0]
-    remaining = parts[1]
-
-    end_parts = remaining.split(" (")
-    end_time_string = end_parts[0]
-    timezone_label = end_parts[1].replace(")", "").replace(" timezone", "")
+    times_part, _, timezone_part = event_string.partition(" (")
+    start_part, _, end_time_string = times_part.partition(" - ")
+    timezone_label = timezone_part.replace(")", "").replace(" timezone", "")
 
     # Split on "/" and take the first state/territory
     first_state = timezone_label.split("/")[0]
@@ -264,8 +260,11 @@ def parse_event_datetime(
     timezone_obj = ZoneInfo(iana_name)
 
     # Parse the start datetime
-    naïve_start = datetime.datetime.strptime(start_part, "%B %d, %Y at %H:%M")
+    # dateutil copes with a leading weekday, day-first dates and 12-hour times.
+    naïve_start = parser.parse(start_part)
     start_datetime = naïve_start.replace(tzinfo=timezone_obj)
+    if not end_time_string:
+        return start_datetime, None
     ending_default = start_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
     end_datetime = parser.parse(end_time_string, default=ending_default)
 
@@ -348,7 +347,7 @@ def get_host_by_phone(raw_phone: str) -> Optional[settings.AUTH_USER_MODEL]:
     try:
         phone = phonenumbers.parse(raw_phone)
     except phonenumbers.NumberParseException as e:
-        logger.info(f"Unable to determine an event host: {e}")
+        logger.info(f"Unable to determine an event host by phone number: {e}")
         return None
     User = get_user_model()
     try:
@@ -395,7 +394,10 @@ def extract_event_host(soup: BeautifulSoup) -> Optional[settings.AUTH_USER_MODEL
         host = get_host_by_phone(host_parts[2])
         if host:
             return host
-    return get_ambiguous_admin_by_full_name(host_parts[0].strip())
+    host = get_ambiguous_admin_by_full_name(host_parts[0].strip())
+    if host:
+        logger.info("The extracted host is %s", host)
+    return host
 
 
 def extract_event_population(soup: BeautifulSoup):
@@ -1337,6 +1339,13 @@ class Command(BaseCommand):
         self.counter.increment_skipped()
         return False
 
+    def _is_deleted_from_legacy_site(self, domain_dir: Path, slug: str) -> bool:
+        json_path = domain_dir / f"{slug}.json"
+        if not json_path.exists():
+            return False
+        attributes = _load_page_attributes(json_path)
+        return bool(attributes) and attributes.get("status") == "deleted"
+
     def _get_attributes_for_continuation(self, json_path: Path) -> dict | None:
         attributes = _load_page_attributes(json_path)
         if attributes is None:
@@ -1464,6 +1473,12 @@ class Command(BaseCommand):
             if not attributes:
                 continue
 
+            if attributes["status"] == "deleted":
+                logger.warning("[skip] %s has been deleted and shall be skipped", current_slug)
+                self.skipped_slugs.add(current_slug)
+                self.counter.increment_skipped()
+                continue
+
             page_builder = self._get_page_builder_for_continuation(
                 attributes, page_building_map, slug=current_slug, site=site
             )
@@ -1477,7 +1492,7 @@ class Command(BaseCommand):
                 self.counter.increment_skipped()
                 continue
 
-            logger.info(f"  Wrote parsed content to '{importable_dir / html_file.name}'.")
+            logger.info(f"Wrote parsed content to '{importable_dir / html_file.name}'.")
             document_soup, importable_html = extracted
 
             replacing_root = is_site_root(attributes)
@@ -1548,10 +1563,22 @@ class Command(BaseCommand):
                         except Page.DoesNotExist as e:
                             if self.is_accounts_url(parent_slug):
                                 logger.info(
-                                    f"%s shall be a child of the root, rather than a child of %s",
+                                    "%s shall be a child of the root, rather than a child of %s",
                                     slug,
                                     parent_slug,
                                 )
+                            elif (
+                                parent_slug in self.skipped_slugs
+                                or self._is_deleted_from_legacy_site(domain_dir, parent_slug)
+                            ):
+                                logger.warning(
+                                    "[skip] %s is being skipped, since its parent %s is not being migrated",
+                                    current_slug,
+                                    parent_slug,
+                                )
+                                self.skipped_slugs.add(current_slug)
+                                self.counter.increment_skipped()
+                                continue
                             else:
                                 raise FileNotFoundError(f"Parent page {parent_slug} does not exist")
                     immediate_parent.add_child(instance=new_page)
