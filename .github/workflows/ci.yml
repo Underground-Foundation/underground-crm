@@ -35,6 +35,7 @@ jobs:
       # which occur at import time. The test suite therefore needs these set even though
       # it never makes a real legacy CRM API call.
       LEGACY_ADMIN_URL: "https://legacy-not-for-loss-organisation.com/people-party"
+      LEGACY_ASSET_URLS: "https://assets.legacy-not-for-loss-organisation.com/people-party,https://people-party.legacy-not-for-loss-organisation.com/themes"
       LEGACY_API_TOKEN: "ci-placeholder-token"
       LEGACY_USER_AGENT: "Mozilla"
       LEGACY_ADMIN_COOKIE_FILE: /dev/null
