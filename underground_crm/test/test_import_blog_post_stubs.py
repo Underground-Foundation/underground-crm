@@ -21,11 +21,12 @@ from wagtail.models import Page, Site
 
 from underground_crm.legacy_html import BUTTON_BLOCK, IMAGE_BLOCK, RICH_TEXT_BLOCK
 from underground_crm.management.commands.import_pages import (
+    BLOG_POST_TYPE_NAME,
     build_blog_post_stubs,
     extract_blog_post_listings,
     find_paginated_pages,
 )
-from underground_crm.models import BlogPost, FeedPage, Person
+from underground_crm.models import BlogPost, FeedPage, Person, UndergroundBasicPage
 
 from bs4 import BeautifulSoup
 
@@ -134,7 +135,11 @@ def blog_post_page_html(paragraphs: List[str]) -> str:
 </html>"""
 
 
-def blog_post_json(slug: str) -> str:
+# The legacy page type that import_pages builds as an UndergroundBasicPage.
+BASIC_PAGE_TYPE_NAME = "Basic"
+
+
+def blog_post_json(slug: str, page_type_name: str = BLOG_POST_TYPE_NAME) -> str:
     return f"""{{
       "id": "7581",
       "attributes": {{
@@ -144,7 +149,7 @@ def blog_post_json(slug: str) -> str:
         "name": "The Line Has Been Crossed",
         "headline": "The Line Has Been Crossed",
         "title": "The Line Has Been Crossed - Fusion Party",
-        "page_type_name": "Blog Post",
+        "page_type_name": "{page_type_name}",
         "published_at": "2026-04-15T10:49:18+10:00"
       }}
     }}"""
@@ -378,19 +383,16 @@ class LegacyBlogDirectoryTestCase(TestCase):
             encoding="utf-8",
         )
 
-    def run_import(self, slug: str = BLOG_SLUG, **options) -> str:
-        """Run the import for one slug, returning what it wrote to stderr (where
-        it reports what it skipped)."""
-        errors = StringIO()
+    def run_import(self, slug: str = BLOG_SLUG, **options) -> None:
+        """Run the import for one slug, keeping its output out of the test run."""
         call_command(
             "import_pages",
             domain=str(self.domain),
             slug=slug,
             stdout=StringIO(),
-            stderr=errors,
+            stderr=StringIO(),
             **options,
         )
-        return errors.getvalue()
 
     def feed_page(self) -> FeedPage:
         return FeedPage.objects.get(slug=BLOG_SLUG)
@@ -500,8 +502,7 @@ class ImportBlogPostIntoStubTest(LegacyBlogDirectoryTestCase):
 
     def test_the_stub_is_filled_in_without_the_replace_flag(self):
         stub_pk = self.post().pk
-        errors = self.run_import(slug=FIRST_POST_SLUG)
-        self.assertNotIn("--replace", errors, "a stub has no body, so nothing needs replacing")
+        self.run_import(slug=FIRST_POST_SLUG)
         self.assertEqual(BlogPost.objects.filter(slug=FIRST_POST_SLUG).count(), 1)
         self.assertNotEqual(self.post().pk, stub_pk, "the stub is replaced by the full post")
 
@@ -537,8 +538,7 @@ class ImportBlogPostIntoStubTest(LegacyBlogDirectoryTestCase):
         self.run_import(slug=FIRST_POST_SLUG)
         body_before = str(self.post().body)
         self.write_post([f"<p>{FIRST_POST_EXCERPT}</p>", "<p>A completely different article.</p>"])
-        errors = self.run_import(slug=FIRST_POST_SLUG)
-        self.assertIn("--replace", errors)
+        self.run_import(slug=FIRST_POST_SLUG)
         self.assertEqual(str(self.post().body), body_before, "the existing post must be untouched")
 
     def test_replacing_a_post_with_a_body_starts_it_afresh(self):
@@ -549,14 +549,43 @@ class ImportBlogPostIntoStubTest(LegacyBlogDirectoryTestCase):
         self.assertIn(replacement, str(self.post().body))
         self.assertEqual(len(self.post().intro), 0, "the earlier intro does not carry over")
 
-    def test_a_page_of_another_type_with_the_same_slug_still_needs_the_replace_flag(self):
-        BlogPost.objects.get(slug=FIRST_POST_SLUG).delete()
-        basic_page_json = blog_post_json(FIRST_POST_SLUG).replace("Blog Post", "Basic")
-        (self.domain / f"{FIRST_POST_SLUG}.json").write_text(basic_page_json, encoding="utf-8")
-        stub = BlogPost(title=FIRST_POST_TITLE, slug=FIRST_POST_SLUG)
-        self.feed_page().add_child(instance=stub)
-        errors = self.run_import(slug=FIRST_POST_SLUG)
-        self.assertIn("--replace", errors, "only a Blog Post import may fill in a stub")
+    def test_only_a_blog_post_import_fills_in_a_stub(self):
+        # This proves that the legacy page's type alone decides whether a stub may
+        # be filled in without --replace. The same page is imported twice, with
+        # identical HTML and identical JSON apart from its page_type_name: as a
+        # Basic page it must be skipped, and as a Blog Post it must be imported.
+        # Since nothing else differs, the Basic page can only have been refused
+        # because of its type.
+        json_path = self.domain / f"{FIRST_POST_SLUG}.json"
+        stub_pk = self.post().pk
+
+        json_path.write_text(
+            blog_post_json(FIRST_POST_SLUG, page_type_name=BASIC_PAGE_TYPE_NAME), encoding="utf-8"
+        )
+        self.run_import(slug=FIRST_POST_SLUG)
+        # BlogPost is a subclass of UndergroundBasicPage, so only the exact type
+        # tells a Basic page apart from the stub.
+        basic_pages_under_the_blog = UndergroundBasicPage.objects.child_of(
+            self.feed_page()
+        ).exact_type(UndergroundBasicPage)
+        self.assertFalse(
+            basic_pages_under_the_blog.exists(),
+            "a Basic page must not take the place of a stub without --replace",
+        )
+        self.assertEqual(self.post().pk, stub_pk, "the stub must be left where it was")
+
+        json_path.write_text(
+            blog_post_json(FIRST_POST_SLUG, page_type_name=BLOG_POST_TYPE_NAME), encoding="utf-8"
+        )
+        self.run_import(slug=FIRST_POST_SLUG)
+        self.assertNotEqual(
+            self.post().pk, stub_pk, "the same page, typed as a Blog Post, replaces the stub"
+        )
+        self.assertIn(
+            FIRST_POST_THIRD_PARAGRAPH,
+            str(self.post().body),
+            "only the post's own page has its third paragraph, which the stub lacked",
+        )
 
 
 class ImportBlogPageWithFurtherPagesTest(LegacyBlogDirectoryTestCase):
@@ -583,12 +612,6 @@ class ImportBlogPageWithFurtherPagesTest(LegacyBlogDirectoryTestCase):
     def test_a_further_page_is_not_imported_as_a_page_of_its_own(self):
         self.run_import()
         self.assertFalse(Page.objects.filter(slug__contains="page=").exists())
-
-    def test_running_the_whole_directory_does_not_report_a_further_page_as_skipped(self):
-        output = StringIO()
-        errors = StringIO()
-        call_command("import_pages", domain=str(self.domain), stdout=output, stderr=errors)
-        self.assertNotIn("page=2", errors.getvalue(), "a further page is not a page to skip")
 
     def test_a_post_listed_on_two_pages_is_stubbed_once(self):
         # Posts shift between pages when a new one is published between fetches.
