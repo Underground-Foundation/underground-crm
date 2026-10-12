@@ -1473,7 +1473,7 @@ class Command(BaseCommand):
             if not attributes:
                 continue
 
-            if attributes["status"] == "deleted":
+            if attributes.get("status") == "deleted":
                 logger.warning("[skip] %s has been deleted and shall be skipped", current_slug)
                 self.skipped_slugs.add(current_slug)
                 self.counter.increment_skipped()
