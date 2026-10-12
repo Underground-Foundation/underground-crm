@@ -142,7 +142,7 @@ class Command(BaseCommand):
                 imported += 1
                 continue
 
-            _, created = Interaction.objects.get_or_create(
+            interaction, created = Interaction.objects.get_or_create(
                 legacy_contact_id=contact["contact_id"],
                 defaults={
                     "person": person,
@@ -150,10 +150,12 @@ class Command(BaseCommand):
                     "method": method,
                     "note": contact["note"],
                     "status": contact["status"],
-                    "created_at": created_at,
                 },
             )
             if created:
+                # created_at is auto_now_add, which overwrites any value given
+                # on creation, so the legacy timestamp is applied afterwards.
+                Interaction.objects.filter(pk=interaction.pk).update(created_at=created_at)
                 self.stdout.write(
                     f"  Imported interaction {contact['contact_id']} "
                     f"({method}, {contact['created_at']})"

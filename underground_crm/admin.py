@@ -85,15 +85,61 @@ class PersonPermissionInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class PersonNoteInline(admin.TabularInline):
+class ExistingAuthorFormMixin:
+    """Fixes the author of an existing record to whoever wrote it."""
+
+    author_field = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The models' id has a default, so instance.pk is set on a new record too.
+        if not self.instance._state.adding and self.author_field in self.fields:
+            # A disabled field is still validated against its queryset, so the
+            # queryset has to contain the existing author. Without this a record
+            # written by someone else would lose its author on save.
+            field = self.fields[self.author_field]
+            field.queryset = Person.objects.filter(
+                pk=getattr(self.instance, f"{self.author_field}_id")
+            )
+            field.disabled = True
+
+
+class PersonNoteAuthorForm(ExistingAuthorFormMixin, forms.ModelForm):
+    author_field = "created_by"
+
+    class Meta:
+        model = PersonNote
+        fields = ["created_by"]
+
+
+class InteractionAuthorForm(ExistingAuthorFormMixin, forms.ModelForm):
+    author_field = "author"
+
+    class Meta:
+        model = Interaction
+        fields = ["author"]
+
+
+class CurrentUserAuthorMixin:
+    """Offers only the current user as the author of a new record."""
+
+    author_field = None
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == self.author_field:
+            kwargs["queryset"] = Person.objects.filter(pk=request.user.pk)
+            kwargs["initial"] = request.user.pk
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class PersonNoteInline(CurrentUserAuthorMixin, admin.TabularInline):
+    form = PersonNoteAuthorForm
+    author_field = "created_by"
     model = PersonNote
     fk_name = "person"
     extra = 1
     fields = ["text", "created_by", "created_at"]
     readonly_fields = ["created_at"]
-    # Without this, the created_by widget renders as a plain <select> and
-    # Django re-evaluates the entire unfiltered Person queryset per row.
-    autocomplete_fields = ["created_by"]
 
     def get_queryset(self, request):
         # PersonNote.__str__ reads self.person, which the tabular inline
@@ -101,15 +147,14 @@ class PersonNoteInline(admin.TabularInline):
         return super().get_queryset(request).select_related("person")
 
 
-class InteractionInline(admin.TabularInline):
+class InteractionInline(CurrentUserAuthorMixin, admin.TabularInline):
+    form = InteractionAuthorForm
+    author_field = "author"
     model = Interaction
     fk_name = "person"
     extra = 0
     fields = ["method", "status", "author", "note", "created_at"]
     readonly_fields = ["created_at"]
-    # Without this, the author widget renders as a plain <select> and Django
-    # re-evaluates the entire unfiltered Person queryset per row.
-    autocomplete_fields = ["author"]
 
     def get_queryset(self, request):
         # Interaction.__str__ reads self.person, which the tabular inline
@@ -387,14 +432,18 @@ class MembershipAdmin(admin.ModelAdmin):
 
 
 @admin.register(PersonNote)
-class PersonNoteAdmin(admin.ModelAdmin):
+class PersonNoteAdmin(CurrentUserAuthorMixin, admin.ModelAdmin):
+    form = PersonNoteAuthorForm
+    author_field = "created_by"
     list_display = ["person", "created_by", "created_at"]
     search_fields = ["person__email", "person__first_name", "person__last_name", "text"]
     readonly_fields = ["created_at", "updated_at"]
 
 
 @admin.register(Interaction)
-class InteractionAdmin(admin.ModelAdmin):
+class InteractionAdmin(CurrentUserAuthorMixin, admin.ModelAdmin):
+    form = InteractionAuthorForm
+    author_field = "author"
     list_display = ["person", "method", "author", "status", "created_at"]
     list_filter = ["method", "status"]
     search_fields = ["person__email", "person__first_name", "person__last_name", "note"]
