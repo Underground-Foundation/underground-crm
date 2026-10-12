@@ -14,7 +14,7 @@ page templates being complete.
 from django.test import RequestFactory, TestCase
 from wagtail.models import Page, Site
 
-from underground_crm.models import BasicPage
+from underground_crm.models import BasicPage, FeedPage, UndergroundBasicPage
 
 
 def home_page() -> Page:
@@ -225,3 +225,23 @@ class SiteRootTest(TestCase):
 
         self.assertEqual(policy.url, "/policy/")
         self.assertEqual(resolve_page(policy.url), policy)
+
+
+class EditorTabTest(TestCase):
+    """Editors reach the flag through the Visibility tab of the page editor."""
+
+    def visibility_field_names(self, page_class: type[Page]) -> list[str]:
+        tabs = page_class.edit_handler.children
+        visibility_tab = next(tab for tab in tabs if str(tab.heading) == "Visibility")
+        return [
+            panel.field_name for panel in visibility_tab.children if hasattr(panel, "field_name")
+        ]
+
+    def test_basic_page_offers_the_flag_in_the_visibility_tab(self) -> None:
+        self.assertIn("show_slug_as_breadcrumb", self.visibility_field_names(BasicPage))
+
+    def test_underground_basic_page_offers_the_flag_in_the_visibility_tab(self) -> None:
+        self.assertIn("show_slug_as_breadcrumb", self.visibility_field_names(UndergroundBasicPage))
+
+    def test_feed_page_offers_the_flag_in_the_visibility_tab(self) -> None:
+        self.assertIn("show_slug_as_breadcrumb", self.visibility_field_names(FeedPage))

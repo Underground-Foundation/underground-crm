@@ -58,7 +58,7 @@ class Interaction(models.Model):
         blank=True,
         help_text="Outcome status, e.g. 'meaningful_interaction', 'no_response'.",
     )
-    created_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ["-created_at"]

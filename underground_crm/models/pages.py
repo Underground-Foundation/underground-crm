@@ -332,15 +332,15 @@ class BasicPage(PageWithMetadata):
         FieldPanel("body"),
     ]
 
-    promote_panels = PageWithMetadata.promote_panels + [
+    visibility_panels = PageWithMetadata.visibility_panels + [
         FieldPanel("show_slug_as_breadcrumb"),
     ]
 
     edit_handler = TabbedInterface(
         [
             ObjectList(content_panels, heading=_("Content")),
-            ObjectList(promote_panels, heading=_("Metadata")),
-            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(visibility_panels, heading=_("Visibility")),
         ]
     )
 
@@ -700,8 +700,8 @@ class UndergroundBasicPage(BasicPage):
     edit_handler = TabbedInterface(
         [
             ObjectList(content_panels, heading=_("Content")),
-            ObjectList(BasicPage.promote_panels, heading=_("Metadata")),
-            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(BasicPage.visibility_panels, heading=_("Visibility")),
         ]
     )
 
@@ -844,8 +844,8 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
     edit_handler = TabbedInterface(
         [
             ObjectList(content_panels, heading=_("Content")),
-            ObjectList(BasicPage.promote_panels, heading=_("Metadata")),
-            ObjectList(PageWithMetadata.visibility_panels, heading=_("Visibility")),
+            ObjectList(PageWithMetadata.promote_panels, heading=_("Metadata")),
+            ObjectList(BasicPage.visibility_panels, heading=_("Visibility")),
         ]
     )
 

@@ -39,7 +39,7 @@ class InteractionSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "created_at"]
 
 
 class EngagementSerializer(serializers.ModelSerializer):
