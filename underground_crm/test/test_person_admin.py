@@ -47,3 +47,53 @@ class PersonAdminEmailDisplayTest(django.test.TestCase):
             "Person changelist, since an unauthorized person could be looking at the "
             "screen",
         )
+
+
+class PersonAdminLastInteractionTest(django.test.TestCase):
+    """
+    Covers the "Last interaction" column of the Person admin changelist, which
+    shows (and sorts by) the most recent Interaction of each person.
+    """
+
+    def setUp(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from underground_crm.models import Interaction
+
+        self.client.force_login(
+            Person.objects.create_user(
+                email="admin-viewer@example.com",
+                password="password",
+                is_staff=True,
+                is_superuser=True,
+            )
+        )
+        now = timezone.now()
+        self.recent = Person.objects.create_user(email="recent@example.com", password="x")
+        self.older = Person.objects.create_user(email="older@example.com", password="x")
+        self.never = Person.objects.create_user(email="never@example.com", password="x")
+        for person, age in ((self.recent, 1), (self.recent, 30), (self.older, 10)):
+            interaction = Interaction.objects.create(person=person, method=Interaction.METHOD_EMAIL)
+            Interaction.objects.filter(pk=interaction.pk).update(
+                created_at=now - timedelta(days=age)
+            )
+        self.url = reverse("admin:underground_crm_person_changelist")
+
+    def _ordered_pks(self, order):
+        response = self.client.get(self.url, {"o": order})
+        self.assertEqual(response.status_code, 200)
+        return [person.pk for person in response.context["cl"].result_list]
+
+    def test_changelist_has_last_interaction_column(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, "Last interaction")
+
+    def test_sorting_by_last_interaction_puts_the_most_recent_first(self):
+        from underground_crm.admin import PersonAdmin
+
+        list_display = list(PersonAdmin.list_display)
+        column = list_display.index("last_interaction") + 1
+        pks = self._ordered_pks(f"-{column}")
+        self.assertLess(pks.index(self.recent.pk), pks.index(self.older.pk))

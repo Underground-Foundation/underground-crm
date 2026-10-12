@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.contrib.admin import helpers
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Permission
+from django.db.models import Max
 from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -171,6 +172,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
         "last_name",
         "is_supporter",
         "is_donor",
+        "last_interaction",
         "created_at",
     ]
     list_display_links = ["partial_email"]
@@ -310,6 +312,19 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
     )
+
+    def get_queryset(self, request):
+        # select_related cannot follow a reverse foreign key, so the most recent
+        # Interaction is aggregated in the same query rather than fetched per row.
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(last_interaction_at=Max("interactions__created_at"))
+        )
+
+    @admin.display(description=_("Last interaction"), ordering="last_interaction_at")
+    def last_interaction(self, obj: Person):
+        return obj.last_interaction_at
 
     @admin.display(description=_("Email"), ordering="email")
     def partial_email(self, obj: Person) -> str:
