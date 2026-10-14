@@ -25,6 +25,7 @@ The export's naive timestamps are read in LEGACY_SOURCE_TIMEZONE, or TIME_ZONE i
 is unset.
 """
 
+import logging
 import os
 from decimal import Decimal
 from typing import Optional
@@ -41,6 +42,8 @@ from underground_payments.legacy_migration import (
     LegacyDonation,
     read_donations,
 )
+
+logger = logging.getLogger(__name__)
 
 LEGACY_SOURCE_TIMEZONE_ENV_VAR = "LEGACY_SOURCE_TIMEZONE"
 
@@ -67,13 +70,17 @@ def find_donor(donation: LegacyDonation) -> Person:
         if person is not None:
             return person
     if not donation.email:
-        raise DonorNotFoundError("nobody has its donor's legacy ID, and it has no email")
+        raise DonorNotFoundError(
+            "This donation lacks an email address and the donor could not be found by their legacy ID"
+        )
     person = Person.objects.filter(email__iexact=donation.email).first()
     if person is None:
-        raise DonorNotFoundError("nobody has its donor's legacy ID or email")
+        raise DonorNotFoundError(
+            "The email address for this donation does not correspond to a person in our database"
+        )
     if person.legacy_id is not None and person.legacy_id != donation.legacy_person_id:
         raise DonorNotFoundError(
-            f"the Person with its donor's email has another legacy ID, {person.legacy_id}"
+            f"The Person tied to this donation's email address ({donation.email}) has a differing legacy ID {person.legacy_id}, not {donation.legacy_person_id}"
         )
     return person
 
@@ -150,9 +157,7 @@ class Command(BaseCommand):
         except FileNotFoundError as exc:
             raise CommandError(f"File not found: {options['csv_file']}") from exc
         if skipped_row_count:
-            self.stderr.write(
-                f"  [warning] skipped {skipped_row_count} row(s) with no transaction ID or amount."
-            )
+            logger.warning("Skipped %d row(s) with no transaction ID or amount.", skipped_row_count)
         legacy_person_id: Optional[int] = options["legacy_person_id"]
         if legacy_person_id is not None:
             donations = [
@@ -170,7 +175,6 @@ class Command(BaseCommand):
         # Transactions that kept no money, counted by their status.
         not_succeeded_counts: dict[str, int] = {}
         for donation in donations:
-            label = f"donation {donation.legacy_donation_id}"
             if donation.status != SUCCEEDED_STATUS:
                 not_succeeded_counts[donation.status] = (
                     not_succeeded_counts.get(donation.status, 0) + 1
@@ -181,15 +185,20 @@ class Command(BaseCommand):
                 continue
             if donation.succeeded_at is None:
                 skipped_count += 1
-                self.stderr.write(f"  [warning] {label}: skipped, since it has no success time")
+                logger.warning(
+                    "Skipped donation %s, since it has no success time.",
+                    donation.legacy_donation_id,
+                )
                 continue
             try:
                 person = find_donor(donation)
             except DonorNotFoundError as exc:
                 skipped_count += 1
-                self.stderr.write(
-                    f"  [warning] {label} (legacy person ID {donation.legacy_person_id}): "
-                    f"skipped, since {exc}"
+                logger.warning(
+                    "Skipped donation %s (legacy person ID %s): %s",
+                    donation.legacy_donation_id,
+                    donation.legacy_person_id,
+                    exc,
                 )
                 continue
             if not dry_run:
@@ -201,12 +210,14 @@ class Command(BaseCommand):
             f"{count} {status or 'without a status'}"
             for status, count in sorted(not_succeeded_counts.items())
         )
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"{prefix}{len(donations)} transaction(s): "
-                f"{imported_count} {'to import' if dry_run else 'imported'}, "
-                f"{already_imported_count} already imported, "
-                f"{skipped_count} skipped with a warning, "
-                f"and not imported for keeping no money: {not_succeeded or 'none'}."
-            )
+        logger.info(
+            "%s%d transaction(s): %d %s, %d already imported, %d skipped with a warning, "
+            "and not imported for keeping no money: %s.",
+            prefix,
+            len(donations),
+            imported_count,
+            "to import" if dry_run else "imported",
+            already_imported_count,
+            skipped_count,
+            not_succeeded or "none",
         )

@@ -4,7 +4,7 @@ Donations, run against a small financial transactions CSV in the export's own fo
 """
 
 import datetime
-import io
+import logging
 import os
 import tempfile
 import zoneinfo
@@ -34,6 +34,12 @@ from underground_payments.legacy_migration import (
 from underground_payments.management.commands.import_donations import (
     LEGACY_SOURCE_TIMEZONE_ENV_VAR,
 )
+from underground_payments.management.commands.import_donations import (
+    logger as command_logger,
+)
+
+# The logger that import_donations reports its warnings and summary to.
+COMMAND_LOGGER = command_logger.name
 
 TIME_ZONE_NAME = "Australia/Melbourne"
 CSV_HEADER = [
@@ -104,12 +110,11 @@ class ImportDonationsTests(TestCase):
         path.write_bytes("\n".join([",".join(CSV_HEADER), *rows, ""]).encode("utf-8"))
         return path
 
-    def run_command(self, path: Path, *args: str) -> tuple[str, str]:
-        stdout, stderr = io.StringIO(), io.StringIO()
-        call_command(
-            "import_donations", "--csv-file", str(path), *args, stdout=stdout, stderr=stderr
-        )
-        return stdout.getvalue(), stderr.getvalue()
+    def run_command(self, path: Path, *args: str) -> str:
+        """Run the import, returning what it logged: its warnings and its summary."""
+        with self.assertLogs(COMMAND_LOGGER, level=logging.INFO) as logs:
+            call_command("import_donations", "--csv-file", str(path), *args)
+        return "\n".join(logs.output)
 
     def test_imports_a_monthly_payment_for_the_person_with_its_legacy_id(self):
         person = Person.objects.create(email=DONOR_EMAIL, legacy_id=DONOR_LEGACY_ID)
@@ -144,7 +149,7 @@ class ImportDonationsTests(TestCase):
 
     def test_only_successful_payments_are_imported(self):
         Person.objects.create(email=DONOR_EMAIL, legacy_id=DONOR_LEGACY_ID)
-        stdout, _ = self.run_command(
+        output = self.run_command(
             self.write_csv(MONTHLY_PAYMENT, DECLINED_PAYMENT, PENDING_PAYMENT, REFUNDED_PAYMENT)
         )
         self.assertEqual(
@@ -152,7 +157,7 @@ class ImportDonationsTests(TestCase):
         )
         self.assertIn(
             "1 failed, 1 pending, 1 refunded",
-            stdout,
+            output,
             "The summary should count, by status, each of the three payments that kept no money.",
         )
 
@@ -163,21 +168,21 @@ class ImportDonationsTests(TestCase):
 
     def test_skips_a_payment_whose_email_belongs_to_another_legacy_person(self):
         Person.objects.create(email=DONOR_EMAIL, legacy_id=DONOR_LEGACY_ID + 1)
-        _, stderr = self.run_command(self.write_csv(MONTHLY_PAYMENT))
+        output = self.run_command(self.write_csv(MONTHLY_PAYMENT))
         self.assertFalse(Donation.objects.exists())
-        self.assertIn(f"donation {MONTHLY_PAYMENT_ID}", stderr)
+        self.assertIn(f"WARNING:{COMMAND_LOGGER}:Skipped donation {MONTHLY_PAYMENT_ID}", output)
 
     def test_skips_a_payment_by_someone_unknown(self):
-        _, stderr = self.run_command(self.write_csv(MONTHLY_PAYMENT))
+        output = self.run_command(self.write_csv(MONTHLY_PAYMENT))
         self.assertFalse(Donation.objects.exists())
-        self.assertIn(f"donation {MONTHLY_PAYMENT_ID}", stderr)
+        self.assertIn(f"WARNING:{COMMAND_LOGGER}:Skipped donation {MONTHLY_PAYMENT_ID}", output)
 
     def test_dry_run_writes_nothing(self):
         Person.objects.create(email=DONOR_EMAIL, legacy_id=DONOR_LEGACY_ID)
-        stdout, _ = self.run_command(self.write_csv(MONTHLY_PAYMENT), "--dry-run")
+        output = self.run_command(self.write_csv(MONTHLY_PAYMENT), "--dry-run")
         self.assertFalse(Donation.objects.exists())
         self.assertFalse(Engagement.objects.exists())
-        self.assertIn("1 to import", stdout)
+        self.assertIn("1 to import", output)
 
     def test_leaves_the_donation_totals_from_the_people_import_alone(self):
         # import_people_csv copies these from the legacy CRM's own totals.

@@ -576,6 +576,11 @@ LOGGING = {
             "level": _LOG_LEVEL,
             "propagate": False,
         },
+        "underground_payments": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
         # requests is logged at the same verbosity as application code so that
         # outbound HTTP calls to SMTP2Go and similar services appear in traces.
         "requests": {
