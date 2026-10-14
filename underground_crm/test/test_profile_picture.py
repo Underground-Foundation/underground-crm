@@ -1,5 +1,5 @@
 """
-Copying a social login provider's profile picture into our own media storage,
+Copying an identity provider's profile picture into our own media storage,
 and showing it on the Person admin change form.
 
 The provider is played by a local HTTP server, so the import task makes a real
@@ -42,7 +42,6 @@ def _portrait_jpeg() -> bytes:
 
 
 PORTRAIT_JPEG = _portrait_jpeg()
-# Late morning in Melbourne on the day of a social signup, in UTC
 IMPORTED_AT = datetime(2026, 10, 13, 0, 15, 23, tzinfo=timezone.utc)
 LOGIN_PAGE_HTML = b"<!doctype html><title>Sign in</title><form>Sign in to continue</form>"
 
