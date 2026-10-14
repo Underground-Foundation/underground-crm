@@ -39,6 +39,9 @@
         {% elif item.summary %}
           <p>{{ item.summary }}</p>
         {% endif %}
+        <p class="mt-2">
+          <a href="{{ item.url }}" class="btn btn-info rounded bg-opal p-2">{% blocktranslate %}Read more{% endbolcktranslate %}</a>
+        </p>
       </article>
     {% empty %}
       <p>{% translate "There is nothing to show here yet." %}</p>
