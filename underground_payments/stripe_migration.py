@@ -13,7 +13,7 @@ import datetime
 import enum
 import zoneinfo
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import stripe
 
@@ -50,17 +50,6 @@ def find_customers_by_email(client: stripe.StripeClient, email: str) -> list[str
     result = client.v1.customers.search(
         params={"query": f"email:{quote_search_value(email)}", "limit": STRIPE_PAGE_LIMIT}
     )
-    return list(result.data)
-
-
-def find_customers_by_legacy_person_id(
-    client: stripe.StripeClient, legacy_person_id: int
-) -> list[stripe.Customer]:
-    query = (
-        f"metadata['{LEGACY_PERSON_ID_METADATA_KEY}']:"
-        f"{quote_search_value(str(legacy_person_id))}"
-    )
-    result = client.v1.customers.search(params={"query": query, "limit": STRIPE_PAGE_LIMIT})
     return list(result.data)
 
 
@@ -288,6 +277,7 @@ def create_subscription_for_plan(
         customer,
         legacy_plan_id=plan.legacy_plan_id,
         legacy_person_id=str(plan.legacy_person_id),
+        donor_email=customer.email,
         amount_cents=plan.amount_cents,
         interval=plan.interval,
         interval_count=1,
@@ -309,6 +299,7 @@ def _create_migrated_subscription(
     customer: stripe.Customer,
     legacy_plan_id: int,
     legacy_person_id: Optional[str],
+    donor_email: str,
     amount_cents: int,
     interval: str,
     interval_count: int,
@@ -329,7 +320,7 @@ def _create_migrated_subscription(
         "page_id": str(page.id),
         "page_url": page.url,
         "frequency": frequency,
-        "donor_email": customer.email,
+        "donor_email": donor_email,
         LEGACY_PLAN_ID_METADATA_KEY: str(legacy_plan_id),
     }
     if legacy_person_id:
@@ -372,6 +363,36 @@ def _retrieve_or_none(retrieve, object_id: str):
     return None if getattr(found, "deleted", False) else found
 
 
+def label_customer(
+    client: stripe.StripeClient,
+    customer_id: str,
+    name: str,
+    email: str,
+    legacy_person_id: int,
+) -> Optional[str]:
+    """
+    Record who a Customer is: their legacy person ID, and their name and email address
+    wherever the Customer has none. Customers that Stripe copied from the legacy CRM's
+    account carry neither name nor email.
+
+    Returns why the Customer was left alone, or None once it is labeled. A Customer that
+    is already labeled as a different person is never relabeled.
+    """
+    customer = _retrieve_or_none(client.v1.customers.retrieve, customer_id)
+    if customer is None:
+        return f"Customer {customer_id} is not in this Stripe account"
+    existing = legacy_person_id_of(customer)
+    if existing is not None and existing != str(legacy_person_id):
+        return f"Customer {customer_id} is already labeled as legacy person {existing}"
+    params: dict = {"metadata": {LEGACY_PERSON_ID_METADATA_KEY: str(legacy_person_id)}}
+    if not customer.name:
+        params["name"] = name
+    if not customer.email:
+        params["email"] = email
+    client.v1.customers.update(customer_id, params=params)
+    return None
+
+
 def create_subscription_for_exported_plan(
     client: stripe.StripeClient,
     plan: ExportedRecurringPlan,
@@ -379,15 +400,24 @@ def create_subscription_for_exported_plan(
     currency: str,
     now: datetime.datetime,
     dry_run: bool,
+    email_of_legacy_person: Callable[[int], Optional[str]] = lambda legacy_person_id: None,
+    legacy_person_id_override: Optional[int] = None,
 ) -> PlanResult:
     """
     Recreate a plan from the recurring donations CSV as a subscription for its copied
     Customer, charging its copied card and first billing at the moment the legacy CRM
-    would next have charged it, and nothing before then.
+    would next have charged it, and nothing before then. The card is the Customer's own,
+    since the CSV's PaymentMethod ID is not kept when Stripe copies a card.
 
     Unlike create_subscription_for_plan, this needs no Customer labeled by
     migrate_donors, since the CSV names the Customer and card. Any legacy person ID
     that migrate_donors put on the Customer is copied onto the subscription.
+
+    The webhook needs the donor's email address. It is the Customer's or, if the Customer
+    has none, that of the person whose legacy ID is on the Customer, as found by
+    email_of_legacy_person (which returns None for a person it does not know).
+    legacy_person_id_override stands in for the legacy person ID on the Customer, for a
+    Customer that is about to be labeled (as label_customer does) in a dry run.
     """
     frequency = FREQUENCY_BY_INTERVAL.get(plan.interval or "")
     if frequency is None or plan.interval_count != 1:
@@ -407,8 +437,28 @@ def create_subscription_for_exported_plan(
             f"Customer {plan.customer_id} is not in this Stripe account; has Stripe "
             "finished copying the legacy CRM's Customers?"
         )
-    if not customer.email:
-        return _skip(f"Customer {customer.id} has no email, which the webhook needs")
+    legacy_person_id = (
+        str(legacy_person_id_override)
+        if legacy_person_id_override is not None
+        else legacy_person_id_of(customer)
+    )
+    donor_email = customer.email
+    if not donor_email:
+        if legacy_person_id is None:
+            return _skip(
+                f"Customer {customer.id} has no email, nor a legacy person ID to find one by"
+            )
+        if not legacy_person_id.isdecimal():
+            return _skip(
+                f"Customer {customer.id} has a legacy person ID ({legacy_person_id!r}) that "
+                "is not a number"
+            )
+        donor_email = email_of_legacy_person(int(legacy_person_id))
+        if not donor_email:
+            return _skip(
+                f"Customer {customer.id} has no email, and no person with the legacy ID "
+                f"{legacy_person_id} has one"
+            )
 
     migrated = find_migrated_subscription(client, customer.id, plan.legacy_plan_id)
     if migrated is not None:
@@ -418,13 +468,12 @@ def create_subscription_for_exported_plan(
             subscription_id=migrated.id,
         )
 
-    payment_method = _retrieve_or_none(client.v1.payment_methods.retrieve, plan.payment_method_id)
-    if payment_method is None:
-        return _skip(f"PaymentMethod {plan.payment_method_id} is not in this Stripe account")
-    if payment_method.customer != customer.id:
+    # The CSV's PaymentMethod ID is the one in the legacy CRM's account, which Stripe does
+    # not keep when it copies a card, so the Customer's own cards are what to charge.
+    payment_params = payment_params_for_customer(client, customer)
+    if payment_params is None:
         return _skip(
-            f"PaymentMethod {plan.payment_method_id} belongs to "
-            f"{payment_method.customer or 'no Customer'}, not to {customer.id}"
+            f"Customer {customer.id} has no default card, nor exactly one saved card, to charge"
         )
 
     next_payment = f"{plan.next_payment_at:%Y-%m-%d %H:%M} UTC"
@@ -435,18 +484,18 @@ def create_subscription_for_exported_plan(
             f"{customer.id}, first billing at {next_payment}",
         )
 
-    metadata = customer.metadata.to_dict() if customer.metadata else {}
     subscription = _create_migrated_subscription(
         client,
         customer,
         legacy_plan_id=plan.legacy_plan_id,
-        legacy_person_id=metadata.get(LEGACY_PERSON_ID_METADATA_KEY),
+        legacy_person_id=legacy_person_id,
+        donor_email=donor_email,
         amount_cents=plan.amount_cents,
         interval=plan.interval,
         interval_count=plan.interval_count,
         frequency=frequency,
         first_billing=int(plan.next_payment_at.timestamp()),
-        payment_params={"default_payment_method": payment_method.id},
+        payment_params=payment_params,
         page=page,
         currency=currency,
     )

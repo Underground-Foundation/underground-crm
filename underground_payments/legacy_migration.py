@@ -3,7 +3,8 @@ Parsing for the legacy CRM data that the donation migration commands work from:
 the financial transactions CSV export (for migrate_donors and import_donations), the
 admin listing of recurring donation plans (for fetch_recurring_donations and
 migrate_recurring_donations), and the CSV of recurring donations that the legacy CRM's
-staff export from its Stripe account (for import_recurring_donations_from_csv).
+staff export from its Stripe account (for import_recurring_donations_from_csv and
+migrate_recurring_donations).
 
 Pure Python and bs4, with no Django or Stripe import, so that it can be tested
 without a database or network.

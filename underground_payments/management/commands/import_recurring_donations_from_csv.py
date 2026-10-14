@@ -18,6 +18,9 @@ neither migrate_donors nor fetch_recurring_donations. For each plan, it creates 
 subscription charging that card and first billing at the moment the legacy CRM would
 next have charged it.
 
+The donor's email address is the Customer's or, if the Customer has none, that of the
+Person whose legacy ID is on the Customer (put there by migrate_donors).
+
 A plan is skipped, with a warning, if its Customer or card has not been copied into this
 site's account, or if its next payment is not in the future. A plan already migrated,
 by this command or by migrate_recurring_donations, is never migrated again.
@@ -31,11 +34,13 @@ payment, or the donor will be charged by both. Requires STRIPE_SECRET_KEY.
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from underground_crm.models import Person
 from underground_payments.legacy_migration import read_exported_recurring_plans
 from underground_payments.models import PaymentPage
 from underground_payments.stripe_migration import (
@@ -46,6 +51,11 @@ from underground_payments.stripe_migration import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def email_of_legacy_person(legacy_person_id: int) -> Optional[str]:
+    """The email address of the Person imported with this legacy ID, if there is one."""
+    return Person.objects.filter(legacy_id=legacy_person_id).values_list("email", flat=True).first()
 
 
 class Command(BaseCommand):
@@ -111,6 +121,7 @@ class Command(BaseCommand):
                 currency=settings.STRIPE_DEFAULT_CURRENCY,
                 now=now,
                 dry_run=dry_run,
+                email_of_legacy_person=email_of_legacy_person,
             )
             counts[result.outcome] += 1
             if result.outcome is PlanOutcome.SKIPPED:

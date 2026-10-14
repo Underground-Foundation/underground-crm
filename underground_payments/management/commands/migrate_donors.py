@@ -9,11 +9,11 @@ Usage:
 
 Reads the legacy CRM's financial transactions CSV export. For each distinct donor in
 it, finds the Customers with their email address (those copied from the legacy CRM's
-Stripe account, together with their saved cards) and adds a legacy_person_id to their
-metadata. A donor with no Customer gets a new one, which has no saved card.
+Stripe account, together with their saved cards). Unfortunately, the Stripe Customer
+objects migrated from NationBuilder lack email addresses or even names, so this command
+cannot match anyone.
 
-Run this only after Stripe has finished copying the Customers, or every donor will get
-a new Customer without a card. Requires STRIPE_SECRET_KEY.
+Running this will therefore create new Stripe Customer objects for each person.
 """
 
 from django.conf import settings
