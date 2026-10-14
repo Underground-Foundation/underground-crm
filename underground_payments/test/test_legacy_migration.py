@@ -1,6 +1,7 @@
 """
 Tests for parsing the legacy CRM's recurring donation plans listing and its financial
-transactions CSV export.
+transactions CSV export, and the CSV of recurring donations exported from its Stripe
+account.
 """
 
 import datetime
@@ -21,15 +22,25 @@ from underground_payments.legacy_migration import (
     CSV_STATUS_COLUMN,
     CSV_SUCCEEDED_AT_COLUMN,
     CSV_TRANSACTION_KEY_COLUMN,
+    RECURRING_CSV_AMOUNT_COLUMN,
+    RECURRING_CSV_CUSTOMER_ID_COLUMN,
+    RECURRING_CSV_FREQUENCY_COLUMN,
+    RECURRING_CSV_LEGACY_PLAN_ID_COLUMN,
+    RECURRING_CSV_NEXT_PAYMENT_COLUMN,
+    RECURRING_CSV_PAYMENT_METHOD_ID_COLUMN,
+    RECURRING_CSV_SUBSCRIPTION_ID_COLUMN,
+    ExportedRecurringPlan,
     LegacyDonation,
     LegacyDonor,
     NotAListingError,
     RecurringPlan,
     fix_encoding,
     next_page_path,
+    parse_frequency,
     parse_recurring_plans,
     read_donations,
     read_donors,
+    read_exported_recurring_plans,
 )
 
 # The first page of the listing, saved from the legacy CRM's admin on 13 October 2026.
@@ -241,3 +252,106 @@ class FixEncodingTests(SimpleTestCase):
 
     def test_leaves_correct_text_alone(self):
         self.assertEqual(fix_encoding("Björn"), "Björn")
+
+
+# The export's header, in its own order, including the columns that the import ignores.
+RECURRING_CSV_HEADER = [
+    RECURRING_CSV_CUSTOMER_ID_COLUMN,
+    "customer_name",
+    RECURRING_CSV_PAYMENT_METHOD_ID_COLUMN,
+    "payment_method_name",
+    "address_line1",
+    "address_line2",
+    "city",
+    "state",
+    "postal_code",
+    RECURRING_CSV_SUBSCRIPTION_ID_COLUMN,
+    RECURRING_CSV_LEGACY_PLAN_ID_COLUMN,
+    RECURRING_CSV_AMOUNT_COLUMN,
+    RECURRING_CSV_FREQUENCY_COLUMN,
+    "start_date",
+    "last_payment_date",
+    RECURRING_CSV_NEXT_PAYMENT_COLUMN,
+]
+# Riley Hutchinson's $2.20 a month, the same plan as MONTHLY_PLAN, as the export shows it.
+# Its next payment, at 07:51 UTC, falls on the date that the admin listing shows.
+EXPORTED_MONTHLY_PLAN = ExportedRecurringPlan(
+    legacy_plan_id=MONTHLY_PLAN.legacy_plan_id,
+    customer_id="cus_Tbk1RileyHutch",
+    payment_method_id="pm_1SeWXmRileyHutchinson00",
+    legacy_subscription_id="sub_1SeWXpRileyHutchinson0",
+    amount_cents=MONTHLY_PLAN.amount_cents,
+    interval="month",
+    interval_count=1,
+    next_payment_at=datetime.datetime(2026, 10, 15, 7, 51, 21, tzinfo=datetime.timezone.utc),
+)
+
+
+def exported_plan_line(plan_id: str, amount: str, frequency: str, next_payment: str) -> str:
+    plan = EXPORTED_MONTHLY_PLAN
+    return csv_line(
+        plan.customer_id,
+        "",
+        plan.payment_method_id,
+        "",
+        '"56 Grainger Circuit, Melba"',
+        "",
+        "Canberra",
+        "",
+        "2615",
+        plan.legacy_subscription_id,
+        plan_id,
+        amount,
+        frequency,
+        "2025-12-15 07:50:11.222649",
+        "2026-09-15 08:51:21",
+        next_payment,
+    )
+
+
+class ReadExportedRecurringPlansTests(SimpleTestCase):
+    def write_csv(self, *lines: str) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "recurring_donations_migration.csv"
+        path.write_text(csv_line(*RECURRING_CSV_HEADER) + "".join(lines), encoding="utf-8")
+        return path
+
+    def test_reads_a_monthly_plan(self):
+        path = self.write_csv(
+            exported_plan_line(
+                str(MONTHLY_PLAN.legacy_plan_id), "2.2", "every 1 month", "2026-10-15 07:51:21"
+            )
+        )
+        self.assertEqual(read_exported_recurring_plans(path), ([EXPORTED_MONTHLY_PLAN], []))
+
+    def test_reports_an_unreadable_row_and_reads_the_rest(self):
+        path = self.write_csv(
+            exported_plan_line("2119", "", "every 1 month", "2026-10-16 01:37:10"),
+            exported_plan_line(
+                str(MONTHLY_PLAN.legacy_plan_id), "2.2", "every 1 month", "2026-10-15 07:51:21"
+            ),
+        )
+        plans, problems = read_exported_recurring_plans(path)
+        self.assertEqual(plans, [EXPORTED_MONTHLY_PLAN])
+        self.assertEqual(len(problems), 1, "Only plan 2119's row, with no amount, is unreadable.")
+        self.assertTrue(problems[0].startswith("line 2:"), "The header is line 1.")
+
+    def test_rejects_a_fraction_of_a_cent(self):
+        path = self.write_csv(
+            exported_plan_line("2120", "2.205", "every 1 month", "2026-10-15 07:51:21")
+        )
+        plans, problems = read_exported_recurring_plans(path)
+        self.assertEqual(plans, [])
+        self.assertEqual(len(problems), 1, "$2.205 cannot be charged to a card.")
+
+
+class ParseFrequencyTests(SimpleTestCase):
+    def test_monthly(self):
+        self.assertEqual(parse_frequency("every 1 month"), ("month", 1))
+
+    def test_quarterly(self):
+        self.assertEqual(parse_frequency("every 3 months"), ("month", 3))
+
+    def test_unrecognized(self):
+        self.assertEqual(parse_frequency("fortnightly"), (None, 0))

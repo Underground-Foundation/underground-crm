@@ -1,7 +1,7 @@
 """
-Stripe calls shared by migrate_donors and migrate_recurring_donations, which move the
-legacy CRM's donors and recurring donation plans onto Customers and Subscriptions in
-this site's Stripe account.
+Stripe calls shared by migrate_donors, migrate_recurring_donations and
+import_recurring_donations_from_csv, which move the legacy CRM's donors and recurring
+donation plans onto Customers and Subscriptions in this site's Stripe account.
 
 The Customers themselves (with their saved cards) arrive through Stripe's copy of
 customer and payment data from the legacy CRM's Stripe account; see
@@ -17,7 +17,7 @@ from typing import Optional
 
 import stripe
 
-from .legacy_migration import ACTIVE_STATUS, LegacyDonor, RecurringPlan
+from .legacy_migration import ACTIVE_STATUS, ExportedRecurringPlan, LegacyDonor, RecurringPlan
 
 # Customer metadata naming the legacy CRM's person ID, matching Person.legacy_id.
 LEGACY_PERSON_ID_METADATA_KEY = "legacy_person_id"
@@ -244,9 +244,6 @@ def create_subscription_for_plan(
     """
     Recreate a legacy recurring plan as a subscription for the Customer, first billing
     on the plan's next bill date and nothing before it.
-
-    The metadata matches what create_payment_intent puts on subscriptions made through
-    a PaymentPage, so that the renewal webhook records each payment as a Donation.
     """
     if plan.status != ACTIVE_STATUS:
         return _skip(f"it is {plan.status}")
@@ -286,38 +283,175 @@ def create_subscription_for_plan(
             f"{customer.id}, first billing on {plan.next_bill_date}",
         )
 
+    subscription = _create_migrated_subscription(
+        client,
+        customer,
+        legacy_plan_id=plan.legacy_plan_id,
+        legacy_person_id=str(plan.legacy_person_id),
+        amount_cents=plan.amount_cents,
+        interval=plan.interval,
+        interval_count=1,
+        frequency=frequency,
+        first_billing=first_billing,
+        payment_params=payment_params,
+        page=page,
+        currency=currency,
+    )
+    return PlanResult(
+        PlanOutcome.CREATED,
+        f"created {subscription.id}, first billing on {plan.next_bill_date}",
+        subscription_id=subscription.id,
+    )
+
+
+def _create_migrated_subscription(
+    client: stripe.StripeClient,
+    customer: stripe.Customer,
+    legacy_plan_id: int,
+    legacy_person_id: Optional[str],
+    amount_cents: int,
+    interval: str,
+    interval_count: int,
+    frequency: str,
+    first_billing: int,
+    payment_params: dict[str, str],
+    page: DonationPage,
+    currency: str,
+) -> stripe.Subscription:
+    """
+    Create a subscription that invoices nothing until first_billing (a Unix time), where
+    its first full payment falls.
+
+    The metadata matches what create_payment_intent puts on subscriptions made through
+    a PaymentPage, so that the renewal webhook records each payment as a Donation.
+    """
     metadata = {
         "page_id": str(page.id),
         "page_url": page.url,
         "frequency": frequency,
         "donor_email": customer.email,
-        LEGACY_PERSON_ID_METADATA_KEY: str(plan.legacy_person_id),
-        LEGACY_PLAN_ID_METADATA_KEY: str(plan.legacy_plan_id),
+        LEGACY_PLAN_ID_METADATA_KEY: str(legacy_plan_id),
     }
+    if legacy_person_id:
+        metadata[LEGACY_PERSON_ID_METADATA_KEY] = legacy_person_id
     price = client.v1.prices.create(
         params={
-            "unit_amount": plan.amount_cents,
+            "unit_amount": amount_cents,
             "currency": currency,
-            "recurring": {"interval": plan.interval},
+            "recurring": {"interval": interval, "interval_count": interval_count},
             "product_data": {"name": f"Recurring donation — {page.title}"},
         },
-        options={"idempotency_key": f"legacy-recurring-donation-price-{plan.legacy_plan_id}"},
+        options={"idempotency_key": f"legacy-recurring-donation-price-{legacy_plan_id}"},
     )
-    subscription = client.v1.subscriptions.create(
+    return client.v1.subscriptions.create(
         params={
             "customer": customer.id,
             "items": [{"price": price.id}],
-            # Invoice nothing until the anchor, where the first full payment falls.
             "billing_cycle_anchor": first_billing,
             "proration_behavior": "none",
             "off_session": True,
             "metadata": metadata,
             **payment_params,
         },
-        options={"idempotency_key": f"legacy-recurring-donation-{plan.legacy_plan_id}"},
+        options={"idempotency_key": f"legacy-recurring-donation-{legacy_plan_id}"},
+    )
+
+
+# ---- Recurring plans exported as CSV ----
+
+
+def _retrieve_or_none(retrieve, object_id: str):
+    """The Stripe object with this ID, or None if this account has no such object."""
+    try:
+        found = retrieve(object_id)
+    except stripe.InvalidRequestError as exc:
+        if exc.code == "resource_missing":
+            return None
+        raise
+    # A deleted Customer is still returned, flagged as deleted.
+    return None if getattr(found, "deleted", False) else found
+
+
+def create_subscription_for_exported_plan(
+    client: stripe.StripeClient,
+    plan: ExportedRecurringPlan,
+    page: DonationPage,
+    currency: str,
+    now: datetime.datetime,
+    dry_run: bool,
+) -> PlanResult:
+    """
+    Recreate a plan from the recurring donations CSV as a subscription for its copied
+    Customer, charging its copied card and first billing at the moment the legacy CRM
+    would next have charged it, and nothing before then.
+
+    Unlike create_subscription_for_plan, this needs no Customer labeled by
+    migrate_donors, since the CSV names the Customer and card. Any legacy person ID
+    that migrate_donors put on the Customer is copied onto the subscription.
+    """
+    frequency = FREQUENCY_BY_INTERVAL.get(plan.interval or "")
+    if frequency is None or plan.interval_count != 1:
+        return _skip(
+            f"its billing interval (every {plan.interval_count} {plan.interval}) cannot be "
+            "recorded by the webhook"
+        )
+    if plan.next_payment_at <= now:
+        return _skip(
+            f"its next payment ({plan.next_payment_at:%Y-%m-%d %H:%M} UTC) is not in the "
+            "future, so the legacy CRM may already have charged it; export the CSV again"
+        )
+
+    customer = _retrieve_or_none(client.v1.customers.retrieve, plan.customer_id)
+    if customer is None:
+        return _skip(
+            f"Customer {plan.customer_id} is not in this Stripe account; has Stripe "
+            "finished copying the legacy CRM's Customers?"
+        )
+    if not customer.email:
+        return _skip(f"Customer {customer.id} has no email, which the webhook needs")
+
+    migrated = find_migrated_subscription(client, customer.id, plan.legacy_plan_id)
+    if migrated is not None:
+        return PlanResult(
+            PlanOutcome.ALREADY_MIGRATED,
+            f"already migrated as {migrated.id}",
+            subscription_id=migrated.id,
+        )
+
+    payment_method = _retrieve_or_none(client.v1.payment_methods.retrieve, plan.payment_method_id)
+    if payment_method is None:
+        return _skip(f"PaymentMethod {plan.payment_method_id} is not in this Stripe account")
+    if payment_method.customer != customer.id:
+        return _skip(
+            f"PaymentMethod {plan.payment_method_id} belongs to "
+            f"{payment_method.customer or 'no Customer'}, not to {customer.id}"
+        )
+
+    next_payment = f"{plan.next_payment_at:%Y-%m-%d %H:%M} UTC"
+    if dry_run:
+        return PlanResult(
+            PlanOutcome.CREATED,
+            f"would create a {frequency} subscription of {plan.amount_cents} cents for "
+            f"{customer.id}, first billing at {next_payment}",
+        )
+
+    metadata = customer.metadata.to_dict() if customer.metadata else {}
+    subscription = _create_migrated_subscription(
+        client,
+        customer,
+        legacy_plan_id=plan.legacy_plan_id,
+        legacy_person_id=metadata.get(LEGACY_PERSON_ID_METADATA_KEY),
+        amount_cents=plan.amount_cents,
+        interval=plan.interval,
+        interval_count=plan.interval_count,
+        frequency=frequency,
+        first_billing=int(plan.next_payment_at.timestamp()),
+        payment_params={"default_payment_method": payment_method.id},
+        page=page,
+        currency=currency,
     )
     return PlanResult(
         PlanOutcome.CREATED,
-        f"created {subscription.id}, first billing on {plan.next_bill_date}",
+        f"created {subscription.id}, first billing at {next_payment}",
         subscription_id=subscription.id,
     )

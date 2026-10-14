@@ -177,7 +177,8 @@ def import_profile_picture(person_id: str, url: str, now: datetime | None = None
     """
     Copy a Person's profile picture from the identity provider's `url` into
     our own media storage, under profiles/, before the provider's signed URL
-    expires (queued by PersonSocialAccountAdapter.save_user). The URL itself
+    expires (queued by PersonSocialAccountAdapter.save_user and
+    pre_social_login). The URL itself
     isn't kept.
 
     A URL that has already expired, or that serves something other than an

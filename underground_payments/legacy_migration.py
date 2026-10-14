@@ -1,8 +1,9 @@
 """
 Parsing for the legacy CRM data that the donation migration commands work from:
-the financial transactions CSV export (for migrate_donors and import_donations) and the
+the financial transactions CSV export (for migrate_donors and import_donations), the
 admin listing of recurring donation plans (for fetch_recurring_donations and
-migrate_recurring_donations).
+migrate_recurring_donations), and the CSV of recurring donations that the legacy CRM's
+staff export from its Stripe account (for import_recurring_donations_from_csv).
 
 Pure Python and bs4, with no Django or Stripe import, so that it can be tested
 without a database or network.
@@ -266,3 +267,100 @@ def next_page_path(html: Union[str, bytes]) -> Optional[str]:
     if link is None or link.get("disabled"):
         return None
     return str(link["href"])
+
+
+# ---- Recurring donations CSV ----
+
+# Columns of the recurring donations CSV, which the legacy CRM's staff export from the
+# Stripe account that charges its donors. Its Customer and PaymentMethod IDs are kept
+# when Stripe copies them into this site's account.
+RECURRING_CSV_CUSTOMER_ID_COLUMN = "customer_id"
+RECURRING_CSV_PAYMENT_METHOD_ID_COLUMN = "payment_method_id"
+RECURRING_CSV_SUBSCRIPTION_ID_COLUMN = "subscription_id"
+RECURRING_CSV_LEGACY_PLAN_ID_COLUMN = "nationbuilder_recurring_donation_id"
+RECURRING_CSV_AMOUNT_COLUMN = "amount"
+RECURRING_CSV_FREQUENCY_COLUMN = "frequency"
+RECURRING_CSV_NEXT_PAYMENT_COLUMN = "next_payment_date"
+
+# A plan's frequency, e.g. "every 1 month"
+_FREQUENCY_PATTERN = re.compile(
+    r"^every (?P<count>\d+) (?P<interval>day|week|month|year)s?$", re.IGNORECASE
+)
+# The CSV's timestamps are naive UTC times, with or without microseconds, e.g.
+# "2026-10-15 07:51:21" or "2025-12-15 07:50:11.222649".
+_RECURRING_CSV_DATETIME_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S")
+
+
+@dataclass(frozen=True)
+class ExportedRecurringPlan:
+    # The same ID as RecurringPlan.legacy_plan_id, so that a plan migrated from either
+    # source is recognized by the other.
+    legacy_plan_id: int
+    customer_id: str
+    payment_method_id: str
+    # The subscription in the legacy CRM's Stripe account, which is not copied.
+    legacy_subscription_id: str
+    amount_cents: int
+    # Stripe's name for the billing interval, or None if the frequency names none.
+    interval: Optional[str]
+    interval_count: int
+    # When the legacy CRM will next charge the donor, in UTC.
+    next_payment_at: datetime.datetime
+
+
+def parse_frequency(text: str) -> tuple[Optional[str], int]:
+    """
+    Stripe's billing interval and interval count for a frequency such as "every 1 month",
+    or (None, 0) if it is not of that form.
+    """
+    match = _FREQUENCY_PATTERN.match(" ".join(text.split()))
+    if match is None:
+        return None, 0
+    return match["interval"].lower(), int(match["count"])
+
+
+def parse_recurring_csv_datetime(text: str) -> datetime.datetime:
+    text = text.strip()
+    for datetime_format in _RECURRING_CSV_DATETIME_FORMATS:
+        try:
+            parsed = datetime.datetime.strptime(text, datetime_format)
+        except ValueError:
+            continue
+        return parsed.replace(tzinfo=datetime.timezone.utc)
+    raise ValueError(f"Unrecognized timestamp: {text!r}")
+
+
+def read_exported_recurring_plans(
+    path: Union[str, Path],
+) -> tuple[list[ExportedRecurringPlan], list[str]]:
+    """
+    Every plan in a recurring donations CSV, together with a description of each row
+    that could not be read.
+    """
+    plans = []
+    problems = []
+    with open(path, encoding="utf-8-sig", newline="") as csv_file:
+        # Row 1 is the header, so the first plan is on line 2 of the file.
+        for line_number, row in enumerate(csv.DictReader(csv_file), start=2):
+            try:
+                interval, interval_count = parse_frequency(row[RECURRING_CSV_FREQUENCY_COLUMN])
+                amount_cents = Decimal(row[RECURRING_CSV_AMOUNT_COLUMN].strip()) * 100
+                if amount_cents != amount_cents.to_integral_value():
+                    raise ValueError(f"{amount_cents} cents is not a whole number of cents")
+                plans.append(
+                    ExportedRecurringPlan(
+                        legacy_plan_id=int(row[RECURRING_CSV_LEGACY_PLAN_ID_COLUMN]),
+                        customer_id=row[RECURRING_CSV_CUSTOMER_ID_COLUMN].strip(),
+                        payment_method_id=row[RECURRING_CSV_PAYMENT_METHOD_ID_COLUMN].strip(),
+                        legacy_subscription_id=row[RECURRING_CSV_SUBSCRIPTION_ID_COLUMN].strip(),
+                        amount_cents=int(amount_cents),
+                        interval=interval,
+                        interval_count=interval_count,
+                        next_payment_at=parse_recurring_csv_datetime(
+                            row[RECURRING_CSV_NEXT_PAYMENT_COLUMN]
+                        ),
+                    )
+                )
+            except (KeyError, ValueError, ArithmeticError) as exc:
+                problems.append(f"line {line_number}: {exc!r}")
+    return plans, problems

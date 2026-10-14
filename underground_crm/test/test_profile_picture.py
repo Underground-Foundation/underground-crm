@@ -16,13 +16,17 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import PurePosixPath
+from unittest import mock
 
 import django.test
+from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.urls import reverse
+from django.test import RequestFactory
 from PIL import Image
 
+from underground_crm.social_adapters import PersonSocialAccountAdapter
 from underground_crm.tasks import PROFILE_PICTURE_TIMESTAMP_FORMAT, import_profile_picture
 
 Person = get_user_model()
@@ -182,3 +186,74 @@ class PersonAdminProfilePictureTest(django.test.TestCase):
             f'<img src="{self.person.profile_picture_file.url}"',
             msg_prefix="The change form should show the picture from our media storage",
         )
+
+
+# pre_social_login asks allauth for the provider, and allauth refuses unless a
+# Facebook app is configured. Settings only configure one when FACEBOOK_APP_ID
+# and FACEBOOK_APP_SECRET are set (they aren't in CI), so the tests supply their
+# own rather than depending on the environment. Replacing the providers outright
+# also stops a locally configured app from making the lookup ambiguous.
+TEST_SOCIAL_PROVIDERS = {
+    "facebook": {
+        "APP": {"client_id": "1093847562019384", "secret": "test-facebook-app-secret"},
+    },
+}
+
+
+@django.test.override_settings(SOCIALACCOUNT_PROVIDERS=TEST_SOCIAL_PROVIDERS)
+class SocialLoginQueuesPictureImportTest(django.test.TestCase):
+    """
+    A login that signs in to an existing Person (as one connected by a matching
+    email address does) never reaches save_user, so pre_social_login queues the
+    import instead.
+    """
+
+    FACEBOOK_PICTURE_URL = "https://platform-lookaside.fbsbx.com/portrait.jpg"
+
+    def setUp(self) -> None:
+        self.person = Person.objects.create_user(
+            email="priya.raman@example.com", password="correct-horse-battery"
+        )
+        self.adapter = PersonSocialAccountAdapter()
+
+    def _facebook_login(self, user: Person) -> SocialLogin:
+        return SocialLogin(
+            user=user,
+            account=SocialAccount(
+                provider="facebook",
+                uid="1234",
+                extra_data={
+                    "id": "1234",
+                    "email": user.email,
+                    "picture": {"data": {"url": self.FACEBOOK_PICTURE_URL}},
+                },
+            ),
+        )
+
+    def _pre_social_login(self, sociallogin: SocialLogin) -> mock.MagicMock:
+        with mock.patch("underground_crm.social_adapters.async_task") as async_task:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.adapter.pre_social_login(RequestFactory().get("/"), sociallogin)
+        return async_task
+
+    def test_queues_the_import_for_an_existing_person_without_a_picture(self) -> None:
+        async_task = self._pre_social_login(self._facebook_login(self.person))
+
+        async_task.assert_called_once_with(
+            "underground_crm.tasks.import_profile_picture",
+            str(self.person.pk),
+            self.FACEBOOK_PICTURE_URL,
+        )
+
+    def test_leaves_an_existing_person_who_has_a_picture_alone(self) -> None:
+        self.person.profile_picture_file.save("existing.jpg", ContentFile(PORTRAIT_JPEG))
+        self.addCleanup(self.person.profile_picture_file.delete, save=False)
+
+        async_task = self._pre_social_login(self._facebook_login(self.person))
+
+        async_task.assert_not_called()
+
+    def test_leaves_a_signup_to_save_user(self) -> None:
+        async_task = self._pre_social_login(self._facebook_login(Person(email="new@example.com")))
+
+        async_task.assert_not_called()

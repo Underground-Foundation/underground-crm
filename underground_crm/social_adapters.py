@@ -17,8 +17,15 @@ class PersonSocialAccountAdapter(DefaultSocialAccountAdapter):
 
     Maps the common first_name / last_name keys from the provider's
     normalized data dict into the Person record when the provider supplies
-    them, and queues an import of the provider's picture.  The parent class already handles email, so only these extra fields
-    need special treatment here.
+    them, and queues an import of the provider's picture.  The parent class
+    already handles email, so only these extra fields need special treatment
+    here.
+
+    The picture import is queued from two places, because allauth reaches a
+    Person by two routes: save_user for a signup that creates the Person, and
+    pre_social_login for a login that signs in to a Person who already exists
+    (including one connected by a matching email address, see
+    SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT).
     """
 
     def populate_user(
@@ -34,10 +41,27 @@ class PersonSocialAccountAdapter(DefaultSocialAccountAdapter):
             person.last_name = data.get("last_name") or ""
         # Not a database field: the provider's URL is only kept long enough for
         # save_user to hand it to the task that copies the picture.
-        person._profile_picture_url = (
-            data.get("picture") or self._facebook_picture_url(sociallogin) or None
-        )
+        person._profile_picture_url = self._picture_url(sociallogin, data)
         return person
+
+    def pre_social_login(self, request: HttpRequest, sociallogin: SocialLogin) -> None:
+        """
+        Queue a copy of the profile picture for an existing Person who doesn't
+        have one yet. allauth has already looked up the Person by this point;
+        a signup (no Person yet) is left to save_user.
+        """
+        super().pre_social_login(request, sociallogin)
+        if not sociallogin.is_existing:
+            return
+        person = sociallogin.user
+        if person.profile_picture_file:
+            # The user already has a profile picture
+            return
+        provider = sociallogin.account.get_provider()
+        data = provider.extract_common_fields(sociallogin.account.extra_data)
+        url = self._picture_url(sociallogin, data)
+        if url:
+            self._queue_picture_import(str(person.pk), url)
 
     def save_user(
         self,
@@ -54,11 +78,17 @@ class PersonSocialAccountAdapter(DefaultSocialAccountAdapter):
         person = super().save_user(request, sociallogin, form)
         url = getattr(person, "_profile_picture_url", None)
         if url and not person.profile_picture_file:
-            person_id = str(person.pk)
-            transaction.on_commit(
-                lambda: async_task("underground_crm.tasks.import_profile_picture", person_id, url)
-            )
+            self._queue_picture_import(str(person.pk), url)
         return person
+
+    @staticmethod
+    def _queue_picture_import(person_id: str, url: str) -> None:
+        transaction.on_commit(
+            lambda: async_task("underground_crm.tasks.import_profile_picture", person_id, url)
+        )
+
+    def _picture_url(self, sociallogin: SocialLogin, data: dict[str, Any]) -> str | None:
+        return data.get("picture") or self._facebook_picture_url(sociallogin) or None
 
     @staticmethod
     def _facebook_picture_url(sociallogin: SocialLogin) -> str | None:
