@@ -656,7 +656,10 @@ def build_redirection(
     return cast(
         Redirect,
         return_class(
-            old_path=slug,
+            # RedirectMiddleware looks up the request's normalized path
+            # ("/blog"), but only Redirect.clean() normalizes old_path, and
+            # save() never calls it, so the bare slug would never match.
+            old_path=Redirect.normalise_path(slug),
             site=site,
             is_permanent=True,
             redirect_page=destination_page,
