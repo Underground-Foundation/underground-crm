@@ -188,6 +188,19 @@ class PersonAdminProfilePictureTest(django.test.TestCase):
         )
 
 
+# pre_social_login asks allauth for the provider, and allauth refuses unless a
+# Facebook app is configured. Settings only configure one when FACEBOOK_APP_ID
+# and FACEBOOK_APP_SECRET are set (they aren't in CI), so the tests supply their
+# own rather than depending on the environment. Replacing the providers outright
+# also stops a locally configured app from making the lookup ambiguous.
+TEST_SOCIAL_PROVIDERS = {
+    "facebook": {
+        "APP": {"client_id": "1093847562019384", "secret": "test-facebook-app-secret"},
+    },
+}
+
+
+@django.test.override_settings(SOCIALACCOUNT_PROVIDERS=TEST_SOCIAL_PROVIDERS)
 class SocialLoginQueuesPictureImportTest(django.test.TestCase):
     """
     A login that signs in to an existing Person (as one connected by a matching
