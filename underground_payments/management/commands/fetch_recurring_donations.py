@@ -8,9 +8,9 @@ Usage:
 Requires an admin session cookie file (Netscape format) for the legacy CRM, exported
 from the browser with a cookie export extension.
 
-Reads LEGACY_ADMIN_URL, LEGACY_RECURRING_DONATIONS_PATH, LEGACY_USER_AGENT and
-LEGACY_ADMIN_COOKIE_FILE from the environment (see .env.example). The cookie file path
-can be overridden with --cookie-file.
+Reads LEGACY_RECURRING_DONATIONS_URL (the URL of the listing's first page),
+LEGACY_USER_AGENT and LEGACY_ADMIN_COOKIE_FILE from the environment (see .env.example).
+The cookie file path can be overridden with --cookie-file.
 """
 
 import urllib.parse
@@ -51,15 +51,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        admin_url = require_env("LEGACY_ADMIN_URL").rstrip("/")
-        listing_path = require_env("LEGACY_RECURRING_DONATIONS_PATH")
+        url = require_env("LEGACY_RECURRING_DONATIONS_URL")
         user_agent = require_env("LEGACY_USER_AGENT")
         cookie_file = options["cookie_file"] or require_env("LEGACY_ADMIN_COOKIE_FILE")
         output_dir = Path(options["output_dir"])
         output_dir.mkdir(parents=True, exist_ok=True)
 
         opener = ThrottleAwareOpener(_make_html_opener(cookie_file, user_agent), self.stderr.write)
-        url = urllib.parse.urljoin(admin_url + "/", listing_path.lstrip("/"))
         page_number = 0
         plan_count = 0
         while url:

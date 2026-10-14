@@ -5,21 +5,30 @@ transactions CSV export.
 
 import datetime
 import tempfile
+import zoneinfo
 from pathlib import Path
 
 from django.test import SimpleTestCase
 
 from underground_payments.legacy_migration import (
+    CSV_AMOUNT_CENTS_COLUMN,
     CSV_EMAIL_COLUMN,
     CSV_FIRST_NAME_COLUMN,
     CSV_LAST_NAME_COLUMN,
+    CSV_LEGACY_DONATION_ID_COLUMN,
     CSV_LEGACY_PERSON_ID_COLUMN,
+    CSV_RECURRING_STATUS_COLUMN,
+    CSV_STATUS_COLUMN,
+    CSV_SUCCEEDED_AT_COLUMN,
+    CSV_TRANSACTION_KEY_COLUMN,
+    LegacyDonation,
     LegacyDonor,
     NotAListingError,
     RecurringPlan,
     fix_encoding,
     next_page_path,
     parse_recurring_plans,
+    read_donations,
     read_donors,
 )
 
@@ -159,6 +168,71 @@ class ReadDonorsTests(SimpleTestCase):
         donors, skipped_row_count = read_donors(path)
         self.assertEqual(donors, [ONE_OFF_DONOR])
         self.assertEqual(skipped_row_count, 1, "Only Tom Nguyen's row has no email.")
+
+
+MELBOURNE = zoneinfo.ZoneInfo("Australia/Melbourne")
+DONATION_CSV_HEADER = [
+    CSV_LEGACY_DONATION_ID_COLUMN,
+    CSV_AMOUNT_CENTS_COLUMN,
+    CSV_STATUS_COLUMN,
+    CSV_SUCCEEDED_AT_COLUMN,
+    CSV_RECURRING_STATUS_COLUMN,
+    CSV_LEGACY_PERSON_ID_COLUMN,
+    CSV_EMAIL_COLUMN,
+    CSV_TRANSACTION_KEY_COLUMN,
+]
+
+
+class ReadDonationsTests(SimpleTestCase):
+    def write_csv(self, *lines: str) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "financial_transactions.csv"
+        path.write_bytes((csv_line(*DONATION_CSV_HEADER) + "".join(lines)).encode("utf-8"))
+        return path
+
+    def test_reads_a_monthly_payment(self):
+        expected = LegacyDonation(
+            legacy_donation_id=41873,
+            legacy_person_id=REPEAT_DONOR.legacy_person_id,
+            email=REPEAT_DONOR.email,
+            status="succeeded",
+            amount_cents=220,
+            succeeded_at=datetime.datetime(2026, 9, 15, 9, 5, tzinfo=MELBOURNE),
+            is_recurring=True,
+            # Columns that this CSV leaves out.
+            page_slug="",
+            tracking_code="",
+            payment_type="",
+            merchant_account="",
+            transaction_key="py_1SAb3K2EiAKqJzItR7w2Lm9c",
+        )
+        path = self.write_csv(
+            csv_line(
+                str(expected.legacy_donation_id),
+                str(expected.amount_cents),
+                expected.status,
+                # The export pads a single-digit hour with a second space.
+                "09/15/2026  9:05 AM",
+                # The status of the recurring plan that the payment belongs to.
+                "active",
+                str(expected.legacy_person_id),
+                expected.email,
+                expected.transaction_key,
+            )
+        )
+        donations, skipped_row_count = read_donations(path, MELBOURNE)
+        self.assertEqual(donations, [expected])
+        self.assertEqual(skipped_row_count, 0, "The only row has an ID and an amount.")
+
+    def test_reads_a_failed_one_off_payment_by_nobody(self):
+        # Some declined card payments are recorded against no person at all.
+        path = self.write_csv(csv_line("41874", "5000", "failed", "", "", "", "", ""))
+        [donation] = read_donations(path, MELBOURNE)[0]
+        self.assertIsNone(donation.legacy_person_id)
+        self.assertIsNone(donation.succeeded_at)
+        self.assertFalse(donation.is_recurring, "The row names no recurring plan status.")
+        self.assertEqual(donation.status, "failed")
 
 
 class FixEncodingTests(SimpleTestCase):

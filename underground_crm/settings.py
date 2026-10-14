@@ -679,7 +679,7 @@ def _build_social_providers() -> tuple[dict, list[str]]:
             # so we override this here to allow email-based account matching.
             "VERIFIED_EMAIL": True,
             # Adds "picture" (returned as a large image) to allauth's default FIELDS list,
-            # so PersonSocialAccountAdapter can save a profile picture URL. Facebook's Graph
+            # so PersonSocialAccountAdapter can import the profile picture. Facebook's Graph
             # API doesn't surface this via extract_common_fields, so it's read from the raw
             # extra_data instead — see PersonSocialAccountAdapter._facebook_picture_url.
             "FIELDS": [

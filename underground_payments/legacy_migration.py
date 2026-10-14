@@ -1,7 +1,7 @@
 """
 Parsing for the legacy CRM data that the donation migration commands work from:
-the financial transactions CSV export (for migrate_donors) and the admin listing of
-recurring donation plans (for fetch_recurring_donations and
+the financial transactions CSV export (for migrate_donors and import_donations) and the
+admin listing of recurring donation plans (for fetch_recurring_donations and
 migrate_recurring_donations).
 
 Pure Python and bs4, with no Django or Stripe import, so that it can be tested
@@ -93,6 +93,91 @@ def read_donors(path: Union[str, Path]) -> tuple[list[LegacyDonor], int]:
             ),
         )
     return list(donors.values()), skipped_row_count
+
+
+# Further columns, describing the transaction itself, for import_donations.
+CSV_LEGACY_DONATION_ID_COLUMN = "nationbuilder_id"
+CSV_AMOUNT_CENTS_COLUMN = "amount_in_cents"
+CSV_STATUS_COLUMN = "status_name"
+CSV_SUCCEEDED_AT_COLUMN = "succeeded_at"
+CSV_RECURRING_STATUS_COLUMN = "recurring_donation_status"
+CSV_PAGE_SLUG_COLUMN = "page_slug"
+CSV_TRACKING_CODE_COLUMN = "tracking_code_slug"
+CSV_PAYMENT_TYPE_COLUMN = "payment_type_name"
+CSV_MERCHANT_ACCOUNT_COLUMN = "merchant_account_name"
+CSV_TRANSACTION_KEY_COLUMN = "transaction_key"
+
+# The status of a transaction whose money was received (and not refunded).
+SUCCEEDED_STATUS = "succeeded"
+# The export's timestamps are naive local times, e.g. "06/30/2025  3:05 PM", whose runs
+# of spaces are collapsed before parsing.
+_CSV_DATETIME_FORMAT = "%m/%d/%Y %I:%M %p"
+
+
+@dataclass(frozen=True)
+class LegacyDonation:
+    legacy_donation_id: int
+    # None for a transaction recorded against nobody, as some failed ones are.
+    legacy_person_id: Optional[int]
+    email: str
+    status: str
+    amount_cents: int
+    succeeded_at: Optional[datetime.datetime]
+    # Whether the transaction was a payment of a recurring plan.
+    is_recurring: bool
+    page_slug: str
+    tracking_code: str
+    payment_type: str
+    # The legacy CRM's name for the account that received the money.
+    merchant_account: str
+    # The payment processor's ID for the payment (a Stripe charge in the legacy CRM's own
+    # Stripe account, or a PayPal transaction, for example).
+    transaction_key: str
+
+
+def parse_csv_datetime(text: str, time_zone: datetime.tzinfo) -> Optional[datetime.datetime]:
+    """An aware datetime from one of the export's naive local times, or None if blank."""
+    text = " ".join(text.split())
+    if not text:
+        return None
+    return datetime.datetime.strptime(text, _CSV_DATETIME_FORMAT).replace(tzinfo=time_zone)
+
+
+def read_donations(
+    path: Union[str, Path], time_zone: datetime.tzinfo
+) -> tuple[list[LegacyDonation], int]:
+    """
+    Every transaction in a financial transactions CSV, whatever its status, together with
+    the number of rows skipped because they have no transaction ID or amount.
+
+    The export's naive timestamps are read as local times in time_zone.
+    """
+    donations = []
+    skipped_row_count = 0
+    for row in read_transaction_rows(path):
+        legacy_donation_id = row.get(CSV_LEGACY_DONATION_ID_COLUMN, "").strip()
+        amount_cents = row.get(CSV_AMOUNT_CENTS_COLUMN, "").strip()
+        if not legacy_donation_id.isdigit() or not amount_cents.isdigit():
+            skipped_row_count += 1
+            continue
+        legacy_person_id = row.get(CSV_LEGACY_PERSON_ID_COLUMN, "").strip()
+        donations.append(
+            LegacyDonation(
+                legacy_donation_id=int(legacy_donation_id),
+                legacy_person_id=int(legacy_person_id) if legacy_person_id.isdigit() else None,
+                email=row.get(CSV_EMAIL_COLUMN, "").strip(),
+                status=row.get(CSV_STATUS_COLUMN, "").strip(),
+                amount_cents=int(amount_cents),
+                succeeded_at=parse_csv_datetime(row.get(CSV_SUCCEEDED_AT_COLUMN, ""), time_zone),
+                is_recurring=bool(row.get(CSV_RECURRING_STATUS_COLUMN, "").strip()),
+                page_slug=row.get(CSV_PAGE_SLUG_COLUMN, "").strip(),
+                tracking_code=row.get(CSV_TRACKING_CODE_COLUMN, "").strip(),
+                payment_type=row.get(CSV_PAYMENT_TYPE_COLUMN, "").strip(),
+                merchant_account=row.get(CSV_MERCHANT_ACCOUNT_COLUMN, "").strip(),
+                transaction_key=row.get(CSV_TRANSACTION_KEY_COLUMN, "").strip(),
+            )
+        )
+    return donations, skipped_row_count
 
 
 # ---- Recurring donation plans listing ----

@@ -177,12 +177,16 @@ class Person(AbstractBaseUser, PermissionsMixin):
     facebook_username = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("Facebook username")
     )
-    profile_picture_url = models.URLField(
-        max_length=500,
+    # Identity providers might use expiring URLs when users log in, so we need to access the
+    # image while we can, and copy it into our own media storage. We name the field `_file`
+    # so we can use a custom `profile_picture` for the ModelAdmin.
+    profile_picture_file = models.ImageField(
+        upload_to="profiles/",
+        max_length=255,
         null=True,
         blank=True,
-        verbose_name=_("Profile picture URL"),
-        help_text=_("Picture URL supplied by a social login provider, e.g. LinkedIn."),
+        verbose_name=_("Profile picture"),
+        help_text=_("A profile picture imported into our own system."),
     )
 
     # --- Addresses ---

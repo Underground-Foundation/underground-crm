@@ -1,8 +1,13 @@
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
+from io import BytesIO
 
+import requests
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from PIL import Image, UnidentifiedImageError
 
 from .models.address import Address
 from .models.engagement import Engagement
@@ -12,6 +17,16 @@ from .models.person import Tag
 logger = logging.getLogger(__name__)
 
 Person = get_user_model()
+
+PROFILE_PICTURE_TIMEOUT_SECONDS = 30
+# Providers serve profile pictures well under 1 MB; anything this large is not
+# a profile picture and shouldn't fill the media storage.
+MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024
+# Keyed by the format Pillow detects, not by the Content-Type the provider
+# claims, so the stored file's extension matches its actual contents.
+PROFILE_PICTURE_EXTENSIONS = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp"}
+# Compact UTC, so a stored picture's age can be read from its filename.
+PROFILE_PICTURE_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 
 
 def geocode_address(address_id: str) -> None:
@@ -156,3 +171,83 @@ def send_subscription_confirmation(person_id: str, tag_id: str) -> None:
             person.email,
             response.errors,
         )
+
+
+def import_profile_picture(person_id: str, url: str, now: datetime | None = None) -> None:
+    """
+    Copy a Person's profile picture from the identity provider's `url` into
+    our own media storage, under profiles/, before the provider's signed URL
+    expires (queued by PersonSocialAccountAdapter.save_user). The URL itself
+    isn't kept.
+
+    A URL that has already expired, or that serves something other than an
+    image, is logged and the person is left without a picture.
+
+    The file is named after the person and the time of the import (`now`,
+    which defaults to the current time), so a later import never collides
+    with an earlier one and the picture's age is visible in its name.
+    """
+    try:
+        person = Person.objects.get(pk=uuid.UUID(person_id))
+    except Person.DoesNotExist:
+        logger.warning("import_profile_picture: Person %s not found", person_id)
+        return
+    if person.profile_picture_file:
+        logger.info("import_profile_picture: Person %s already has a stored picture", person_id)
+        return
+    try:
+        content = _download_profile_picture(url)
+    except (requests.RequestException, ValueError) as error:
+        logger.warning(
+            "import_profile_picture: could not fetch the picture for Person %s: %s",
+            person_id,
+            error,
+        )
+        return
+
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image_format = image.format
+            image.verify()
+    except (UnidentifiedImageError, OSError, SyntaxError) as error:
+        logger.warning(
+            "import_profile_picture: the picture for Person %s is not a readable image: %s",
+            person_id,
+            error,
+        )
+        return
+    extension = PROFILE_PICTURE_EXTENSIONS.get(image_format or "")
+    if extension is None:
+        logger.warning(
+            "import_profile_picture: the picture for Person %s is in the unsupported format %s",
+            person_id,
+            image_format,
+        )
+        return
+
+    timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    person.profile_picture_file.save(
+        f"{person.pk}_{timestamp.strftime(PROFILE_PICTURE_TIMESTAMP_FORMAT)}.{extension}",
+        ContentFile(content),
+        save=False,
+    )
+    # update_fields keeps this from overwriting anything edited in the admin
+    # while the picture was downloading, while still recording a history entry.
+    # todo: deleting deprecated image
+    person.save(update_fields=["profile_picture_file"])
+
+
+def _download_profile_picture(url: str) -> bytes:
+    """Fetch the picture, refusing anything that isn't served as an image or
+    that exceeds MAX_PROFILE_PICTURE_BYTES."""
+    with requests.get(url, timeout=PROFILE_PICTURE_TIMEOUT_SECONDS, stream=True) as response:
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        if not content_type.startswith("image/"):
+            raise ValueError(f"served as {content_type or 'an unknown type'!r}, not an image")
+        content = bytearray()
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            content.extend(chunk)
+            if len(content) > MAX_PROFILE_PICTURE_BYTES:
+                raise ValueError(f"larger than {MAX_PROFILE_PICTURE_BYTES} bytes")
+    return bytes(content)
