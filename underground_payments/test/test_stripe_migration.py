@@ -5,6 +5,7 @@ The tests that call Stripe run only against a test-mode account (a STRIPE_SECRET
 beginning with "sk_test_"), and clean up the Customers they create.
 """
 
+import dataclasses
 import datetime
 import uuid
 import zoneinfo
@@ -16,6 +17,7 @@ from django.test import SimpleTestCase
 
 from underground_payments.legacy_migration import (
     ACTIVE_STATUS,
+    ExportedRecurringPlan,
     RecurringPlan,
     parse_recurring_plans,
 )
@@ -24,6 +26,7 @@ from underground_payments.stripe_migration import (
     LEGACY_PLAN_ID_METADATA_KEY,
     DonationPage,
     PlanOutcome,
+    create_subscription_for_exported_plan,
     create_subscription_for_plan,
     first_billing_timestamp,
     make_client,
@@ -204,4 +207,138 @@ class CreateSubscriptionForPlanTests(SimpleTestCase):
 
     def test_customer_without_a_card_is_skipped(self):
         result = self.migrate(self.create_customer(with_card=False))
+        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+
+
+# When the exported plans in these tests are migrated, relative to their next payment.
+MIGRATION_TIME = datetime.datetime(2026, 10, 14, 9, 30, tzinfo=datetime.timezone.utc)
+EXPORTED_PLAN = ExportedRecurringPlan(
+    legacy_plan_id=2118,
+    customer_id="cus_Tbk1RileyHutch",
+    payment_method_id="pm_1SeWXmRileyHutchinson00",
+    legacy_subscription_id="sub_1SeWXpRileyHutchinson0",
+    amount_cents=220,
+    interval="month",
+    interval_count=1,
+    next_payment_at=MIGRATION_TIME + datetime.timedelta(days=1),
+)
+
+
+class ExportedPlanSkippedBeforeContactingStripeTests(SimpleTestCase):
+    def migrate(self, plan: ExportedRecurringPlan):
+        return create_subscription_for_exported_plan(
+            # No Stripe client, so any call to Stripe would fail the test.
+            client=None,
+            plan=plan,
+            page=DONATION_PAGE,
+            currency="aud",
+            now=MIGRATION_TIME,
+            dry_run=False,
+        )
+
+    def test_quarterly_plan_is_skipped(self):
+        # The webhook records only monthly and annual payments.
+        result = self.migrate(dataclasses.replace(EXPORTED_PLAN, interval_count=3))
+        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+
+    def test_plan_whose_next_payment_has_passed_is_skipped(self):
+        result = self.migrate(dataclasses.replace(EXPORTED_PLAN, next_payment_at=MIGRATION_TIME))
+        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+
+
+# How far ahead of now the exported plans in the test-mode tests next bill.
+HOURS_UNTIL_NEXT_PAYMENT = 30
+
+
+class CreateSubscriptionForExportedPlanTests(SimpleTestCase):
+    """Against Stripe's test mode, since what matters is what Stripe accepts and does."""
+
+    def setUp(self):
+        key = test_mode_key()
+        if not key:
+            self.skipTest("STRIPE_SECRET_KEY is not a test-mode key.")
+        self.client = make_client(key)
+        self.now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+
+    def create_customer_with_card(self, email: str) -> tuple[stripe.Customer, str]:
+        """A Customer like one Stripe copied from the legacy CRM, and their card's ID."""
+        customer = self.client.v1.customers.create(
+            params={"email": email, "name": "Riley Hutchinson", "payment_method": TEST_CARD}
+        )
+        # Deleting a Customer also cancels their subscriptions.
+        self.addCleanup(self.client.v1.customers.delete, customer.id)
+        [card] = self.client.v1.customers.payment_methods.list(customer.id).data
+        return customer, card.id
+
+    def exported_plan(self, customer_id: str, payment_method_id: str) -> ExportedRecurringPlan:
+        return dataclasses.replace(
+            EXPORTED_PLAN,
+            # Unique per run, so that one run's subscriptions never look like another's to
+            # the check for plans already migrated.
+            legacy_plan_id=uuid.uuid4().int % 10**9,
+            customer_id=customer_id,
+            payment_method_id=payment_method_id,
+            next_payment_at=self.now + datetime.timedelta(hours=HOURS_UNTIL_NEXT_PAYMENT),
+        )
+
+    def migrate(self, plan: ExportedRecurringPlan, dry_run: bool = False):
+        return create_subscription_for_exported_plan(
+            self.client, plan, DONATION_PAGE, currency="aud", now=self.now, dry_run=dry_run
+        )
+
+    def test_subscription_charges_the_exported_card_from_its_next_payment(self):
+        customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        plan = self.exported_plan(customer.id, card_id)
+        result = self.migrate(plan)
+        self.assertIs(result.outcome, PlanOutcome.CREATED, result.message)
+
+        subscription = self.client.v1.subscriptions.retrieve(
+            result.subscription_id, params={"expand": ["latest_invoice"]}
+        )
+        self.assertEqual(subscription.status, "active")
+        self.assertEqual(subscription.default_payment_method, card_id)
+        self.assertEqual(subscription.billing_cycle_anchor, int(plan.next_payment_at.timestamp()))
+        self.assertIsNone(
+            subscription.latest_invoice,
+            "Nothing should be invoiced, let alone charged, before the legacy plan's next "
+            "payment.",
+        )
+        price = subscription["items"].data[0].price
+        self.assertEqual(price.unit_amount, plan.amount_cents)
+        self.assertEqual(price.recurring.interval, plan.interval)
+        metadata = subscription.metadata.to_dict()
+        self.assertEqual(metadata["page_id"], str(DONATION_PAGE.id))
+        self.assertEqual(metadata["frequency"], "monthly")
+        self.assertEqual(metadata["donor_email"], "riley.hutchinson@example.org")
+        self.assertEqual(metadata[LEGACY_PLAN_ID_METADATA_KEY], str(plan.legacy_plan_id))
+        self.assertNotIn(
+            LEGACY_PERSON_ID_METADATA_KEY,
+            metadata,
+            "The Customer was never labeled by migrate_donors, so no legacy person ID is known.",
+        )
+
+    def test_plan_is_not_migrated_twice(self):
+        customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        plan = self.exported_plan(customer.id, card_id)
+        first = self.migrate(plan)
+        second = self.migrate(plan)
+        self.assertIs(second.outcome, PlanOutcome.ALREADY_MIGRATED, second.message)
+        self.assertEqual(second.subscription_id, first.subscription_id)
+
+    def test_dry_run_creates_nothing(self):
+        customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        result = self.migrate(self.exported_plan(customer.id, card_id), dry_run=True)
+        self.assertIs(result.outcome, PlanOutcome.CREATED, result.message)
+        subscriptions = self.client.v1.subscriptions.list(params={"customer": customer.id})
+        self.assertEqual(subscriptions.data, [])
+
+    def test_customer_not_yet_copied_is_skipped(self):
+        _, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        result = self.migrate(self.exported_plan("cus_NotCopiedYet0000", card_id))
+        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+
+    def test_card_of_another_customer_is_skipped(self):
+        customer, _ = self.create_customer_with_card("riley.hutchinson@example.org")
+        _, other_card_id = self.create_customer_with_card("mei.lin.tan@example.org")
+        result = self.migrate(self.exported_plan(customer.id, other_card_id))
         self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)

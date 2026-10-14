@@ -155,6 +155,7 @@ def stripe_webhook(request):
     """
     Handle Stripe webhook events. Must be registered in the Stripe dashboard
     for at least: payment_intent.succeeded, invoice.paid.
+    https://dashboard.stripe.com/acct_…/workbench/webhooks/create
     """
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
