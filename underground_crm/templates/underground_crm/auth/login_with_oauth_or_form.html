@@ -37,6 +37,9 @@
       {% for error in form.password.errors %}
         <div class="invalid-feedback">{{ error }}</div>
       {% endfor %}
+      <small class="form-text">
+        <a href="{% url 'account_reset_password' %}">{% trans "Reset your password" %}</a>
+      </small>
     </div>
 
     {% if form.remember %}
