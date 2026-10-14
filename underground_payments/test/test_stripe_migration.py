@@ -325,6 +325,43 @@ class CreateSubscriptionForExportedPlanTests(SimpleTestCase):
         self.assertIs(second.outcome, PlanOutcome.ALREADY_MIGRATED, second.message)
         self.assertEqual(second.subscription_id, first.subscription_id)
 
+    def test_customer_without_an_email_gets_the_email_of_their_legacy_person(self):
+        legacy_person_id = 48213
+        legacy_person_email = "riley.hutchinson@example.org"
+        customer, card_id = self.create_customer_with_card(legacy_person_email)
+        self.client.v1.customers.update(
+            customer.id,
+            params={
+                "email": "",
+                "metadata": {LEGACY_PERSON_ID_METADATA_KEY: str(legacy_person_id)},
+            },
+        )
+        plan = self.exported_plan(customer.id, card_id)
+        result = create_subscription_for_exported_plan(
+            self.client,
+            plan,
+            DONATION_PAGE,
+            currency="aud",
+            now=self.now,
+            dry_run=False,
+            email_of_legacy_person=lambda person_id: (
+                legacy_person_email if person_id == legacy_person_id else None
+            ),
+        )
+        self.assertIs(result.outcome, PlanOutcome.CREATED, result.message)
+        subscription = self.client.v1.subscriptions.retrieve(result.subscription_id)
+        self.assertEqual(
+            subscription.metadata["donor_email"],
+            legacy_person_email,
+            "The Customer has no email, so the webhook should be given the legacy person's.",
+        )
+
+    def test_customer_without_an_email_or_legacy_person_is_skipped(self):
+        customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        self.client.v1.customers.update(customer.id, params={"email": ""})
+        result = self.migrate(self.exported_plan(customer.id, card_id))
+        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+
     def test_dry_run_creates_nothing(self):
         customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
         result = self.migrate(self.exported_plan(customer.id, card_id), dry_run=True)
@@ -337,8 +374,13 @@ class CreateSubscriptionForExportedPlanTests(SimpleTestCase):
         result = self.migrate(self.exported_plan("cus_NotCopiedYet0000", card_id))
         self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
 
-    def test_card_of_another_customer_is_skipped(self):
-        customer, _ = self.create_customer_with_card("riley.hutchinson@example.org")
-        _, other_card_id = self.create_customer_with_card("mei.lin.tan@example.org")
-        result = self.migrate(self.exported_plan(customer.id, other_card_id))
-        self.assertIs(result.outcome, PlanOutcome.SKIPPED, result.message)
+    def test_card_is_the_customers_own_whatever_id_the_csv_names(self):
+        customer, card_id = self.create_customer_with_card("riley.hutchinson@example.org")
+        id_from_the_legacy_account = "pm_1T3aEWCMpnBh61hXYDFbmOxw"
+        plan = dataclasses.replace(
+            self.exported_plan(customer.id, card_id), payment_method_id=id_from_the_legacy_account
+        )
+        result = self.migrate(plan)
+        self.assertIs(result.outcome, PlanOutcome.CREATED, result.message)
+        subscription = self.client.v1.subscriptions.retrieve(result.subscription_id)
+        self.assertEqual(subscription.default_payment_method, card_id)

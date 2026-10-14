@@ -44,46 +44,25 @@ it names belongs to NationBuilder's Stripe account. People's donation totals are
 Once Stripe has copied the legacy Customers (with their cards) into your site's Stripe account, there are management
 commands to recreate the recurring donations.
 
-## If NationBuilder exports the recurring donors
-```shell
-python manage.py import_recurring_donations_from_csv --csv-file <path> --payment-page-id <id> [--legacy-plan-id <id>] [--dry-run]
-```
+NationBuilder can provide you with a CSV of the recurring donations, but it lacks people's names or email addresses,
+so matching a Stripe Customer to an Underground-CRM Person and creating a new subscription did not end up being
+straightforward.
+
+
 
 ## If you do not have an export of the recurring donors
-1. `python manage.py migrate_donors --csv-file <financial transactions export>` labels each donor's copied Customer
-   with their legacy person ID, matching them by email. A donor with no copied Customer gets a new one, but it has no
-   card, so their plans will be skipped. This step might not be necessary, depending on the metadata attached to the
-   Stripe customers. 
-2. `python manage.py fetch_recurring_donations --output-dir <dir>` saves every page of the legacy CRM's listing of
+1. `python manage.py fetch_recurring_donations --output-dir <dir>` saves every page of the legacy CRM's listing of
    recurring plans, starting from `LEGACY_RECURRING_DONATIONS_URL` and using the admin cookie file.
-3. `python manage.py migrate_recurring_donations --input-dir <dir> --payment-page-id <id>` creates a subscription for
-   each active plan, first billing on the plan's next bill date, and recorded against the given PaymentPage. Fetch the
-   listing again shortly before running this, since plans whose next bill date has passed are skipped.
+2. `python manage.py migrate_recurring_donations --input-dir <dir> --csv-file <path> --payment-page-id <id>` pairs each
+   active plan with a row of NationBuilder's CSV of recurring donations (see above), labels the row's Customer with the
+   donor's legacy person ID, name and email address, and creates a subscription first billing at the row's next payment.
+   The Customers that Stripe copied have no name or email address, so the listing and the CSV are the only way to
+   learn who each one is. Fetch the listing and the CSV again shortly before running this, since plans whose next
+   payment has passed are skipped.
+
+   A plan's row is the one whose `nationbuilder_recurring_donation_id` is the plan's ID. A plan with no row, or whose
+   Customer is already labeled as another person, is skipped with a warning, and the rows that matched no active plan
+   are listed at the end. Run with `--dry-run` first, and check the warnings.
 
 Cancel each plan in the legacy CRM as soon as its subscription exists, and before its next bill date, or the donor will
 be charged twice.
-
-Each of the Stripe commands takes `--legacy-person-id <id>` to try it on one donor first.
-
-### From NationBuilder's CSV of recurring donations
-NationBuilder can instead export a CSV of the active recurring donations from its own Stripe account, with a row for
-each plan naming its Customer, its card (PaymentMethod), its amount, its frequency and when it next bills. Stripe's copy
-keeps those Customer and PaymentMethod IDs, so once the copy has finished, this one command replaces all three of the
-above:
-
-```
-python manage.py import_recurring_donations_from_csv --csv-file <path> --payment-page-id <id> --dry-run
-python manage.py import_recurring_donations_from_csv --csv-file <path> --payment-page-id <id> --legacy-plan-id <id>
-python manage.py import_recurring_donations_from_csv --csv-file <path> --payment-page-id <id>
-```
-
-Each subscription charges the card that the CSV names, and first bills at the exact moment given by its
-`next_payment_date`, read as UTC. A plan is skipped, with a warning, if its Customer or card has not been copied, if it
-bills at an interval other than monthly or yearly, or if its next payment has passed. Both commands record the legacy
-plan ID on the subscription, so a plan migrated by either is never migrated again by the other. The CSV names no
-legacy person ID, so one is put on the subscription only if `migrate_donors` has already labeled its Customer.
-
-As before, cancel each plan in NationBuilder as soon as its subscription exists, and before its next payment.
-Their parsing (`underground_payments/legacy_migration.py`) is pure bs4 and tested without a
-database, and their Stripe calls (`underground_payments/stripe_migration.py`) are tested
-against Stripe's test mode when `STRIPE_SECRET_KEY` is a test key.
