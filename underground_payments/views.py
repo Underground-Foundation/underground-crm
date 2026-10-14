@@ -63,13 +63,20 @@ def create_payment_intent(request, page_pk: int):
         state = _fit(data.get("state", "").strip(), 100, "state")
         postcode = _fit(data.get("postcode", "").strip(), 20, "postcode")
         country = _fit(data.get("country", "").strip(), 2, "country")
-    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        logger.warning("Rejected payment request for page %s: invalid body (%r).", page_pk, exc)
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
+    logger.info("Creating %s payment of %d cents for page %s.", frequency, amount_cents, page_pk)
+
     if amount_cents < _MIN_AMOUNT_CENTS:
+        logger.warning(
+            "Rejected payment request for page %s: %d cents is too low.", page_pk, amount_cents
+        )
         return JsonResponse({"error": "Minimum donation is $1.00."}, status=400)
 
     if frequency not in ("once", "monthly", "annual"):
+        logger.warning("Rejected payment request for page %s: frequency %r.", page_pk, frequency)
         return JsonResponse({"error": "Invalid frequency."}, status=400)
 
     if frequency == "monthly" and not page.allow_monthly_payments:
@@ -147,6 +154,11 @@ def create_payment_intent(request, page_pk: int):
     except stripe.StripeError as exc:
         logger.error("Stripe error creating payment for page %s: %s", page_pk, exc)
         return JsonResponse({"error": exc.user_message or "Payment setup failed."}, status=400)
+    except Exception:
+        # Anything else would reach the browser as an HTML 500 page, which the donation
+        # form cannot parse and reports as a network error.
+        logger.exception("Unexpected failure creating payment for page %s.", page_pk)
+        raise
 
 
 @csrf_exempt
