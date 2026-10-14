@@ -27,13 +27,9 @@
   <section class="feed-item-list">
     {% for item in feed_items %}
       <article class="feed-item my-3">
-        <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+        <h2><a href="{{ item.url }}" class="text-reset">{{ item.title }}</a></h2>
         <p class="text-muted">
-          {% if page.ordering == "soonest_first" %}
-            {{ item.date|date:"DATETIME_FORMAT" }}
-          {% else %}
-            {{ item.date|date }}
-          {% endif %}
+          {% if item.page.author.full_name %}{{ item.page.author.full_name }} · {% endif %}{{ item.date|date:"j F Y" }}
           {% if item.is_external %}&mdash; {{ item.source_title }}{% endif %}
         </p>
         {% if item.page.intro %}
