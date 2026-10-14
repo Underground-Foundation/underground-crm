@@ -187,7 +187,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
         "is_deceased",
     ]
     search_fields = ["email", "first_name", "last_name"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at", "profile_picture"]
     filter_horizontal = ()
     # Without this, the recruiter/point_person widgets render as plain <select>
     # elements and Django populates them by evaluating the entire unfiltered
@@ -204,7 +204,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         (
-            "Name",
+            _("Name"),
             {
                 "fields": (
                     "prefix",
@@ -218,7 +218,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (
-            "Contact",
+            _("Contact"),
             {
                 "fields": (
                     "phone_number",
@@ -232,10 +232,13 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                 )
             },
         ),
-        ("Address", {"fields": ("submitted_address",)}),
-        ("Biography", {"fields": ("bio", "description", "date_of_birth", "gender")}),
+        (_("Address"), {"fields": ("submitted_address",)}),
         (
-            "Engagement",
+            _("Biographical"),
+            {"fields": ("bio", "description", "date_of_birth", "gender", "profile_picture")},
+        ),
+        (
+            _("Engagement"),
             {
                 "fields": (
                     "email_opt_in",
@@ -250,7 +253,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (
-            "Donations",
+            _("Donations"),
             {
                 "fields": (
                     "is_donor",
@@ -263,7 +266,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (
-            "Preferences",
+            _("Preferences"),
             {
                 "fields": (
                     "do_not_call",
@@ -274,7 +277,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (
-            "Electoral",
+            _("Electoral"),
             {
                 "fields": (
                     "federal_district",
@@ -285,11 +288,11 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                 )
             },
         ),
-        ("Relationships", {"fields": ("recruiter", "point_person")}),
-        ("Membership", {"fields": ("membership_number",)}),
-        ("Migration", {"fields": ("legacy_id",)}),
+        (_("Relationships"), {"fields": ("recruiter", "point_person")}),
+        (_("Membership"), {"fields": ("membership_number",)}),
+        (_("Migration"), {"fields": ("legacy_id",)}),
         (
-            "System",
+            _("System"),
             {
                 "fields": (
                     "is_staff",
@@ -300,7 +303,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                 )
             },
         ),
-        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+        (_("Timing"), {"fields": ("created_at", "updated_at")}),
     )
 
     add_fieldsets = (
@@ -329,6 +332,20 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     @admin.display(description=_("Email"), ordering="email")
     def partial_email(self, obj: Person) -> str:
         return obj.partial_email_address
+
+    @admin.display(description=_("Profile picture"))
+    def profile_picture(self, obj: Person) -> str:
+        if not obj.profile_picture_file:
+            return "-"
+        # onerror hides the image if its file has gone missing from the media
+        # storage, rather than showing a broken-image icon.
+        return format_html(
+            '<img src="{}" alt="{}" loading="lazy" '
+            "onerror=\"this.style.display='none'\" "
+            'style="max-width: 120px; max-height: 120px; border-radius: 4px;">',
+            obj.profile_picture_file.url,
+            _("Profile picture"),
+        )
 
     def action_checkbox(self, obj: Person):
         # The base implementation puts str(obj) — the full, unmasked email address

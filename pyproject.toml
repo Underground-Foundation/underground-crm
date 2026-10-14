@@ -44,7 +44,7 @@ dependencies = [
     # depends on it, so an older SDK would silently forward nothing to the log view.
     "sentry-sdk>=2.35",
     "smtp2go",
-    "stripe>=8.0",
+    "stripe>=15,<16",
     "wagtail>=6.0,<7.0",
     "django-taggit>=6.0",
     "django-simple-history",

@@ -31,6 +31,12 @@ class Donation(models.Model):
         help_text="URL of the donation page that generated this transaction.",
     )
     metadata = models.JSONField(default=dict, blank=True)
+    legacy_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="ID of the transaction in the previous CRM, if it was imported from there.",
+    )
 
     class Meta:
         ordering = ["-donated_at"]

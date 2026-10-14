@@ -129,6 +129,9 @@ Current commands:
   `export_legacy_private_notes`; otherwise fetches them directly from the legacy CRM using the
   same cookie-based auth as that command. Idempotent via `legacy_activity_id` deduplication.
 
+The donation migration commands live in `underground_payments/management/commands/` and are described
+in `docs/migrating_finances.md`.
+
 ## Mapping a People filter
 
 A saved `PeopleFilter` can be plotted in the Django admin as well as listed. Three admin

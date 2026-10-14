@@ -101,7 +101,7 @@ def create_payment_intent(request, page_pk: int):
     client = _stripe_client()
     try:
         if frequency == "once":
-            intent = client.payment_intents.create(
+            intent = client.v1.payment_intents.create(
                 params={
                     "amount": amount_cents,
                     "currency": _CURRENCY,
@@ -113,10 +113,10 @@ def create_payment_intent(request, page_pk: int):
             return JsonResponse({"client_secret": intent.client_secret, "type": "payment_intent"})
 
         interval = "month" if frequency == "monthly" else "year"
-        customer = client.customers.create(
+        customer = client.v1.customers.create(
             params={"email": email or None, "metadata": {"source": "payment_page"}}
         )
-        price = client.prices.create(
+        price = client.v1.prices.create(
             params={
                 "unit_amount": amount_cents,
                 "currency": _CURRENCY,
@@ -124,20 +124,22 @@ def create_payment_intent(request, page_pk: int):
                 "product_data": {"name": f"Recurring donation — {page.title}"},
             }
         )
-        subscription = client.subscriptions.create(
+        subscription = client.v1.subscriptions.create(
             params={
                 "customer": customer.id,
                 "items": [{"price": price.id}],
                 "payment_behavior": "default_incomplete",
                 "payment_settings": {"save_default_payment_method": "on_subscription"},
                 "metadata": metadata,
-                "expand": ["latest_invoice.payment_intent"],
+                "expand": ["latest_invoice.confirmation_secret"],
             }
         )
-        pi_secret = subscription.latest_invoice.payment_intent.client_secret
+        # Invoices no longer name their PaymentIntent; the confirmation secret is the
+        # client secret of the PaymentIntent that pays the first invoice.
+        client_secret = subscription.latest_invoice.confirmation_secret.client_secret
         return JsonResponse(
             {
-                "client_secret": pi_secret,
+                "client_secret": client_secret,
                 "type": "subscription",
                 "subscription_id": subscription.id,
             }
@@ -160,35 +162,41 @@ def stripe_webhook(request):
 
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-    except (ValueError, stripe.error.SignatureVerificationError):
+    except (ValueError, stripe.SignatureVerificationError):
         logger.warning("Invalid Stripe webhook signature.")
         return HttpResponse(status=400)
 
+    # Stripe objects are not dicts (since stripe-python 15), so absent fields are read
+    # with getattr and metadata is converted with to_dict().
     if event.type == "payment_intent.succeeded":
+        # One-off donations only: the PaymentIntent paying a subscription's invoice
+        # carries no metadata, so subscription payments arrive through invoice.paid.
         pi = event.data.object
-        meta = pi.get("metadata") or {}
-        if meta.get("page_id"):
+        metadata = pi.metadata.to_dict() if getattr(pi, "metadata", None) else {}
+        if metadata.get("page_id"):
             from django_q.tasks import async_task
 
             async_task(
                 "underground_payments.tasks.handle_successful_payment",
-                pi["id"],
-                pi["amount"],
-                dict(meta),
+                pi.id,
+                pi.amount,
+                metadata,
             )
 
     elif event.type == "invoice.paid":
+        # Every payment of a subscription, the first included. The task fetches the
+        # subscription for its page metadata.
         invoice = event.data.object
-        # Subscription renewals: fetch the subscription to get page metadata.
-        subscription_id = invoice.get("subscription")
-        pi_id = invoice.get("payment_intent")
-        amount_paid = invoice.get("amount_paid", 0)
-        if subscription_id and pi_id and amount_paid:
+        parent = getattr(invoice, "parent", None)
+        subscription_details = getattr(parent, "subscription_details", None)
+        subscription_id = getattr(subscription_details, "subscription", None)
+        amount_paid = getattr(invoice, "amount_paid", 0)
+        if subscription_id and amount_paid:
             from django_q.tasks import async_task
 
             async_task(
                 "underground_payments.tasks.handle_successful_subscription_renewal",
-                pi_id,
+                invoice.id,
                 amount_paid,
                 subscription_id,
             )

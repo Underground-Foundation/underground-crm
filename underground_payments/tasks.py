@@ -195,33 +195,57 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
 
 
 def handle_successful_subscription_renewal(
-    payment_intent_id: str, amount_cents: int, subscription_id: str
+    invoice_id: str, amount_cents: int, subscription_id: str
 ) -> None:
-    """Handle recurring subscription payments after the first."""
+    """
+    Record a payment of a subscription (the first included), triggered by a Stripe
+    invoice.paid webhook.
+
+    The Donation is keyed by the PaymentIntent that paid the invoice, which invoices no
+    longer name directly, so it is looked up among the invoice's payments.
+    """
     import stripe
     from django.conf import settings
 
     client = stripe.StripeClient(settings.STRIPE_SECRET_KEY)
     try:
-        subscription = client.subscriptions.retrieve(subscription_id)
-        metadata = dict(subscription.get("metadata") or {})
+        subscription = client.v1.subscriptions.retrieve(subscription_id)
+        invoice_payments = client.v1.invoice_payments.list(params={"invoice": invoice_id})
     except stripe.StripeError:
-        logger.exception("Could not retrieve subscription %s", subscription_id)
+        logger.exception(
+            "Could not retrieve subscription %s or the payments of invoice %s",
+            subscription_id,
+            invoice_id,
+        )
         return
 
+    metadata = subscription.metadata.to_dict() if subscription.metadata else {}
     if not metadata.get("page_id"):
+        return
+
+    payment_intent_ids = [
+        invoice_payment.payment.payment_intent
+        for invoice_payment in invoice_payments.data
+        if invoice_payment.status == "paid" and invoice_payment.payment.type == "payment_intent"
+    ]
+    if not payment_intent_ids:
+        logger.error(
+            "Invoice %s of subscription %s has no paid PaymentIntent; not recording it.",
+            invoice_id,
+            subscription_id,
+        )
         return
 
     # Determine frequency from the subscription interval.
     interval = "once"
     try:
-        interval_unit = subscription["items"]["data"][0]["price"]["recurring"]["interval"]
+        interval_unit = subscription["items"].data[0].price.recurring.interval
         interval = "monthly" if interval_unit == "month" else "annual"
-    except (KeyError, IndexError, TypeError):
+    except (AttributeError, KeyError, IndexError):
         pass
 
     metadata.setdefault("frequency", interval)
-    handle_successful_payment(payment_intent_id, amount_cents, metadata)
+    handle_successful_payment(payment_intent_ids[0], amount_cents, metadata)
 
 
 def _send_success_email(campaign, person) -> None:
