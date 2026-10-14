@@ -120,9 +120,12 @@ def me(request):
     data: dict = {
         "authenticated": True,
         "name": user.full_name,
-        "first_name": user.first_name,
-        "preferred_name": user.preferred_name,
-        "last_name": user.last_name,
+        # The name fields are nullable, but the islands that read them treat every one
+        # as a string (calling .trim() on it, say), so a missing name must reach them as
+        # an empty string rather than null.
+        "first_name": user.first_name or "",
+        "preferred_name": user.preferred_name or "",
+        "last_name": user.last_name or "",
         "email_address": user.email,
     }
 
@@ -145,8 +148,10 @@ def me(request):
         billing = user.billing_address
         data.update(
             {
-                "middle_name": user.middle_name,
-                "phone": str(user.mobile_number or user.phone_number),
+                "middle_name": user.middle_name or "",
+                # Without the trailing `or ""`, somebody with no number at all would be
+                # sent str(None), i.e. the word "None", to prefill the phone field with.
+                "phone": str(user.mobile_number or user.phone_number or ""),
                 "billing_address": UnverifiedAddressSerializer(billing).data if billing else None,
             }
         )
