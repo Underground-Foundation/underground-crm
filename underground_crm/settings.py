@@ -588,12 +588,22 @@ LOGGING = {
             "level": _LOG_LEVEL,
             "propagate": False,
         },
+        # Django only writes django.request (every 4xx and 5xx response) to the console
+        # when DEBUG is on, so without this a refused request leaves no trace in production.
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
         **{
             name: {"handlers": ["console"], "level": "WARNING", "propagate": False}
             for name in _NOISY_LOGGERS
         },
     },
 }
+
+# Logs why a request was refused for CSRF, then renders Django's usual 403 page.
+CSRF_FAILURE_VIEW = "underground_crm.csrf.logged_csrf_failure"
 
 LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
