@@ -764,3 +764,8 @@ UNDERGROUND_EMAIL_BUTTON_TEXT_COLORS = [
     ("#ffffff", "White"),
     ("#000000", "Black"),
 ]
+
+# This optional read-only integration is disabled unless both values are configured.
+# Use a dedicated random secret, never the Django secret or a staff API token.
+DISCORD_MEMBERSHIP_INTEGRATION_TOKEN = os.environ.get("DISCORD_MEMBERSHIP_INTEGRATION_TOKEN", "")
+DISCORD_MEMBERSHIP_TYPE_ID = os.environ.get("DISCORD_MEMBERSHIP_TYPE_ID", "")

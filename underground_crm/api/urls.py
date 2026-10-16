@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from django.urls import include, path
 
+from .discord_membership import discord_membership
 from .views import (
     AddressViewSet,
     DonationViewSet,
@@ -24,6 +25,11 @@ router.register("addresses", AddressViewSet, basename="address")
 router.register("memberships", MembershipViewSet, basename="membership")
 
 urlpatterns = [
+    path(
+        "integrations/discord/membership/<str:discord_id>/",
+        discord_membership,
+        name="discord-membership",
+    ),
     path("", include(router.urls)),
     path("me/", me, name="me"),
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
