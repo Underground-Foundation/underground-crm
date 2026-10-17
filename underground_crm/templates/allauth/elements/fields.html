@@ -1,0 +1,35 @@
+{% load underground_crm_forms %}
+{% comment %}
+Renders a django-allauth form with the same Bootstrap markup that
+underground_crm/auth/login_with_oauth_or_form.html writes by hand for the login form.
+{% endcomment %}
+{% if attrs.form.non_field_errors %}
+<div class="alert alert-danger" role="alert">
+  {% for error in attrs.form.non_field_errors %}
+    <p class="mb-0">{{ error }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+{% for field in attrs.form %}
+  {% if field.is_hidden %}
+    {{ field }}
+  {% elif field|is_checkbox %}
+    <div class="form-group">
+      <div class="custom-control custom-checkbox">
+        {{ field|bootstrap_widget }}
+        <label class="custom-control-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      </div>
+    </div>
+  {% else %}
+    <div class="form-group">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field|bootstrap_widget }}
+      {% for error in field.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+      {% if field.help_text %}
+        <small class="form-text">{{ field.help_text|safe }}</small>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endfor %}
