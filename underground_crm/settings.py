@@ -423,6 +423,11 @@ WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhos
 # through SMTP2Go — the domain must be registered there.
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "webmaster@localhost")
 
+# Mail sent with django.core.mail (such as allauth's password-reset messages) also goes
+# through SMTP2Go. Set EMAIL_BACKEND to "django.core.mail.backends.console.EmailBackend"
+# to print messages instead, in a development environment without an SMTP_KEY.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "underground_email.backends.SMTP2GoEmailBackend")
+
 # Allow users to query these tags in calls to /me (?has-tag=<slug>). Every
 # other tag on a Person is internal CRM data and is never exposed to them.
 SELF_QUERYABLE_TAGS = ["Newsletter", "Press releases"]
