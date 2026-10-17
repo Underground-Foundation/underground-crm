@@ -77,6 +77,20 @@ class DiscordMembershipTests(TestCase):
         with override_settings(DISCORD_MEMBERSHIP_TYPE_ID=str(uuid4())):
             self.assertEqual(self.lookup().status_code, 503)
 
+    def test_membership_type_created_after_a_failed_lookup_becomes_available(self) -> None:
+        not_yet_created_type_id = uuid4()
+        with override_settings(DISCORD_MEMBERSHIP_TYPE_ID=str(not_yet_created_type_id)):
+            self.assertEqual(self.lookup().status_code, 503)
+            self.membership.type = MembershipType.objects.create(
+                pk=not_yet_created_type_id, name="Founding membership"
+            )
+            self.membership.save()
+            self.assertEqual(
+                self.lookup().json(),
+                {"eligible": True},
+                "A failed configuration check must not be cached, or fixing it would need a restart",
+            )
+
     def test_short_token_configuration_is_unavailable(self) -> None:
         with override_settings(DISCORD_MEMBERSHIP_INTEGRATION_TOKEN="too-short"):
             self.assertEqual(self.lookup().status_code, 503)

@@ -1,12 +1,15 @@
 """Opt-in, minimal membership eligibility lookup for Discord integrations."""
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from allauth.socialaccount.models import SocialAccount
 from cachetools import cached
 from django.conf import settings
+from django.core.signals import setting_changed
 from django.db.models import Q
+from django.dispatch import receiver
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
@@ -18,42 +21,70 @@ from underground_crm.models import Membership, MembershipType
 logger = logging.getLogger(__name__)
 
 
+CONFIGURATION_SETTINGS = frozenset(
+    {"DISCORD_MEMBERSHIP_INTEGRATION_TOKEN", "DISCORD_MEMBERSHIP_TYPE_ID"}
+)
+
+
+class IntegrationUnavailable(Exception):
+    """The integration is disabled or misconfigured, so every lookup must fail closed."""
+
+    def __init__(self, public_error: str) -> None:
+        super().__init__(public_error)
+        self.public_error = public_error
+
+
 @cached({})
-def get_membership_configuration_or_error():
+def get_membership_configuration() -> tuple[str, UUID]:
+    """
+    Return the integration token and membership type, or raise IntegrationUnavailable.
+
+    Only a valid configuration is cached; cachetools does not cache exceptions, so a
+    misconfiguration that is later corrected (such as creating the membership type)
+    takes effect without a restart.
+    """
     token = getattr(settings, "DISCORD_MEMBERSHIP_INTEGRATION_TOKEN", "")
     if not token or not isinstance(token, str):
         logger.error(
             "No valid DISCORD_MEMBERSHIP_INTEGRATION_TOKEN is configured for validating this request"
         )
-        return None, None, JsonResponse({"error": "Unavailable"}, status=503)
+        raise IntegrationUnavailable("Unavailable")
     elif len(token) < 32:
         logger.warning(
             "This token for DISCORD_MEMBERSHIP_INTEGRATION_TOKEN is too short to be secure: %s",
             token,
         )
-        return None, None, JsonResponse({"error": "Misconfigured"}, status=503)
+        raise IntegrationUnavailable("Misconfigured")
     membership_type = getattr(settings, "DISCORD_MEMBERSHIP_TYPE_ID", "")
     if not membership_type:
         logger.error("No DISCORD_MEMBERSHIP_TYPE_ID is configured for checking this membership")
-        return None, None, JsonResponse({"error": "Unavailable"}, status=503)
+        raise IntegrationUnavailable("Unavailable")
     try:
         membership_type = UUID(str(membership_type))
     except (ValueError, TypeError, AttributeError):
         logger.error("The configured membership type %s is not a UUID", membership_type)
-        return None, None, JsonResponse({"error": "integration unavailable"}, status=503)
+        raise IntegrationUnavailable("integration unavailable")
     if not MembershipType.objects.filter(pk=membership_type).exists():
         logger.error("Membership type %s does not exist", membership_type)
-        return JsonResponse({"error": "integration unavailable"}, status=503)
-    return token, membership_type, None
+        raise IntegrationUnavailable("integration unavailable")
+    return token, membership_type
+
+
+@receiver(setting_changed)
+def clear_membership_configuration(*, setting: str, **kwargs: Any) -> None:
+    """Forget the cached configuration when a test overrides one of its settings."""
+    if setting in CONFIGURATION_SETTINGS:
+        get_membership_configuration.cache_clear()
 
 
 @never_cache
 @require_GET
 def discord_membership(request: HttpRequest, discord_id: str) -> JsonResponse:
     """Reveal only eligibility to a dedicated integration credential."""
-    token, membership_type, error = get_membership_configuration_or_error()
-    if error:
-        return error
+    try:
+        token, membership_type = get_membership_configuration()
+    except IntegrationUnavailable as unavailable:
+        return JsonResponse({"error": unavailable.public_error}, status=503)
 
     authorization = request.headers.get("Authorization", "")
     if not authorization or not constant_time_compare(authorization, f"Bearer {token}"):
