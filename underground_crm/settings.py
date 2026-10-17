@@ -432,6 +432,7 @@ EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "underground_email.backends.SMTP
 # other tag on a Person is internal CRM data and is never exposed to them.
 SELF_QUERYABLE_TAGS = ["Newsletter", "Press releases"]
 
+# The Wagtail site and Django site are two separate things
 WAGTAIL_SITE_NAME = "Underground CRM"
 
 REST_FRAMEWORK = {
