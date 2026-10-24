@@ -638,6 +638,29 @@ def build_feed_page(
     return page
 
 
+def extract_redirection_destination(document_soup: BeautifulSoup) -> Optional[str]:
+    """
+    The URL that a legacy redirection leads to. Fetching a redirection's URL follows
+    the redirect, so its saved HTML is that of the destination, which names its own
+    URL in its canonical link or, failing that, its og:url.
+
+    A redirection's "parent_slug" is no guide: it is only where the redirection sits
+    in the legacy page tree, which is often a folder of redirections.
+    """
+    canonical = document_soup.find("link", rel="canonical", href=True)
+    if canonical is not None:
+        return str(canonical["href"])
+    og_url = document_soup.find("meta", property="og:url", content=True)
+    if og_url is not None:
+        return str(og_url["content"])
+    return None
+
+
+def _strip_www(hostname: str) -> str:
+    hostname = hostname.lower()
+    return hostname[len("www.") :] if hostname.startswith("www.") else hostname
+
+
 def build_redirection(
     document_soup,
     importable_html,
@@ -646,13 +669,44 @@ def build_redirection(
     site: Site,
     return_class=Redirect,
     image_resolver: Optional[ImageResolver] = None,
-) -> Redirect:
-    destination = attributes.get("parent_slug")
-    try:
-        destination_page = Page.objects.get(slug=destination)
-    except Page.DoesNotExist:
-        logger.info(f"Cannot create redirection at {slug}: page {destination} does not exist")
+    legacy_domain: Optional[str] = None,
+) -> Optional[Redirect]:
+    """
+    A Redirect from the legacy redirection's path to its destination, or None when the
+    destination cannot be determined.
+
+    A destination on `legacy_domain` must already have been imported, and the
+    redirection points at that page. A destination elsewhere is kept as a link.
+    """
+    destination_url = extract_redirection_destination(document_soup)
+    if not destination_url:
+        logger.warning(f"Cannot create redirection at {slug}: its destination is unknown")
         return None
+    parsed_url = urlparse(destination_url)
+    destination_page = None
+    redirect_link = ""
+    if not parsed_url.hostname or (
+        legacy_domain and _strip_www(parsed_url.hostname) == _strip_www(legacy_domain)
+    ):
+        destination_slug = parsed_url.path.strip("/").split("/")[-1]
+        if destination_slug == slug:
+            logger.warning(
+                f"Cannot create redirection at {slug}: its saved HTML is its own page, "
+                "not that of its destination"
+            )
+            return None
+        destination_page = (
+            Page.objects.filter(slug=destination_slug).first()
+            if destination_slug
+            else site.root_page
+        )
+        if destination_page is None:
+            logger.warning(
+                f"Cannot create redirection at {slug}: page {destination_slug} does not exist"
+            )
+            return None
+    else:
+        redirect_link = destination_url
     return cast(
         Redirect,
         return_class(
@@ -664,7 +718,7 @@ def build_redirection(
             is_permanent=True,
             redirect_page=destination_page,
             redirect_page_route_path="",
-            redirect_link="",
+            redirect_link=redirect_link,
         ),
     )
 
@@ -1349,6 +1403,12 @@ class Command(BaseCommand):
         attributes = _load_page_attributes(json_path)
         return bool(attributes) and attributes.get("status") == "deleted"
 
+    def _is_redirection_on_file(self, domain_dir: Path, slug: str) -> bool:
+        json_path = domain_dir / f"{slug}.json"
+        if not json_path.exists():
+            return False
+        return is_redirection(_load_page_attributes(json_path) or {})
+
     def _get_attributes_for_continuation(self, json_path: Path) -> dict | None:
         attributes = _load_page_attributes(json_path)
         if attributes is None:
@@ -1461,6 +1521,12 @@ class Command(BaseCommand):
         if not html_files:
             logger.error(f"No .html files found in '{domain_dir}'.")
             return
+        # A redirection is generally placed beneath a folder of redirections, rather
+        # than beneath its destination, so it is imported after every page that it
+        # could lead to.
+        html_files = sorted(
+            html_files, key=lambda path: self._is_redirection_on_file(domain_dir, path.stem)
+        )
 
         for html_file in html_files:
             if _PAGINATED_FILE_STEM.match(html_file.stem):
@@ -1513,7 +1579,9 @@ class Command(BaseCommand):
                 is_replacing = root_page.slug == current_slug
             else:
                 if is_redirection(attributes):
-                    existing = Redirect.objects.filter(old_path=current_slug).first()
+                    existing = Redirect.objects.filter(
+                        old_path=Redirect.normalise_path(current_slug), site=site
+                    ).first()
                 else:
                     existing = Page.objects.filter(slug=current_slug).first()
 
@@ -1539,6 +1607,8 @@ class Command(BaseCommand):
             builder_extras = {"existing_intro": stub_intro} if stub_intro is not None else {}
             if image_resolver is not None:
                 builder_extras["image_resolver"] = image_resolver
+            if is_redirection(attributes):
+                builder_extras["legacy_domain"] = domain_dir.name
             new_page: UndergroundBasicPage = page_builder(
                 document_soup=document_soup,
                 importable_html=importable_html,
@@ -1547,6 +1617,10 @@ class Command(BaseCommand):
                 site=site,
                 **builder_extras,
             )
+            if new_page is None:
+                logger.warning(f"[skip] {current_slug} could not be built.")
+                self.counter.increment_skipped()
+                continue
             if replacing_root:
                 old_root = root_page
                 new_page = self._replace_root_page(site, old_root, new_page)

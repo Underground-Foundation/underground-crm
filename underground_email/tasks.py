@@ -126,7 +126,7 @@ def send_emails(campaign_utm_id: str) -> None:
     sender_str = f"{sender_person.full_name} <{sender_person.email}>"
 
     all_recipients = list(
-        recipients_qs.only("id", "email", "preferred_name," "first_name", "last_name")
+        recipients_qs.only("id", "email", "preferred_name", "first_name", "last_name")
     )
     sent_count = 0
 
