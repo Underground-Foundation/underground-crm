@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.admin import helpers
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Permission
-from django.db.models import Max
+from django.db.models import Exists, Max, OuterRef
 from simple_history.admin import SimpleHistoryAdmin
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -50,6 +50,24 @@ class SavedFilterListFilter(admin.SimpleListFilter):
         except PeopleFilter.DoesNotExist:
             return queryset
         return pf.apply(queryset)
+
+
+class HasMembershipListFilter(admin.SimpleListFilter):
+    """Narrows the Person changelist to people with, or without, any membership."""
+
+    title = _("has membership")
+    parameter_name = "has_membership"
+
+    def lookups(self, request, model_admin):
+        return [("yes", _("Yes")), ("no", _("No"))]
+
+    def queryset(self, request, queryset):
+        has_membership = Exists(Membership.objects.filter(person=OuterRef("pk")))
+        if self.value() == "yes":
+            return queryset.filter(has_membership)
+        if self.value() == "no":
+            return queryset.filter(~has_membership)
+        return queryset
 
 
 class PersonTagInline(admin.TabularInline):
@@ -163,6 +181,21 @@ class InteractionInline(CurrentUserAuthorMixin, admin.TabularInline):
         return super().get_queryset(request).select_related("person")
 
 
+class MembershipInline(admin.TabularInline):
+    model = Membership
+    extra = 0
+    fields = ["type", "started_at", "expires_on", "suspended_at"]
+    # MembershipTypeAdmin declares search_fields, so the type can use the
+    # autocomplete widget rather than a <select> evaluated for every row.
+    autocomplete_fields = ["type"]
+
+    def get_queryset(self, request):
+        # Membership.__str__ reads both person and type, which the tabular
+        # inline template renders per row; select_related avoids two queries
+        # per membership.
+        return super().get_queryset(request).select_related("person", "type")
+
+
 @admin.register(Person)
 class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     ordering = ["email"]
@@ -178,6 +211,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
     list_display_links = ["partial_email"]
     list_filter = [
         SavedFilterListFilter,
+        HasMembershipListFilter,
         "is_supporter",
         "is_donor",
         "email_opt_in",
@@ -197,6 +231,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
         PersonTagInline,
         PersonGroupInline,
         PersonPermissionInline,
+        MembershipInline,
         PersonNoteInline,
         InteractionInline,
     ]
