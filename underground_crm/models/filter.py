@@ -71,15 +71,21 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
     ],
 }
 
+# How a group combines its conditions: a person must match all of them, any of
+# them, or none of them.
+LOGIC_ALL = "AND"
+LOGIC_ANY = "OR"
+LOGIC_NONE = "NONE"
+
 
 class PeopleFilter(models.Model):
     """
-    A saved Person query, stored as a nested AND/OR tree.
+    A saved Person query, stored as a nested AND/OR/NONE tree.
 
     ``criteria`` is a JSON object of the form::
 
         {
-            "logic": "AND",          // "AND" | "OR"
+            "logic": "AND",          // "AND" | "OR" | "NONE"
             "rules": [
                 {"field": "gender", "operator": "exact", "value": "M"},
                 {
@@ -93,7 +99,9 @@ class PeopleFilter(models.Model):
         }
 
     Leaf nodes carry ``field``, ``operator``, and optionally ``value``.
-    Group nodes carry ``logic`` and ``rules``.
+    Group nodes carry ``logic`` and ``rules``. A "NONE" group matches the
+    people who match none of its rules, e.g. everyone except those who have
+    marked our emails as spam.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -105,7 +113,7 @@ class PeopleFilter(models.Model):
     )
     criteria = models.JSONField(
         default=dict,
-        help_text="Nested AND/OR rule tree built with the query builder.",
+        help_text="Nested AND/OR/NONE rule tree built with the query builder.",
     )
 
     class Meta:
@@ -155,7 +163,7 @@ class PeopleFilter(models.Model):
     # ------------------------------------------------------------------
 
     def _build_q(self, node: dict, seen: frozenset) -> Q:
-        logic = node.get("logic", "AND")
+        logic = node.get("logic", LOGIC_ALL)
         q_list: list[Q] = []
         for rule in node.get("rules", []):
             if "field" in rule:
@@ -163,10 +171,21 @@ class PeopleFilter(models.Model):
             elif "rules" in rule:
                 q_list.append(self._build_q(rule, seen))
         if not q_list:
+            # Matching all, any or none of no conditions excludes nobody.
             return Q()
         result = q_list[0]
         for q in q_list[1:]:
-            result = (result & q) if logic == "AND" else (result | q)
+            result = (result & q) if logic == LOGIC_ALL else (result | q)
+        if logic == LOGIC_NONE:
+            # Negating the combined Q directly would go wrong for many-valued
+            # relations such as tags__name, for the reason given under
+            # "not_exact" in _rule_to_q: it would negate a join row rather than
+            # the person. This excludes every person who matches any of the
+            # rules instead.
+            from .person import Person
+
+            matching_people = Person.objects.filter(result)
+            return ~Q(pk__in=matching_people.values("pk"))
         return result
 
     def _rule_to_q(self, rule: dict, seen: frozenset) -> Q:

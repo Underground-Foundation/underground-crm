@@ -121,13 +121,15 @@
     node = node || {};
     const group = el("div", isRoot ? "qb-group qb-root" : "qb-group qb-nested");
 
-    // Header: "Match [all|any] of the following:"
+    // Header: "Match [all|any|none] of the following:"
     const header = el("div", "qb-group-header");
     header.appendChild(document.createTextNode("Match "));
 
     const logicSel = el("select", "qb-logic");
-    logicSel.appendChild(opt("AND", "all", node.logic !== "OR"));
-    logicSel.appendChild(opt("OR", "any", node.logic === "OR"));
+    const logic = node.logic || "AND";
+    logicSel.appendChild(opt("AND", "all", logic === "AND"));
+    logicSel.appendChild(opt("OR", "any", logic === "OR"));
+    logicSel.appendChild(opt("NONE", "none", logic === "NONE"));
     header.appendChild(logicSel);
     header.appendChild(document.createTextNode(" of the following:"));
     group.appendChild(header);
