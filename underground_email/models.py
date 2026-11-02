@@ -142,7 +142,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
         default=default_site_id,
         on_delete=models.PROTECT,
         verbose_name=_("site"),
-        help_text=_("Links in this email, such as the one to unsubscribe, will lead to this site"),
+        help_text=_("This will be used when generating URLs in the email body"),
     )
     greeting = models.ForeignKey(
         TemplatedGreeting,
