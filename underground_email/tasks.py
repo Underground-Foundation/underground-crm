@@ -13,6 +13,7 @@ from django.template import Context, Template as DjangoTemplate
 from django.template.loader import render_to_string
 from django.utils import timezone
 from smtp2go.core import Smtp2goClient
+from wagtail.models import Site
 
 from underground_email import app_settings
 from underground_email.api import (
@@ -68,9 +69,10 @@ def _render_greeting(greeting_template: str, person) -> str:
     )
 
 
-def _render_email_html(campaign: EmailCampaign, person) -> str:
+def _render_email_html(campaign: EmailCampaign, person, site: Site) -> str:
     """Render the campaign's email template for a specific recipient."""
     from django.conf import settings
+    root_url = site.root_url.rstrip("/")
 
     return render_to_string(
         campaign.template,
@@ -82,14 +84,14 @@ def _render_email_html(campaign: EmailCampaign, person) -> str:
             "body": campaign.body,
             "signature": None if not campaign.sender else campaign.sender.signature,
             "preview_text": campaign.preview_text,
-            "unsubscription_url": make_unsubscription_url(person, campaign.utm_id),
+            "unsubscription_url": make_unsubscription_url(person, campaign.utm_id, root_url),
             "recipient_email": person.email,
-            "site_url": settings.WAGTAILADMIN_BASE_URL.rstrip("/"),
+            "site_url": root_url,
         },
     )
 
 
-def send_emails(campaign_utm_id: str) -> None:
+def send_emails(campaign_utm_id: str, site_id: int) -> None:
     """
     Upload the campaign template to SMTP2Go and dispatch personalised emails to
     all eligible recipients using the batch send endpoint. Recipients are
@@ -129,6 +131,7 @@ def send_emails(campaign_utm_id: str) -> None:
         recipients_qs.only("id", "email", "preferred_name", "first_name", "last_name")
     )
     sent_count = 0
+    site = Site.objects.get(id=site_id)
 
     for person in all_recipients:
         try:
@@ -136,7 +139,7 @@ def send_emails(campaign_utm_id: str) -> None:
                 sender=sender_str,
                 recipients=[f"{person.full_name} <{person.email}>"],
                 subject=campaign.subject,
-                html=_render_email_html(campaign, person),
+                html=_render_email_html(campaign, person, site=site),
             )
             if response.success:
                 sent_count += 1

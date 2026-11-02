@@ -44,11 +44,10 @@ def decode_unsubscription_token(token: str) -> tuple[str, str]:
     return data["e"], data["c"]
 
 
-def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str) -> str:
+def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, root_url: str) -> str:
     """Build the absolute unsubscribe URL to embed in an outgoing email."""
     signature = generate_unsubscription_signature(email_address=person.email, utm_id=utm_id)
-    base = settings.WAGTAILADMIN_BASE_URL.rstrip("/")
-    return f"{base}/unsubscribe?utm_campaign={utm_id}&address={signature}"
+    return f"{root_url}/unsubscribe?utm_campaign={utm_id}&address={signature}"
 
 
 def unsubscribe_from_tag_via_email_campaign(
