@@ -9,7 +9,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from wagtail.admin.panels import FieldPanel, HelpPanel, MultiFieldPanel, ObjectList, TabbedInterface
 from wagtail.fields import RichTextField, StreamField
-from wagtail.models import PreviewableMixin
+from wagtail.models import PreviewableMixin, Site
 from wagtail.rich_text import expand_db_html
 
 from underground_crm.models import PeopleFilter
@@ -111,6 +111,10 @@ def generate_base64_id() -> str:
     return secrets.token_urlsafe(7)  # Produces a 10-character URL-safe string
 
 
+def default_site_id() -> Optional[int]:
+    return Site.objects.filter(is_default_site=True).values_list("pk", flat=True).first()
+
+
 class EmailCampaign(PreviewableMixin, models.Model):
     # https://en.wikipedia.org/wiki/UTM_parameters
     utm_id = models.CharField(
@@ -133,6 +137,13 @@ class EmailCampaign(PreviewableMixin, models.Model):
         help_text=_("Short summary shown by email clients after the subject line"),
     )
     sender = models.ForeignKey(EmailSender, verbose_name=_("sender"), on_delete=models.PROTECT)
+    site = models.ForeignKey(
+        Site,
+        default=default_site_id,
+        on_delete=models.PROTECT,
+        verbose_name=_("site"),
+        help_text=_("This will be used when generating URLs in the email body"),
+    )
     greeting = models.ForeignKey(
         TemplatedGreeting,
         null=True,
@@ -223,6 +234,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
                 ObjectList(
                     [
                         FieldPanel("sender"),
+                        FieldPanel("site"),
                         FieldPanel("people_filter"),
                         FieldPanel("state", read_only=True),
                         FieldPanel("sending_date"),

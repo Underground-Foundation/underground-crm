@@ -70,7 +70,7 @@ def _render_greeting(greeting_template: str, person) -> str:
 
 def _render_email_html(campaign: EmailCampaign, person) -> str:
     """Render the campaign's email template for a specific recipient."""
-    from django.conf import settings
+    root_url = campaign.site.root_url.rstrip("/")
 
     return render_to_string(
         campaign.template,
@@ -82,9 +82,9 @@ def _render_email_html(campaign: EmailCampaign, person) -> str:
             "body": campaign.body,
             "signature": None if not campaign.sender else campaign.sender.signature,
             "preview_text": campaign.preview_text,
-            "unsubscription_url": make_unsubscription_url(person, campaign.utm_id),
+            "unsubscription_url": make_unsubscription_url(person, campaign.utm_id, root_url),
             "recipient_email": person.email,
-            "site_url": settings.WAGTAILADMIN_BASE_URL.rstrip("/"),
+            "site_url": root_url,
         },
     )
 
@@ -97,13 +97,16 @@ def send_emails(campaign_utm_id: str) -> None:
 
     After all batches are dispatched, a results-check task is scheduled to run
     24 hours later.
+
+    Notice that this function is invoked through ScheduleEmailCampaignAction in
+    wagtail_hooks.py
     """
     from .models import EmailCampaign
 
     logger.info("send_emails started for campaign %s.", campaign_utm_id)
 
     campaign = EmailCampaign.objects.select_related(
-        "sender__sender", "greeting", "people_filter"
+        "sender__sender", "greeting", "people_filter", "site"
     ).get(utm_id=campaign_utm_id)
 
     recipients_qs = campaign.get_potential_recipients()
