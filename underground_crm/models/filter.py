@@ -10,7 +10,7 @@ from django.utils.translation import gettext_lazy as _
 
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
-# field_type must be one of: "text", "boolean", "integer", "filter".
+# field_type must be one of: "text", "boolean", "integer", "date", "filter".
 PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("first_name", "First name", "text"),
     ("last_name", "Last name", "text"),
@@ -31,7 +31,9 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("is_donor", "Is donor", "boolean"),
     ("is_fundraiser", "Is fundraiser", "boolean"),
     ("is_deceased", "Is deceased", "boolean"),
+    ("is_active", "Is active", "boolean"),
     ("email_opt_in", "Email opt-in", "boolean"),
+    ("unsubscribed_at", "Unsubscribed at", "date"),
     ("do_not_call", "Do not call", "boolean"),
     ("do_not_contact", "Do not contact", "boolean"),
     ("support_level", "Support level", "integer"),
@@ -66,9 +68,22 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
         ("lt", "less than", True),
         ("isnull", "is not set", False),
     ],
+    # Date values are entered as YYYY-MM-DD. The field may hold a full
+    # timestamp, so "before" and "after" compare the date it falls on in the
+    # site's time zone, and both exclude the given date itself.
+    "date": [
+        ("isnull", "is not set", False),
+        ("not_isnull", "is set", False),
+        ("date__lt", "is before", True),
+        ("date__gt", "is after", True),
+    ],
     "filter": [
         ("matches", "matches", True),
     ],
+}
+
+FIELD_TYPES: dict[str, str] = {
+    field_path: field_type for field_path, _label, field_type in PERSON_FILTER_FIELDS
 }
 
 # How a group combines its conditions: a person must match all of them, any of
@@ -205,9 +220,19 @@ class PeopleFilter(models.Model):
             sub_qs = sub_filter.apply(Person.objects.all(), _seen=seen)
             return Q(pk__in=sub_qs)
 
+        is_text = FIELD_TYPES.get(field) == "text"
         if op == "isnull":
-            return Q(**{f"{field}__isnull": True})
+            empty = Q(**{f"{field}__isnull": True})
+            if is_text:
+                # Text fields such as email are usually stored as "" rather
+                # than NULL when blank, and both should read as "is empty".
+                empty |= Q(**{field: ""})
+            return empty
         if op == "not_isnull":
+            if is_text:
+                # Every non-empty string sorts after "", and NULL compares as
+                # neither, so this excludes both kinds of blank.
+                return Q(**{f"{field}__gt": ""})
             return Q(**{f"{field}__isnull": False})
         if op == "true":
             return Q(**{field: True})

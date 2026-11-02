@@ -90,6 +90,8 @@
       } else {
         const ops = operators[fieldType] || operators["text"] || [];
         const selOp = ops.find(function (op) { return op.id === opSel.value; });
+        // Date fields get the browser's date picker, which submits YYYY-MM-DD.
+        valueInput.type = (fieldType === "date") ? "date" : "text";
         valueInput.style.display = (selOp && !selOp.has_value) ? "none" : "";
         filterSelect.style.display = "none";
       }
