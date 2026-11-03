@@ -53,15 +53,6 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
     def _matched_emails(self, people_filter: PeopleFilter) -> set[str]:
         return set(people_filter.apply(Person.objects.all()).values_list("email", flat=True))
 
-    def test_placeholder_suffix_matches_the_csv_import(self):
-        self.assertEqual(
-            seed_migration._PLACEHOLDER_EMAIL_SUFFIX,
-            import_people_csv._PLACEHOLDER_EMAIL_SUFFIX,
-            "The migration keeps its own copy of the suffix the CSV import gives to "
-            "people without an email address; the two must agree, or the filter "
-            "would let those placeholder addresses through.",
-        )
-
     def test_emailable_addresses(self):
         self.assertEqual(
             self._matched_emails(self.emailable_addresses),

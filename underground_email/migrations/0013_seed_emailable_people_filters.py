@@ -1,10 +1,8 @@
 from django.db import migrations
 
-# Copied from underground_crm/management/commands/import_people_csv.py rather than
-# imported, so this migration keeps working however that command changes. The CSV
-# import gives this suffix to the synthetic address of anybody who had no email
-# address, and nothing sent there can be delivered.
-_PLACEHOLDER_EMAIL_SUFFIX = "@import.invalid"
+# The CSV import gives this suffix to the synthetic address of anybody who had no
+# email address, and nothing sent there can be delivered.
+from underground_crm.management.commands.import_people_csv import _PLACEHOLDER_EMAIL_SUFFIX
 
 EMAILABLE_ADDRESSES_FILTER_NAME = "Emailable addresses"
 EMAILABLE_LIVING_PEOPLE_FILTER_NAME = "Emailable living people"
