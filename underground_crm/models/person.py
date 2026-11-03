@@ -315,7 +315,14 @@ class Person(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Unsubscribed at"),
         help_text=_("When the person unsubscribed from all emails."),
     )
-    is_supporter = models.BooleanField(default=False, verbose_name=_("Is a supporter"))
+    is_supporter = models.BooleanField(
+        default=True,
+        verbose_name=_("Is a supporter"),
+        help_text=_(
+            "Supporters are not necessarily members, but they are interested observers of "
+            "our movement"
+        ),
+    )
     support_level = models.SmallIntegerField(
         null=True,
         blank=True,

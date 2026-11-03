@@ -19,7 +19,8 @@ class SignupForm(forms.ModelForm):
     class Meta:
         model = Person
         # Avoid having too many fields here, so that we don't push the OAuth methods too far down
-        fields = ["email", "preferred_name", "last_name"]
+        fields = ["email", "preferred_name", "last_name", "is_supporter"]
+        labels = {"is_supporter": _("I am a supporter")}
 
     def clean(self):
         cleaned = super().clean()

@@ -891,6 +891,36 @@ class PhoneNumberQuestionTest(RegistrationFormTestMixin, django.test.TestCase):
         )
 
 
+class SupporterCheckboxTest(RegistrationFormTestMixin, django.test.TestCase):
+    def setUp(self) -> None:
+        self.factory = RequestFactory()
+        self.page = RegistrationPage(title="Join the movement", slug="join-the-movement")
+        self.page.body = [("person_field", {"field": "is_supporter", "label_override": ""})]
+        Page.objects.get(id=1).add_child(instance=self.page)
+
+    def _checkbox_is_ticked(self, user: Any = None) -> bool:
+        form = self._form(user=user)
+        return form[_field_name(self._block("is_supporter"))].value()
+
+    def test_ticked_for_a_visitor_without_a_record(self) -> None:
+        self.assertIs(self._checkbox_is_ticked(), True)
+
+    def test_logged_in_visitor_sees_their_stored_answer(self) -> None:
+        for is_supporter in (True, False):
+            with self.subTest(is_supporter=is_supporter):
+                member = Person.objects.create_user(
+                    email=f"priya.sharma+{is_supporter}@example.com",
+                    password="correct-horse-battery",
+                    is_supporter=is_supporter,
+                )
+                self.assertIs(
+                    self._checkbox_is_ticked(user=member),
+                    is_supporter,
+                    "A stored False may record an unsubscription or a spam report, so "
+                    "the form must not offer to overturn it by default.",
+                )
+
+
 class RegistrationPageResponseTest(django.test.TestCase):
     """Fetching the page through the full request cycle, under the default
     Site's root so that it has a URL: without one, _calculated_cache_time would
