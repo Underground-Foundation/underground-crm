@@ -10,6 +10,13 @@
 {% block memberships %}
   {% if user.is_authenticated %}
     {% include "underground_crm/includes/memberships.html" with memberships=user.memberships.all %}
+  {% else %}
+    <section class="alert alert-info my-4" aria-label="{% trans 'Log in or sign up' %}">
+      <p>{% trans "Your existing answers are missing because you are not logged in." %}</p>
+      <p>{% trans "Please log in or sign up" %}</p>
+      <a class="btn btn-primary mr-2" href="{% url 'underground_crm:login' %}?next={{ request.path|urlencode }}">{% trans "Log in" %}</a>
+      <a class="btn btn-outline-primary" href="{% url 'underground_crm:signup' %}?next={{ request.path|urlencode }}">{% trans "Sign up" %}</a>
+    </section>
   {% endif %}
 {% endblock %}
 

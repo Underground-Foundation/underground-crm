@@ -151,6 +151,38 @@ python manage.py test -v 3 --keepdb underground_crm.test underground_email.test 
 The tests use SQLite and do not require the Docker services to be running. `--keepdb` avoids recreating the test 
 database on each run, which makes subsequent runs faster.
 
+### Translations
+
+User-facing strings are collected into `underground_crm/locale/en/LC_MESSAGES/django.po`.
+After adding or changing one, regenerate the catalog and compile it. Both files are
+committed, because the site displays the compiled `django.mo`. These commands need GNU
+gettext (`sudo apt-get install gettext`).
+
+```shell
+# Run from inside the app directory, not from the repository root
+cd underground_crm
+python ../manage.py makemessages -l en
+cd ..
+bash compile_translations.sh
+```
+
+- **Working directory:** `makemessages` scans the directory it is run from and stores the
+  catalog in that directory's `locale/`. If it were run in the repository root, it would scan
+  `build/` and `data/`, then fail.
+- **`-l en`:** this names the locale, and it is required.
+- **Do not pass `--no-obsolete`:** it deletes any commented-out entries instead of leaving
+  them in the file.
+
+Afterwards, check the catalog for entries marked `#, fuzzy`, which `makemessages` creates
+when a new string resembles an existing one. It copies across the msgstr of the similar
+string, which might not be correct. To correct a fuzzy entry, delete the `#, fuzzy` 
+and `#|` lines and either correct the msgstr or empty it. An empty msgstr displays the msgid as written.
+
+To reword a message that comes from Django or allauth, add it to
+`underground_crm/third_party_message_overrides.py` and then write the new wording as its
+msgstr. `makemessages` does not scan installed packages, so it comments out (`#~`) any
+entry for a string that is not listed in that file, and the original wording returns.
+
 ### Backing up the remote database
 
 `backup_remote_postgresql.sh` writes a backup of the remote PostgreSQL database to a

@@ -5,6 +5,7 @@ import django.test
 import dns.resolver
 import phonenumbers
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from email_validator import EmailUndeliverableError, EmailSyntaxError
 
 from underground_crm.contactability import (
@@ -19,6 +20,7 @@ from underground_crm.contactability import (
     recover_landline_with_missing_area_code,
     validate_domain_name,
     validate_email_with_deliverability,
+    validate_person_email,
 )
 
 
@@ -52,6 +54,25 @@ class EmailValidationTest(unittest.TestCase):
         except EmailUndeliverableError as e:
             thrown = True
         self.assertTrue(thrown)
+
+    def test_person_email_validator_accepts_a_deliverable_address(self):
+        validate_person_email("contact@fusionparty.org.au")
+
+    def test_person_email_validator_reports_failures_as_validation_errors(self):
+        # Forms only catch ValidationError, so each kind of failure that
+        # validate_email_with_deliverability raises must arrive as one.
+        failures = {
+            "malformed": ("fusionparty.org.au", "invalid"),
+            "undeliverable": (
+                "hello@sssssssssssssssssssssssssssssssssstteaaaaaaaapddddddddddddddddd.com.au",
+                "undeliverable",
+            ),
+        }
+        for description, (email_address, expected_code) in failures.items():
+            with self.subTest(description):
+                with self.assertRaises(ValidationError) as caught:
+                    validate_person_email(email_address)
+                self.assertEqual(caught.exception.code, expected_code)
 
     def test_get_validated_email_address_returns_address_when_valid(self):
         result = get_validated_email_address("contact@fusionparty.org.au")

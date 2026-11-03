@@ -6,8 +6,9 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, override_settings
+from django.urls import reverse
 from django.utils import timezone
-from wagtail.models import Page
+from wagtail.models import Page, Site
 
 from underground_crm.blocks import registration_person_field_names
 from underground_crm.forms.form_submission import _field_name
@@ -19,7 +20,7 @@ from underground_crm.forms.registration import (
 from underground_crm.models.address import Address
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership, MembershipType
-from underground_crm.models.pages import RegistrationPage, RegistrationPageTag
+from underground_crm.models.pages import PageWithMetadata, RegistrationPage, RegistrationPageTag
 from underground_crm.models.person import Tag
 from underground_crm.widgets import ADDRESS_COMPONENTS
 
@@ -887,4 +888,68 @@ class PhoneNumberQuestionTest(RegistrationFormTestMixin, django.test.TestCase):
             MOBILE_NUMBER,
             "Skipping the phone question means no answer, not a request to "
             "delete the number on file.",
+        )
+
+
+class RegistrationPageResponseTest(django.test.TestCase):
+    """Fetching the page through the full request cycle, under the default
+    Site's root so that it has a URL: without one, _calculated_cache_time would
+    return 0 for every page type and the caching assertions would prove nothing."""
+
+    # An editor's explicit choice, which is arbitrary but distinct from the
+    # library's DEFAULT_CACHE_TTL so that the assertion can only pass by reading it.
+    EDITOR_CACHE_TTL = PageWithMetadata.DEFAULT_CACHE_TTL + 60
+
+    def setUp(self) -> None:
+        self.page = RegistrationPage(title="Become a member", slug="become-a-member")
+        Site.objects.get(is_default_site=True).root_page.add_child(instance=self.page)
+        self.login_url = reverse("underground_crm:login")
+        self.signup_url = reverse("underground_crm:signup")
+
+    def test_response_is_not_cached_by_default(self) -> None:
+        response = self.client.get(self.page.url)
+
+        self.assertEqual(self.page.cache_time, 0)
+        self.assertIn(
+            "no-store",
+            response["Cache-Control"],
+            "The page is personalized, so a shared cache must never keep a copy of it.",
+        )
+
+    def test_editor_can_override_the_default_cache_time(self) -> None:
+        self.page.cache_ttl_override = self.EDITOR_CACHE_TTL
+        self.page.save()
+
+        response = self.client.get(self.page.url)
+
+        self.assertIn(f"max-age={self.EDITOR_CACHE_TTL}", response["Cache-Control"])
+
+    def test_anonymous_visitor_is_prompted_to_log_in_or_sign_up(self) -> None:
+        response = self.client.get(self.page.url)
+
+        self.assertContains(
+            response, "Your existing answers are missing because you are not logged in."
+        )
+        self.assertContains(
+            response,
+            f'href="{self.login_url}?next={self.page.url}"',
+            msg_prefix="Logging in should bring the visitor back to this page's answers.",
+        )
+        self.assertContains(
+            response,
+            f'href="{self.signup_url}?next={self.page.url}"',
+            msg_prefix="Signing up should bring the visitor back to this page's questions.",
+        )
+
+    def test_logged_in_visitor_is_not_prompted(self) -> None:
+        member = Person.objects.create_user(
+            email="priya.sharma@example.com",
+            password="correct-horse-battery",
+        )
+        self.client.force_login(member)
+
+        response = self.client.get(self.page.url)
+
+        self.assertNotContains(
+            response, "Your existing answers are missing because you are not logged in."
         )

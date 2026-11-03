@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-15 12:59+1000\n"
+"POT-Creation-Date: 2026-11-03 14:12+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -12,7 +12,94 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: admin.py:461 templates/admin/underground_crm/peoplefilter/map.html:4
+#: admin.py:58
+msgid "has membership"
+msgstr ""
+
+#: admin.py:62 templates/admin/underground_crm/peoplefilter/evaluate.html:57
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:58
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:59
+msgid "Yes"
+msgstr ""
+
+#: admin.py:62 templates/admin/underground_crm/peoplefilter/evaluate.html:57
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:58
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:59
+msgid "No"
+msgstr ""
+
+#: admin.py:242 models/form_submission.py:117
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:33
+msgid "Name"
+msgstr ""
+
+#: admin.py:256
+msgid "Contact"
+msgstr ""
+
+#: admin.py:270 forms/registration.py:321 models/pages.py:425
+msgid "Address"
+msgstr ""
+
+#: admin.py:272
+msgid "Biographical"
+msgstr ""
+
+#: admin.py:276
+msgid "Engagement"
+msgstr ""
+
+#: admin.py:291 templates/admin/underground_crm/peoplefilter/evaluate.html:36
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:101
+msgid "Donations"
+msgstr ""
+
+#: admin.py:304
+msgid "Preferences"
+msgstr ""
+
+#: admin.py:315
+msgid "Electoral"
+msgstr ""
+
+#: admin.py:326
+msgid "Relationships"
+msgstr ""
+
+#: admin.py:327 models/pages.py:626
+msgid "Membership"
+msgstr ""
+
+#: admin.py:328
+msgid "Migration"
+msgstr ""
+
+#: admin.py:330
+msgid "System"
+msgstr ""
+
+#: admin.py:341
+msgid "Timing"
+msgstr ""
+
+#: admin.py:363
+msgid "Last interaction"
+msgstr ""
+
+#: admin.py:367 models/pages.py:424
+#: templates/admin/underground_crm/peoplefilter/evaluate.html:34
+msgid "Email"
+msgstr ""
+
+#: admin.py:371 admin.py:382 models/person.py:188
+msgid "Profile picture"
+msgstr ""
+
+#: admin.py:396
+msgid "Select this object for an action - {}"
+msgstr ""
+
+#: admin.py:601 templates/admin/underground_crm/peoplefilter/map.html:4
 #, python-format
 msgid "Map: %(filter_name)s"
 msgstr ""
@@ -33,8 +120,18 @@ msgstr ""
 msgid "Shown to the visitor instead of the field's default label."
 msgstr ""
 
-#: blocks.py:283 models/pages.py:344
+#: blocks.py:283 models/pages.py:407
 msgid "Form inputs"
+msgstr ""
+
+#: contactability.py:22
+msgid ""
+"The domain of this email address does not accept email. Please check it for "
+"typos."
+msgstr ""
+
+#: contactability.py:24 views/subscribe.py:111
+msgid "Please enter a valid email address."
 msgstr ""
 
 #: feeds.py:75
@@ -47,49 +144,48 @@ msgstr ""
 msgid "Venue: %(venue)s."
 msgstr ""
 
-#: forms/event_guest.py:21 models/pages.py:987
+#: forms/auth.py:58
+msgid "Invalid email address or password."
+msgstr ""
+
+#: forms/auth.py:60
+msgid "This account has been deactivated."
+msgstr ""
+
+#: forms/event_guest.py:21 models/pages.py:1106
 msgid "How many guests will be accompanying you?"
 msgstr ""
 
-#: forms/form_submission.py:64
+#: forms/form_submission.py:83
 msgid ""
 "An account already exists for this email address. Please log in to continue."
 msgstr ""
 
-#: forms/form_submission.py:122 models/form_submission.py:26
-#: models/person.py:82
+#: forms/form_submission.py:147 models/form_submission.py:26
+#: models/person.py:86
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:17
-#, fuzzy
-#| msgid "Enter a valid email address."
 msgid "Email address"
-msgstr "Please enter a valid email address."
+msgstr ""
 
-#: forms/form_submission.py:128
+#: forms/form_submission.py:153
 msgid "First name"
 msgstr ""
 
-#: forms/form_submission.py:134 models/person.py:106
+#: forms/form_submission.py:159 models/person.py:117
 msgid "Last name"
 msgstr ""
 
-#: forms/form_submission.py:187 forms/registration.py:357 views/subscribe.py:78
-#, fuzzy
-#| msgid "This field is required."
+#: forms/form_submission.py:212 forms/registration.py:357
+#: views/subscribe.py:107
 msgid "Email address is required."
-msgstr "Please fill in this field."
+msgstr ""
 
-#: forms/registration.py:252 models/person.py:130
-#, fuzzy
-#| msgid "Enter a number."
+#: forms/registration.py:252 models/person.py:144
 msgid "Phone number"
-msgstr "Please enter a number."
+msgstr ""
 
 #: forms/registration.py:253
 msgid "A mobile or a landline number."
-msgstr ""
-
-#: forms/registration.py:321 models/pages.py:362
-msgid "Address"
 msgstr ""
 
 #: forms/registration.py:364
@@ -197,12 +293,12 @@ msgstr ""
 msgid "feed subscriptions"
 msgstr ""
 
-#: models/filter.py:147
+#: models/filter.py:155
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:11
 msgid "Evaluate"
 msgstr ""
 
-#: models/filter.py:151
+#: models/filter.py:159
 #: templates/admin/underground_crm/peoplefilter/map.html:11
 msgid "Map"
 msgstr ""
@@ -215,7 +311,7 @@ msgstr ""
 msgid "Only required for unauthenticated submissions."
 msgstr ""
 
-#: models/form_submission.py:41 models/membership.py:28 models/person.py:69
+#: models/form_submission.py:41 models/membership.py:28 models/person.py:73
 msgid "Person"
 msgstr ""
 
@@ -231,7 +327,7 @@ msgstr ""
 msgid "Only recorded for unauthenticated submissions."
 msgstr ""
 
-#: models/form_submission.py:54 models/person.py:256
+#: models/form_submission.py:54 models/person.py:274
 msgid "Language preferences"
 msgstr ""
 
@@ -275,11 +371,6 @@ msgstr ""
 msgid "UUID of the input block within the page body's StreamField."
 msgstr ""
 
-#: models/form_submission.py:117
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:33
-msgid "Name"
-msgstr ""
-
 #: models/form_submission.py:118
 msgid "The input block's type name at submission time, e.g. \"checkbox\"."
 msgstr ""
@@ -308,7 +399,7 @@ msgstr ""
 msgid "Submitted fields"
 msgstr ""
 
-#: models/membership.py:24 models/person.py:78
+#: models/membership.py:24 models/person.py:82
 msgid "id"
 msgstr ""
 
@@ -328,231 +419,235 @@ msgstr ""
 msgid "Suspension date"
 msgstr ""
 
-#: models/pages.py:100
+#: models/pages.py:67
+msgid "Full width"
+msgstr ""
+
+#: models/pages.py:68
+msgid "Left aligned"
+msgstr ""
+
+#: models/pages.py:69
+msgid "Right aligned"
+msgstr ""
+
+#: models/pages.py:70
+msgid "Half width"
+msgstr ""
+
+#: models/pages.py:115
 msgid "Search image"
 msgstr ""
 
-#: models/pages.py:111
+#: models/pages.py:126
 msgid "Open Graph type override"
 msgstr ""
 
-#: models/pages.py:113
+#: models/pages.py:128
 msgid ""
 "Override the 'og:type' meta value (see https://ogp.me/#types for valid "
 "values). Leave blank to use this page type's default."
 msgstr ""
 
-#: models/pages.py:125
+#: models/pages.py:140
 msgid "Cache TTL override (seconds)"
 msgstr ""
 
-#: models/pages.py:127
+#: models/pages.py:142
 msgid ""
 "Override the automatically calculated cache duration in seconds. Setting "
 "this to 0 will disable caching entirely. Leave blank to use the calculated "
 "value."
 msgstr ""
 
-#: models/pages.py:218
+#: models/pages.py:233
 msgid "Publication time"
 msgstr ""
 
-#: models/pages.py:219
+#: models/pages.py:234
 msgid "Expiration time"
 msgstr ""
 
-#: models/pages.py:221
+#: models/pages.py:236
 msgid "Calculated cache time (seconds)"
 msgstr ""
 
-#: models/pages.py:245
+#: models/pages.py:262
 msgid "Rich Text"
 msgstr ""
 
-#: models/pages.py:251
+#: models/pages.py:268
 msgid "Raw HTML"
 msgstr ""
 
-#: models/pages.py:253
+#: models/pages.py:270
 msgid ""
 "Paste raw HTML directly. Useful for migrating existing content or embedding "
 "custom markup."
 msgstr ""
 
-#: models/pages.py:268
-msgid "Full width"
-msgstr ""
-
-#: models/pages.py:269
-msgid "Left aligned"
-msgstr ""
-
-#: models/pages.py:270
-msgid "Right aligned"
-msgstr ""
-
-#: models/pages.py:271
-msgid "Half width"
-msgstr ""
-
-#: models/pages.py:278
+#: models/pages.py:290
 msgid "Image"
 msgstr ""
 
-#: models/pages.py:282
+#: models/pages.py:294
 msgid "Blockquote"
 msgstr ""
 
-#: models/pages.py:314 models/pages.py:488 models/pages.py:582
-#: models/pages.py:639 models/pages.py:781
+#: models/pages.py:321
+msgid "Show slug as breadcrumb"
+msgstr ""
+
+#: models/pages.py:323
+msgid ""
+"If disabled (the default), the pages beneath this one are addressed directly "
+"beneath this page's own parent, so their URLs omit this page's slug — the "
+"way the legacy CMS lays out its pages. If enabled, their URLs are nested "
+"beneath this page's own URL as usual."
+msgstr ""
+
+#: models/pages.py:341 models/pages.py:551 models/pages.py:645
+#: models/pages.py:709 models/pages.py:853 models/pages.py:979
+#: models/pages.py:1040
 msgid "Content"
 msgstr ""
 
-#: models/pages.py:315 models/pages.py:489 models/pages.py:583
-#: models/pages.py:640 models/pages.py:782
+#: models/pages.py:342 models/pages.py:552 models/pages.py:646
+#: models/pages.py:710 models/pages.py:854 models/pages.py:980
+#: models/pages.py:1041
 msgid "Metadata"
 msgstr ""
 
-#: models/pages.py:316 models/pages.py:490 models/pages.py:584
-#: models/pages.py:641 models/pages.py:783
+#: models/pages.py:343 models/pages.py:553 models/pages.py:647
+#: models/pages.py:711 models/pages.py:855 models/pages.py:981
+#: models/pages.py:1042
 msgid "Visibility"
 msgstr ""
 
-#: models/pages.py:321 models/pages.py:646
+#: models/pages.py:348 models/pages.py:716
 msgid "Basic Page"
 msgstr ""
 
-#: models/pages.py:358
+#: models/pages.py:421
 msgid "Checkbox"
 msgstr ""
 
-#: models/pages.py:359
+#: models/pages.py:422
 msgid "Text"
 msgstr ""
 
-#: models/pages.py:360
+#: models/pages.py:423
 msgid "Multi-line text"
 msgstr ""
 
-#: models/pages.py:361
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:34
-msgid "Email"
-msgstr ""
-
-#: models/pages.py:363
+#: models/pages.py:426
 msgid "Integer"
 msgstr ""
 
-#: models/pages.py:364
+#: models/pages.py:427
 msgid "Decimal"
 msgstr ""
 
-#: models/pages.py:365
+#: models/pages.py:428
 msgid "Float"
 msgstr ""
 
-#: models/pages.py:366
+#: models/pages.py:429
 msgid "URL"
 msgstr ""
 
-#: models/pages.py:367
+#: models/pages.py:430
 msgid "Date"
 msgstr ""
 
-#: models/pages.py:368
+#: models/pages.py:431
 msgid "Time"
 msgstr ""
 
-#: models/pages.py:369
-#, fuzzy
-#| msgid "Enter a valid time."
+#: models/pages.py:432
 msgid "Date and time"
-msgstr "Please enter a valid time."
+msgstr ""
 
-#: models/pages.py:477
+#: models/pages.py:540
 msgid "Tags to apply on submission"
 msgstr ""
 
-#: models/pages.py:478
+#: models/pages.py:541
 msgid ""
 "Applied to the submitting Person's record. Authenticated submissions only."
 msgstr ""
 
-#: models/pages.py:495
+#: models/pages.py:558
 msgid "Form Page"
 msgstr ""
 
-#: models/pages.py:558
+#: models/pages.py:621
 msgid "Tags to apply on registration"
 msgstr ""
 
-#: models/pages.py:559
+#: models/pages.py:622
 msgid "Applied to the registering Person's record."
 msgstr ""
 
-#: models/pages.py:563
-msgid "Membership"
-msgstr ""
-
-#: models/pages.py:569
+#: models/pages.py:632
 msgid ""
 "Granted to the registering Person on submission, unless they already hold "
 "one of this type (active or not)."
 msgstr ""
 
-#: models/pages.py:589
+#: models/pages.py:652
 msgid "Registration Page"
 msgstr ""
 
-#: models/pages.py:628
+#: models/pages.py:698
 msgid "Show the table-of-contents sidebar for this page."
 msgstr ""
 
-#: models/pages.py:629
+#: models/pages.py:699
 msgid "Show table of contents"
 msgstr ""
 
-#: models/pages.py:748
+#: models/pages.py:821
 msgid "Newest first (blog)"
 msgstr ""
 
-#: models/pages.py:749
+#: models/pages.py:822
 msgid "Soonest first, upcoming only (events)"
 msgstr ""
 
-#: models/pages.py:756
+#: models/pages.py:829
 msgid "Number of items to display per page."
 msgstr ""
 
-#: models/pages.py:763
+#: models/pages.py:836
 msgid ""
 "Newest first lists items by publication date, like a blog. Soonest first "
 "lists only items dated in the future, like an events calendar."
 msgstr ""
 
-#: models/pages.py:774
+#: models/pages.py:846
 msgid "External feed subscriptions"
 msgstr ""
 
-#: models/pages.py:775
+#: models/pages.py:847
 msgid "Subscription"
 msgstr ""
 
-#: models/pages.py:788
+#: models/pages.py:860
 msgid "Feed Page"
 msgstr ""
 
-#: models/pages.py:869 models/pages.py:877
+#: models/pages.py:963 models/pages.py:974
 msgid "Author"
 msgstr ""
 
-#: models/pages.py:922
+#: models/pages.py:1027
 msgid ""
 "This is updated automatically. It is only defined as a field so we can "
 "migrate legacy events seamlessly."
 msgstr ""
 
-#: models/pages.py:986
+#: models/pages.py:1105
 msgid "Extra guests"
 msgstr ""
 
@@ -564,443 +659,443 @@ msgstr ""
 msgid "Ensures the tag can only be deleted by an admin through the console."
 msgstr ""
 
-#: models/person.py:70
+#: models/person.py:74
 msgid "Organisation"
 msgstr ""
 
-#: models/person.py:88
+#: models/person.py:92
 msgid "Email address is bad"
 msgstr ""
 
-#: models/person.py:89
+#: models/person.py:93
 msgid "Can this address actually receive emails?"
 msgstr ""
 
-#: models/person.py:96
+#: models/person.py:100
 msgid "Legacy ID"
 msgstr ""
 
-#: models/person.py:97
+#: models/person.py:101
 msgid "Person ID from the previous CRM, used for data migration."
 msgstr ""
 
-#: models/person.py:99
+#: models/person.py:103
 msgid "Name prefix"
 msgstr ""
 
-#: models/person.py:101
-msgid "First name (for the electoral roll)"
+#: models/person.py:108
+msgid "As per the electoral roll"
 msgstr ""
 
-#: models/person.py:104
+#: models/person.py:111
 msgid "Middle name"
 msgstr ""
 
-#: models/person.py:107
-msgid "Name suffix"
-msgstr ""
-
-#: models/person.py:109
-msgid "Legal name"
-msgstr ""
-
-#: models/person.py:115
-msgid "Preferred name / nickname"
+#: models/person.py:118
+msgid "Family name"
 msgstr ""
 
 #: models/person.py:120
+msgid "Name suffix"
+msgstr ""
+
+#: models/person.py:122
+msgid "Legal name"
+msgstr ""
+
+#: models/person.py:128
+msgid "Preferred name"
+msgstr ""
+
+#: models/person.py:129
+msgid "First name / nickname"
+msgstr ""
+
+#: models/person.py:134
 msgid "Entity type"
 msgstr ""
 
-#: models/person.py:121
+#: models/person.py:135
 msgid "Whether this record represents an individual or an organisation."
 msgstr ""
 
-#: models/person.py:131
+#: models/person.py:145
 msgid "This should be used for landline phones"
 msgstr ""
 
-#: models/person.py:139
+#: models/person.py:153
 msgid "Mobile number"
 msgstr ""
 
-#: models/person.py:140
+#: models/person.py:154
 msgid "This field should be used where possible."
 msgstr ""
 
-#: models/person.py:144
+#: models/person.py:158
 msgid "Mobile opt-in"
 msgstr ""
 
-#: models/person.py:145
+#: models/person.py:159
 msgid "Opt into occasional SMS updates"
 msgstr ""
 
-#: models/person.py:149
+#: models/person.py:163
 msgid "Mobile number is bad"
 msgstr ""
 
-#: models/person.py:150
+#: models/person.py:164
 msgid "Mobile number is known to be invalid or unreachable."
 msgstr ""
 
-#: models/person.py:158
-#, fuzzy
-#| msgid "Enter a whole number."
+#: models/person.py:172
 msgid "Work phone number"
-msgstr "Please enter a whole number."
+msgstr ""
 
-#: models/person.py:161
+#: models/person.py:175
 msgid "Twitter login"
 msgstr ""
 
-#: models/person.py:164
+#: models/person.py:178
 msgid "Facebook username"
 msgstr ""
 
-#: models/person.py:170
-msgid "Profile picture URL"
-msgstr ""
-
-#: models/person.py:171
-msgid "Picture URL supplied by a social login provider, e.g. LinkedIn."
-msgstr ""
-
-#: models/person.py:178
-msgid "Submitted address"
-msgstr ""
-
-#: models/person.py:179
-msgid "Raw address string as submitted by the person, before geocoding."
-msgstr ""
-
-#: models/person.py:187
-msgid "Home address"
-msgstr ""
-
-#: models/person.py:188
-msgid "This shall be used for knowing when to invite them to events nearby."
+#: models/person.py:189
+msgid "A profile picture imported into our own system."
 msgstr ""
 
 #: models/person.py:196
-msgid "Mailing address"
+msgid "Submitted address"
 msgstr ""
 
 #: models/person.py:197
-msgid "Literally just where to send things. No relation to where they live."
+msgid "Raw address string as submitted by the person, before geocoding."
 msgstr ""
 
 #: models/person.py:205
-msgid "Registered address"
+msgid "Home address"
 msgstr ""
 
 #: models/person.py:206
-msgid "Address as recorded on the electoral roll."
+msgid "This shall be used for knowing when to invite them to events nearby."
 msgstr ""
 
 #: models/person.py:214
-msgid "Billing address"
+msgid "Mailing address"
 msgstr ""
 
-#: models/person.py:220
-msgid "Website"
+#: models/person.py:215
+msgid "Literally just where to send things. No relation to where they live."
 msgstr ""
 
-#: models/person.py:226
-msgid "Biography"
+#: models/person.py:223
+msgid "Registered address"
 msgstr ""
 
-#: models/person.py:227
-msgid "Tell us a bit about yourself and your inspirations"
+#: models/person.py:224
+msgid "Address as recorded on the electoral roll."
 msgstr ""
 
 #: models/person.py:232
+msgid "Billing address"
+msgstr ""
+
+#: models/person.py:238
+msgid "Website"
+msgstr ""
+
+#: models/person.py:244
+msgid "Biography"
+msgstr ""
+
+#: models/person.py:245
+msgid "Tell us a bit about yourself and your inspirations"
+msgstr ""
+
+#: models/person.py:250
 msgid "Description"
 msgstr ""
 
-#: models/person.py:233
+#: models/person.py:251
 msgid "Internal description of the member"
 msgstr ""
 
-#: models/person.py:240
+#: models/person.py:258
 msgid "Date of birth"
 msgstr ""
 
-#: models/person.py:241
+#: models/person.py:259
 msgid "This is needed for verifying your enrollment details during an audit"
 msgstr ""
 
-#: models/person.py:247
+#: models/person.py:265
 msgid "Gender"
 msgstr ""
 
-#: models/person.py:249
+#: models/person.py:267
 msgid ""
 "This is needed for addressing people in gendered languages such as French "
 "and Spanish."
 msgstr ""
 
-#: models/person.py:258
+#: models/person.py:276
 msgid ""
 "The languages property from a user's web browser: https://developer.mozilla."
 "org/en-US/docs/Web/API/Navigator/languages"
 msgstr ""
 
-#: models/person.py:269
+#: models/person.py:287
 msgid "groups"
 msgstr ""
 
-#: models/person.py:272
+#: models/person.py:290
 msgid ""
 "The groups this user belongs to. A user will get all permissions granted to "
 "each of their groups."
 msgstr ""
 
-#: models/person.py:281
+#: models/person.py:299
 msgid "user permissions"
 msgstr ""
 
-#: models/person.py:283
+#: models/person.py:301
 msgid "Specific permissions for this user."
 msgstr ""
 
-#: models/person.py:291
+#: models/person.py:309
 msgid "Email opt-in"
 msgstr ""
 
-#: models/person.py:292
+#: models/person.py:310
 msgid "Opt into receiving occasional email updates."
 msgstr ""
 
-#: models/person.py:297
+#: models/person.py:315
 msgid "Unsubscribed at"
 msgstr ""
 
-#: models/person.py:298
+#: models/person.py:316
 msgid "When the person unsubscribed from all emails."
 msgstr ""
 
-#: models/person.py:300
+#: models/person.py:318
 msgid "Is a supporter"
 msgstr ""
 
-#: models/person.py:305
+#: models/person.py:323
 msgid "Support level"
 msgstr ""
 
-#: models/person.py:306
+#: models/person.py:324
 msgid "Manually assigned support rating from 1 (weak) to 5 (strong)."
 msgstr ""
 
-#: models/person.py:312
+#: models/person.py:330
 msgid "Inferred support level"
 msgstr ""
 
-#: models/person.py:313
+#: models/person.py:331
 msgid "Support level derived algorithmically."
 msgstr ""
 
-#: models/person.py:319
+#: models/person.py:337
 msgid "Priority level"
 msgstr ""
 
-#: models/person.py:320
+#: models/person.py:338
 msgid "Outreach priority from 0 (lowest) to 5 (highest)."
 msgstr ""
 
-#: models/person.py:324
+#: models/person.py:342
 msgid "Is a prospect"
 msgstr ""
 
-#: models/person.py:325
+#: models/person.py:343
 msgid "Being cultivated as a potential supporter but not yet confirmed."
 msgstr ""
 
-#: models/person.py:327
+#: models/person.py:345
 msgid "Is deceased"
 msgstr ""
 
-#: models/person.py:330
+#: models/person.py:348
 msgid "Is a donor"
 msgstr ""
 
-#: models/person.py:331
+#: models/person.py:349
 msgid "Is a fundraiser"
 msgstr ""
 
-#: models/person.py:332
+#: models/person.py:350
 msgid "Donations count"
 msgstr ""
 
-#: models/person.py:338
+#: models/person.py:356
 msgid "Donations amount"
 msgstr ""
 
-#: models/person.py:339
+#: models/person.py:357
 msgid "Total amount donated across all time."
 msgstr ""
 
-#: models/person.py:341
+#: models/person.py:359
 msgid "First donation"
 msgstr ""
 
-#: models/person.py:342
+#: models/person.py:360
 msgid "Last donated at"
 msgstr ""
 
-#: models/person.py:345
+#: models/person.py:363
 msgid "Do not call"
 msgstr ""
 
-#: models/person.py:346
+#: models/person.py:364
 msgid "Do not contact"
 msgstr ""
 
-#: models/person.py:351
-#, fuzzy
-#| msgid "No file was submitted."
+#: models/person.py:369
 msgid "Profile is published"
-msgstr "Please select a file to upload."
+msgstr ""
 
-#: models/person.py:352
+#: models/person.py:370
 msgid "Whether this person's public profile is visible on the site."
 msgstr ""
 
-#: models/person.py:356
+#: models/person.py:374
 msgid "Activity is private"
 msgstr ""
 
-#: models/person.py:357
+#: models/person.py:375
 msgid "Whether this person's activity is hidden from public streams."
 msgstr ""
 
-#: models/person.py:367
+#: models/person.py:385
 msgid "Recruiter"
 msgstr ""
 
-#: models/person.py:368
+#: models/person.py:386
 msgid "The person who recruited this person to join."
 msgstr ""
 
-#: models/person.py:376
+#: models/person.py:394
 msgid "Point person"
 msgstr ""
 
-#: models/person.py:377
+#: models/person.py:395
 msgid "Staff member or senior contact responsible for this person."
 msgstr ""
 
-#: models/person.py:385
+#: models/person.py:403
 msgid "Federal district"
 msgstr ""
 
-#: models/person.py:389
+#: models/person.py:407
 msgid "State upper district"
 msgstr ""
 
-#: models/person.py:392
+#: models/person.py:410
 msgid "State lower district"
 msgstr ""
 
-#: models/person.py:398
+#: models/person.py:416
 msgid "Council district"
 msgstr ""
 
-#: models/person.py:399
+#: models/person.py:417
 msgid "Local government area (e.g. City of Moreland)."
 msgstr ""
 
-#: models/person.py:405
+#: models/person.py:423
 msgid "Ward"
 msgstr ""
 
-#: models/person.py:406
+#: models/person.py:424
 msgid "Ward or suburb-level electoral division within the council area."
 msgstr ""
 
-#: models/person.py:414
+#: models/person.py:432
 msgid "Membership number"
 msgstr ""
 
-#: models/person.py:415
+#: models/person.py:433
 msgid "Membership number from a previous membership system."
 msgstr ""
 
-#: models/person.py:421
+#: models/person.py:439
 msgid "Is staff"
 msgstr ""
 
-#: models/person.py:422
+#: models/person.py:440
 msgid "Grants access to the Django admin interface."
 msgstr ""
 
-#: models/person.py:426
+#: models/person.py:444
 msgid "Is admin"
 msgstr ""
 
-#: models/person.py:427
+#: models/person.py:445
 msgid "Grants elevated permissions within the CRM."
 msgstr ""
 
-#: models/person.py:431
+#: models/person.py:449
 msgid "Is active"
 msgstr ""
 
-#: models/person.py:432
+#: models/person.py:450
 msgid "Inactive users are treated as tombstones."
 msgstr ""
 
-#: models/person.py:436
+#: models/person.py:454
 msgid "Has HTML permission"
 msgstr ""
 
-#: models/person.py:437
+#: models/person.py:455
 msgid "Does this user have permission to create raw HTML for web pages?"
 msgstr ""
 
-#: models/person.py:449
+#: models/person.py:467
 msgid "Created at"
 msgstr ""
 
-#: models/person.py:451
+#: models/person.py:469
 msgid "Updated at"
 msgstr ""
 
-#: models/person.py:460
+#: models/person.py:478
 msgid "person"
 msgstr ""
 
-#: models/person.py:461
+#: models/person.py:479
 msgid "people"
 msgstr ""
 
-#: models/person.py:586
+#: models/person.py:601
 msgid "Was authenticated"
 msgstr ""
 
-#: models/person.py:588
+#: models/person.py:603
 msgid ""
 "Whether this tag was applied as a result of an authenticated action, rather "
 "than an anonymous form submission."
 msgstr ""
 
-#: settings.py:476
+#: settings.py:487
 msgid "Street map (Esri)"
 msgstr ""
 
-#: settings.py:486
+#: settings.py:497
 msgid "Street map (OpenStreetMap)"
 msgstr ""
 
-#: settings.py:493
+#: settings.py:504
 msgid "Satellite imagery (Esri)"
 msgstr ""
 
-#: settings.py:503
+#: settings.py:514
 msgid "Cycling map (CyclOSM)"
 msgstr ""
 
-#: settings.py:514
+#: settings.py:525
 msgid "Historical style (Thunderforest Pioneer)"
 msgstr ""
 
@@ -1045,18 +1140,13 @@ msgstr[1] ""
 msgid "Age"
 msgstr ""
 
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:36
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:101
-msgid "Donations"
-msgstr ""
-
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:37
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:107
 msgid "Latest engagement"
 msgstr ""
 
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:38
-#: wagtail_hooks.py:41
+#: wagtail_hooks.py:94
 msgid "Tags"
 msgstr ""
 
@@ -1072,18 +1162,6 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:57
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:58
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:59
-msgid "Yes"
-msgstr ""
-
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:57
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:58
-#: templates/admin/underground_crm/peoplefilter/evaluate.html:59
-msgid "No"
-msgstr ""
-
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:69
 msgid "No people match this filter."
 msgstr ""
@@ -1093,10 +1171,8 @@ msgid "Display options"
 msgstr ""
 
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:95
-#, fuzzy
-#| msgid "Enter a valid email address."
 msgid "Partial email addresses"
-msgstr "Please enter a valid email address."
+msgstr ""
 
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:113
 msgid "Toggle display options"
@@ -1147,6 +1223,31 @@ msgstr ""
 msgid ""
 "None of the matching people has a geocoded address, so there is nothing to "
 "map yet."
+msgstr ""
+
+#: templates/allauth/account/email/base_message.txt:1
+#, python-format
+msgid "Hello from %(site_name)s!"
+msgstr ""
+
+#: templates/allauth/account/email/base_message.txt:5
+#, python-format
+msgid ""
+"Thank you for visiting the site!\n"
+"%(site_domain)s"
+msgstr ""
+
+#: templates/allauth/account/email/password_reset_key_message.txt:4
+msgid ""
+"You're receiving this email because a password reset has been requested for "
+"your account.\n"
+"\n"
+"Click the link below to reset your password."
+msgstr ""
+
+#: templates/allauth/account/email/password_reset_key_message.txt:10
+#, python-format
+msgid "In case you forgot, your username is %(username)s."
 msgstr ""
 
 #: templates/socialaccount/_authentication_error.html:3
@@ -1226,6 +1327,7 @@ msgstr ""
 #: templates/underground_crm/auth/signup.html:4
 #: templates/underground_crm/auth/signup_with_oauth_or_form.html:6
 #: templates/underground_crm/auth/signup_with_oauth_or_form.html:58
+#: templates/underground_crm/registration_page.html:18
 msgid "Sign up"
 msgstr ""
 
@@ -1258,19 +1360,24 @@ msgstr ""
 
 #: templates/underground_crm/auth/login.html:4
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:6
-#: templates/underground_crm/auth/login_with_oauth_or_form.html:59
+#: templates/underground_crm/auth/login_with_oauth_or_form.html:62
+#: templates/underground_crm/registration_page.html:17
 msgid "Log in"
 msgstr ""
 
-#: templates/underground_crm/auth/login_with_oauth_or_form.html:51
+#: templates/underground_crm/auth/login_with_oauth_or_form.html:41
+msgid "Reset your password"
+msgstr ""
+
+#: templates/underground_crm/auth/login_with_oauth_or_form.html:54
 msgid "Remember me"
 msgstr ""
 
-#: templates/underground_crm/auth/login_with_oauth_or_form.html:68
+#: templates/underground_crm/auth/login_with_oauth_or_form.html:71
 msgid "Or log in with"
 msgstr ""
 
-#: templates/underground_crm/auth/login_with_oauth_or_form.html:85
+#: templates/underground_crm/auth/login_with_oauth_or_form.html:88
 msgid "Don't have an account? Sign up"
 msgstr ""
 
@@ -1336,19 +1443,23 @@ msgstr ""
 msgid "%(site_name)s only"
 msgstr ""
 
-#: templates/underground_crm/feed_page.html:42
+#: templates/underground_crm/feed_page.html:43
+msgid "Read more"
+msgstr ""
+
+#: templates/underground_crm/feed_page.html:47
 msgid "There is nothing to show here yet."
 msgstr ""
 
-#: templates/underground_crm/feed_page.html:46
+#: templates/underground_crm/feed_page.html:51
 msgid "Listing pages"
 msgstr ""
 
-#: templates/underground_crm/feed_page.html:49
+#: templates/underground_crm/feed_page.html:54
 msgid "Previous page"
 msgstr ""
 
-#: templates/underground_crm/feed_page.html:54
+#: templates/underground_crm/feed_page.html:59
 msgid "Next page"
 msgstr ""
 
@@ -1378,7 +1489,19 @@ msgstr ""
 msgid "Cancel membership"
 msgstr ""
 
-#: templates/underground_crm/registration_page.html:23
+#: templates/underground_crm/registration_page.html:14
+msgid "Log in or sign up"
+msgstr ""
+
+#: templates/underground_crm/registration_page.html:15
+msgid "Your existing answers are missing because you are not logged in."
+msgstr ""
+
+#: templates/underground_crm/registration_page.html:16
+msgid "Please log in or sign up"
+msgstr ""
+
+#: templates/underground_crm/registration_page.html:30
 msgid "Dismiss"
 msgstr ""
 
@@ -1386,89 +1509,121 @@ msgstr ""
 msgid "Same as home address"
 msgstr ""
 
+#: third_party_message_overrides.py:28
+msgid "This field is required."
+msgstr "Please fill in this field."
+
+#: third_party_message_overrides.py:29
+msgid "Enter a valid date."
+msgstr "Please enter a valid date."
+
+#: third_party_message_overrides.py:30
+msgid "Enter a valid time."
+msgstr "Please enter a valid time."
+
+#: third_party_message_overrides.py:31
+msgid "Enter a valid date/time."
+msgstr "Please enter a valid date and time."
+
+#: third_party_message_overrides.py:32
+msgid "Enter a valid URL."
+msgstr "Please enter a valid URL."
+
+#: third_party_message_overrides.py:33
+msgid "Enter a number."
+msgstr "Please enter a number."
+
+#: third_party_message_overrides.py:34
+msgid "Enter a whole number."
+msgstr "Please enter a whole number."
+
+#: third_party_message_overrides.py:35
+msgid "No file was submitted."
+msgstr "Please select a file to upload."
+
+#: third_party_message_overrides.py:37
+msgid "Enter a valid email address."
+msgstr "Please enter a valid email address."
+
+#: third_party_message_overrides.py:38
+msgid "Enter a valid integer."
+msgstr "Please enter a whole number."
+
+#: third_party_message_overrides.py:39
+#, python-format
+msgid "Ensure this value is less than or equal to %(limit_value)s."
+msgstr "Please enter a value of %(limit_value)s or less."
+
+#: third_party_message_overrides.py:40
+#, python-format
+msgid "Ensure this value is greater than or equal to %(limit_value)s."
+msgstr "Please enter a value of %(limit_value)s or more."
+
+#: third_party_message_overrides.py:42
+msgid "You must type the same password each time."
+msgstr "Please type the same password each time."
+
+#: third_party_message_overrides.py:43
+msgid "You must type the same email each time."
+msgstr "Please type the same email address each time."
+
 #: views/membership.py:30
 #, python-format
 msgid "Your %(membership_type)s membership has been cancelled."
 msgstr ""
 
-#: views/subscribe.py:64
+#: views/subscribe.py:70
 msgid "Invalid request body."
 msgstr ""
 
-#: views/subscribe.py:70
+#: views/subscribe.py:81 views/subscribe.py:90
+msgid "Internal error"
+msgstr ""
+
+#: views/subscribe.py:99
 msgid "This subscription is not available."
 msgstr ""
 
-#: views/subscribe.py:82
-#, fuzzy
-#| msgid "Enter a valid email address."
-msgid "Please enter a valid email address."
-msgstr "Please enter a valid email address."
+#: wagtail_hooks.py:57
+msgid "Underline"
+msgstr ""
 
-#: wagtail_hooks.py:25
+#: wagtail_hooks.py:66
+msgid "Subscript"
+msgstr ""
+
+#: wagtail_hooks.py:78
 msgid "Redirects"
 msgstr ""
 
-#: wagtail_hooks.py:54
+#: wagtail_hooks.py:107
 msgid "Buzz"
 msgstr ""
 
-#: wagtail_hooks.py:73
+#: wagtail_hooks.py:126
 msgid "Groups"
 msgstr ""
 
-#: widgets.py:59
+#: widgets.py:60
 msgid "Address line 1"
 msgstr ""
 
-#: widgets.py:60
+#: widgets.py:61
 msgid "Address line 2"
 msgstr ""
 
-#: widgets.py:61
+#: widgets.py:62
 msgid "Address line 3"
 msgstr ""
 
-#: widgets.py:62
+#: widgets.py:63
 msgid "Suburb"
 msgstr ""
 
-#: widgets.py:63
+#: widgets.py:64
 msgid "State"
 msgstr ""
 
-#: widgets.py:64
+#: widgets.py:65
 msgid "Postcode"
 msgstr ""
-
-#: forms/auth.py:57
-msgid "Invalid email address or password."
-msgstr ""
-
-#: forms/auth.py:59
-msgid "This account has been deactivated."
-msgstr ""
-
-#~ msgid "Enter a valid date."
-#~ msgstr "Please enter a valid date."
-
-#~ msgid "Enter a valid date/time."
-#~ msgstr "Please enter a valid date and time."
-
-#~ msgid "Enter a valid URL."
-#~ msgstr "Please enter a valid URL."
-
-#~ msgid "Enter a valid integer."
-#~ msgstr "Please enter a whole number."
-
-#~ msgid "Ensure this value is less than or equal to %(limit_value)s."
-#~ msgstr "Please enter a value of %(limit_value)s or less."
-
-#~ msgid "Ensure this value is greater than or equal to %(limit_value)s."
-#~ msgstr "Please enter a value of %(limit_value)s or more."
-
-#~ msgid "You must type the same password each time."
-#~ msgstr "Please type the same password each time."
-
-#~ msgid "You must type the same email each time."
-#~ msgstr "Please type the same email address each time."
