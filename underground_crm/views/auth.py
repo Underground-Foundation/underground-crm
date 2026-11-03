@@ -11,10 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_safe_next_url(request: HttpRequest) -> str:
-    """Where to send a visitor who has just logged in or signed up: the `next`
-    query parameter if it stays on this site, otherwise the home page. Anybody
-    can craft such a link, so following `next` unchecked would let an attacker
-    use our own pages to deliver visitors to a site of their choosing."""
+    """Where to send a visitor after they authenticate. We prevent this parameter
+    being just anything, as an attacker could redirect them to their own site
+    afterwards, tricking our users into thinking the attacking website is one of ours."""
     next_url = request.GET.get("next", None)
     if next_url and url_has_allowed_host_and_scheme(
         next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
@@ -35,7 +34,7 @@ def signup_view(request):
         if form.is_valid():
             person = form.save()
             # A person fresh from a form has not been through authenticate(), which is
-            # what would record a backend on them, and several backends are configured.
+            # what would tie them to one of several backend options.
             login(request, person, backend="django.contrib.auth.backends.ModelBackend")
             return redirect(_get_safe_next_url(request))
     else:
