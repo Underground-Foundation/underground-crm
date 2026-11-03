@@ -115,15 +115,15 @@ def get_legacy_source_timezone() -> ZoneInfo:
 # A row whose CSV carried no usable email address is given a synthetic address so
 # the Person can still exist (email is unique and required). These are never real
 # and must never be treated as an identity: the placeholder is derived from the legacy ID.
-_PLACEHOLDER_EMAIL_SUFFIX = "@import.invalid"
+PLACEHOLDER_EMAIL_SUFFIX = "@import.invalid"
 
 
 def _placeholder_email(legacy_id: int) -> str:
-    return f"no-email-{legacy_id}{_PLACEHOLDER_EMAIL_SUFFIX}"
+    return f"no-email-{legacy_id}{PLACEHOLDER_EMAIL_SUFFIX}"
 
 
 def _is_placeholder_email(email: Optional[str]) -> bool:
-    return bool(email) and email.endswith(_PLACEHOLDER_EMAIL_SUFFIX)
+    return bool(email) and email.endswith(PLACEHOLDER_EMAIL_SUFFIX)
 
 
 # ---------------------------------------------------------------------------

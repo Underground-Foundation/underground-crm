@@ -2,7 +2,7 @@ from django.db import migrations
 
 # The CSV import gives this suffix to the synthetic address of anybody who had no
 # email address, and nothing sent there can be delivered.
-from underground_crm.management.commands.import_people_csv import _PLACEHOLDER_EMAIL_SUFFIX
+from underground_crm.management.commands.import_people_csv import PLACEHOLDER_EMAIL_SUFFIX
 
 EMAILABLE_ADDRESSES_FILTER_NAME = "Emailable addresses"
 EMAILABLE_LIVING_PEOPLE_FILTER_NAME = "Emailable living people"
@@ -21,7 +21,7 @@ EMAILABLE_ADDRESSES_CRITERIA = {
                 {
                     "field": "email",
                     "operator": "icontains",
-                    "value": _PLACEHOLDER_EMAIL_SUFFIX,
+                    "value": PLACEHOLDER_EMAIL_SUFFIX,
                 },
             ],
         },
