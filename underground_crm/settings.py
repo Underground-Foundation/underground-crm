@@ -427,7 +427,7 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "webmaster@localhost")
 # through SMTP2Go. Set EMAIL_BACKEND to "django.core.mail.backends.console.EmailBackend"
 # to print messages instead, in a development environment without an SMTP_KEY.
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "underground_email.backends.SMTP2GoEmailBackend")
-# Signs the links for unsubscribing. Blank falls back to SECRET_KEY.
+# Signs the links for unsubscribing. If blank, we fall back to SECRET_KEY.
 UNSUBSCRIBE_SIGNING_KEY = os.environ.get("UNSUBSCRIBE_SIGNING_KEY", "")
 # What SMTP2Go must present when delivering a webhook. Blank refuses every delivery.
 SMTP2GO_WEBHOOK_SECRET = os.environ.get("SMTP2GO_WEBHOOK_SECRET", "")
