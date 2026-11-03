@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 
 from underground_email.api import SMTP2GoEventType, WebhookEmailDict
 from underground_email.tasks import (
-    _get_smtp2go_key,
+    get_smtp2go_key,
     handle_spam_or_unsubscription,
 )
 
@@ -24,7 +24,7 @@ def _is_authorized(request: HttpRequest) -> bool:
     CSRF checks. If the secret is not configured, _get_smtp2go_key raises an exception."""
     scheme, _separator, token = request.headers.get("Authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(
-        token.encode(), _get_smtp2go_key().encode()
+        token.encode(), get_smtp2go_key().encode()
     )
 
 

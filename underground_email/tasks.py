@@ -415,7 +415,7 @@ def get_email_results_and_save_engagements(
         campaign.save(update_fields=updated)
 
 
-def _get_smtp2go_key() -> str:
+def get_smtp2go_key() -> str:
     """The shared secret that SMTP2Go presents when it delivers a webhook. This is
     deliberately not the API key (see _api_key): it is sent in every delivery, and
     somebody who intercepted it should not gain the ability to call SMTP2Go's API."""
@@ -462,7 +462,7 @@ def register_email_failure_webhooks() -> None:
             "events": ["spam", "bounce", "reject", "unsubscribe"],
             "output_format": "json",
             "auth_header_type": "bearer",
-            "auth_header_value": _get_smtp2go_key(),
+            "auth_header_value": get_smtp2go_key(),
         },
         timeout=30,
     )
