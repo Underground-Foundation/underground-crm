@@ -98,5 +98,5 @@
 
 <hr class="divider">
 <p class="text-center mb-1">
-  <a href="{{ login_url }}">{% trans "Already have an account? Log in" %}</a>
+  <a href="{{ login_url }}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">{% trans "Already have an account? Log in" %}</a>
 </p>

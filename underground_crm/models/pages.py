@@ -667,6 +667,13 @@ class RegistrationPage(FormServingPage):
 
         return RegistrationForm
 
+    def _calculated_cache_time(self) -> int:
+        """Never cache by default, because the page differs per visitor: a
+        logged-in visitor sees their own answers pre-filled, and an anonymous
+        one is prompted to log in. A cached copy would show one visitor's
+        details to the next. Editors can still set cache_ttl_override."""
+        return 0
+
 
 class RegistrationPageTag(TaggedItemBase):
     """Explicit through model for RegistrationPage.tags_to_apply, carrying a UUID PK for federation support."""

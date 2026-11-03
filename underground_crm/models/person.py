@@ -16,7 +16,7 @@ from taggit.models import TagBase, TaggedItemBase
 from .address import Address
 from ..contactability import (
     validate_domain_name,
-    validate_email_with_deliverability,
+    validate_person_email,
 )
 from ..person_titles import clean_name_prefix
 
@@ -84,7 +84,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(
         unique=True,
         verbose_name=_("Email address"),
-        validators=[validate_email_with_deliverability],
+        validators=[validate_person_email],
     )
     email_is_bad = models.BooleanField(
         null=True,

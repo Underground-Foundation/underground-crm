@@ -85,5 +85,5 @@
 
 <hr class="divider">
 <p class="text-center mb-1">
-  <a href="{{ signup_url }}">{% trans "Don't have an account? Sign up" %}</a>
+  <a href="{{ signup_url }}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">{% trans "Don't have an account? Sign up" %}</a>
 </p>

@@ -5,9 +5,11 @@ from urllib.parse import urlparse
 
 import dns
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.db.models.functions import Coalesce
-from email_validator import EmailNotValidError, validate_email
+from django.utils.translation import gettext_lazy as _
+from email_validator import EmailNotValidError, EmailUndeliverableError, validate_email
 import phonenumbers
 from django.conf import settings
 from phonenumbers import PhoneNumber, PhoneNumberType, phonenumberutil
@@ -15,6 +17,11 @@ from phonenumbers import PhoneNumber, PhoneNumberType, phonenumberutil
 from underground_crm.models import Address
 
 logger = logging.getLogger(__name__)
+
+UNDELIVERABLE_EMAIL_MESSAGE = _(
+    "The domain of this email address does not accept email. Please check it for typos."
+)
+INVALID_EMAIL_MESSAGE = _("Enter a valid email address.")
 
 
 # Number types that no personal contact record should ever hold: nobody is
@@ -197,6 +204,19 @@ def is_forbidden_phone_number(phone_number: PhoneNumber) -> bool:
 def validate_email_with_deliverability(email_address: str):
     # Validates the syntax and also the existence of MX records for the domain
     return validate_email(email_address, check_deliverability=True, globally_deliverable=True)
+
+
+def validate_person_email(email_address: str) -> None:
+    """Field validator running the same checks as
+    validate_email_with_deliverability, reporting a failure as a ValidationError.
+    Django forms only turn that exception into an error beside the field; anything
+    else, such as EmailNotValidError, escapes them as a server error."""
+    try:
+        validate_email_with_deliverability(email_address)
+    except EmailUndeliverableError as error:
+        raise ValidationError(UNDELIVERABLE_EMAIL_MESSAGE, code="undeliverable") from error
+    except EmailNotValidError as error:
+        raise ValidationError(INVALID_EMAIL_MESSAGE, code="invalid") from error
 
 
 def get_validated_email_address(email_address: str) -> Optional[str]:
