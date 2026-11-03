@@ -5,7 +5,7 @@ from django.db import migrations
 from underground_crm.management.commands.import_people_csv import PLACEHOLDER_EMAIL_SUFFIX
 
 EMAILABLE_ADDRESSES_FILTER_NAME = "Emailable addresses"
-EMAILABLE_LIVING_PEOPLE_FILTER_NAME = "Emailable living people"
+EMAILABLE_LIVING_SUPPORTERS_FILTER_NAME = "Emailable living supporters"
 
 # A "NONE" group matches the people who match none of its rules, which is how a
 # filter says "does not contain".
@@ -29,7 +29,7 @@ EMAILABLE_ADDRESSES_CRITERIA = {
 }
 
 
-def emailable_living_people_criteria(emailable_addresses_filter_id: str) -> dict:
+def emailable_living_supporters_criteria(emailable_addresses_filter_id: str) -> dict:
     return {
         "logic": "AND",
         "rules": [
@@ -39,6 +39,7 @@ def emailable_living_people_criteria(emailable_addresses_filter_id: str) -> dict
                 "value": emailable_addresses_filter_id,
             },
             {"field": "is_deceased", "operator": "false"},
+            {"field": "is_supporter", "operator": "true"},
         ],
     }
 
@@ -56,10 +57,12 @@ def create_emailable_filters(apps, schema_editor) -> None:
         },
     )
     PeopleFilter.objects.get_or_create(
-        name=EMAILABLE_LIVING_PEOPLE_FILTER_NAME,
+        name=EMAILABLE_LIVING_SUPPORTERS_FILTER_NAME,
         defaults={
-            "description": "People matching “Emailable addresses” who are not deceased.",
-            "criteria": emailable_living_people_criteria(str(emailable_addresses.pk)),
+            "description": (
+                "Supporters matching “Emailable addresses” who are believed to be alive."
+            ),
+            "criteria": emailable_living_supporters_criteria(str(emailable_addresses.pk)),
         },
     )
 
@@ -67,7 +70,7 @@ def create_emailable_filters(apps, schema_editor) -> None:
 def delete_emailable_filters(apps, schema_editor) -> None:
     PeopleFilter = apps.get_model("underground_crm", "PeopleFilter")
     PeopleFilter.objects.filter(
-        name__in=[EMAILABLE_ADDRESSES_FILTER_NAME, EMAILABLE_LIVING_PEOPLE_FILTER_NAME]
+        name__in=[EMAILABLE_ADDRESSES_FILTER_NAME, EMAILABLE_LIVING_SUPPORTERS_FILTER_NAME]
     ).delete()
 
 

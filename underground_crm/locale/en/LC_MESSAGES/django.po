@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-03 14:12+1100\n"
+"POT-Creation-Date: 2026-11-03 19:00+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -144,11 +144,15 @@ msgstr ""
 msgid "Venue: %(venue)s."
 msgstr ""
 
-#: forms/auth.py:58
+#: forms/auth.py:23
+msgid "I am a supporter"
+msgstr ""
+
+#: forms/auth.py:59
 msgid "Invalid email address or password."
 msgstr ""
 
-#: forms/auth.py:60
+#: forms/auth.py:61
 msgid "This account has been deactivated."
 msgstr ""
 
@@ -293,12 +297,12 @@ msgstr ""
 msgid "feed subscriptions"
 msgstr ""
 
-#: models/filter.py:155
+#: models/filter.py:170
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:11
 msgid "Evaluate"
 msgstr ""
 
-#: models/filter.py:159
+#: models/filter.py:174
 #: templates/admin/underground_crm/peoplefilter/map.html:11
 msgid "Map"
 msgstr ""
@@ -877,203 +881,209 @@ msgstr ""
 msgid "When the person unsubscribed from all emails."
 msgstr ""
 
-#: models/person.py:318
+#: models/person.py:320
 msgid "Is a supporter"
 msgstr ""
 
-#: models/person.py:323
-msgid "Support level"
-msgstr ""
-
-#: models/person.py:324
-msgid "Manually assigned support rating from 1 (weak) to 5 (strong)."
+#: models/person.py:322
+msgid ""
+"Supporters are not necessarily members, but they are interested observers of "
+"our movement"
 msgstr ""
 
 #: models/person.py:330
-msgid "Inferred support level"
+msgid "Support level"
 msgstr ""
 
 #: models/person.py:331
-msgid "Support level derived algorithmically."
+msgid "Manually assigned support rating from 1 (weak) to 5 (strong)."
 msgstr ""
 
 #: models/person.py:337
-msgid "Priority level"
+msgid "Inferred support level"
 msgstr ""
 
 #: models/person.py:338
-msgid "Outreach priority from 0 (lowest) to 5 (highest)."
+msgid "Support level derived algorithmically."
 msgstr ""
 
-#: models/person.py:342
-msgid "Is a prospect"
-msgstr ""
-
-#: models/person.py:343
-msgid "Being cultivated as a potential supporter but not yet confirmed."
+#: models/person.py:344
+msgid "Priority level"
 msgstr ""
 
 #: models/person.py:345
-msgid "Is deceased"
-msgstr ""
-
-#: models/person.py:348
-msgid "Is a donor"
+msgid "Outreach priority from 0 (lowest) to 5 (highest)."
 msgstr ""
 
 #: models/person.py:349
-msgid "Is a fundraiser"
+msgid "Is a prospect"
 msgstr ""
 
 #: models/person.py:350
-msgid "Donations count"
+msgid "Being cultivated as a potential supporter but not yet confirmed."
+msgstr ""
+
+#: models/person.py:352
+msgid "Is deceased"
+msgstr ""
+
+#: models/person.py:355
+msgid "Is a donor"
 msgstr ""
 
 #: models/person.py:356
-msgid "Donations amount"
+msgid "Is a fundraiser"
 msgstr ""
 
 #: models/person.py:357
-msgid "Total amount donated across all time."
-msgstr ""
-
-#: models/person.py:359
-msgid "First donation"
-msgstr ""
-
-#: models/person.py:360
-msgid "Last donated at"
+msgid "Donations count"
 msgstr ""
 
 #: models/person.py:363
-msgid "Do not call"
+msgid "Donations amount"
 msgstr ""
 
 #: models/person.py:364
-msgid "Do not contact"
+msgid "Total amount donated across all time."
 msgstr ""
 
-#: models/person.py:369
-msgid "Profile is published"
+#: models/person.py:366
+msgid "First donation"
+msgstr ""
+
+#: models/person.py:367
+msgid "Last donated at"
 msgstr ""
 
 #: models/person.py:370
+msgid "Do not call"
+msgstr ""
+
+#: models/person.py:371
+msgid "Do not contact"
+msgstr ""
+
+#: models/person.py:376
+msgid "Profile is published"
+msgstr ""
+
+#: models/person.py:377
 msgid "Whether this person's public profile is visible on the site."
 msgstr ""
 
-#: models/person.py:374
+#: models/person.py:381
 msgid "Activity is private"
 msgstr ""
 
-#: models/person.py:375
+#: models/person.py:382
 msgid "Whether this person's activity is hidden from public streams."
 msgstr ""
 
-#: models/person.py:385
+#: models/person.py:392
 msgid "Recruiter"
 msgstr ""
 
-#: models/person.py:386
+#: models/person.py:393
 msgid "The person who recruited this person to join."
 msgstr ""
 
-#: models/person.py:394
+#: models/person.py:401
 msgid "Point person"
 msgstr ""
 
-#: models/person.py:395
+#: models/person.py:402
 msgid "Staff member or senior contact responsible for this person."
 msgstr ""
 
-#: models/person.py:403
+#: models/person.py:410
 msgid "Federal district"
 msgstr ""
 
-#: models/person.py:407
+#: models/person.py:414
 msgid "State upper district"
 msgstr ""
 
-#: models/person.py:410
+#: models/person.py:417
 msgid "State lower district"
 msgstr ""
 
-#: models/person.py:416
+#: models/person.py:423
 msgid "Council district"
 msgstr ""
 
-#: models/person.py:417
+#: models/person.py:424
 msgid "Local government area (e.g. City of Moreland)."
 msgstr ""
 
-#: models/person.py:423
+#: models/person.py:430
 msgid "Ward"
 msgstr ""
 
-#: models/person.py:424
+#: models/person.py:431
 msgid "Ward or suburb-level electoral division within the council area."
 msgstr ""
 
-#: models/person.py:432
+#: models/person.py:439
 msgid "Membership number"
 msgstr ""
 
-#: models/person.py:433
+#: models/person.py:440
 msgid "Membership number from a previous membership system."
 msgstr ""
 
-#: models/person.py:439
+#: models/person.py:446
 msgid "Is staff"
 msgstr ""
 
-#: models/person.py:440
+#: models/person.py:447
 msgid "Grants access to the Django admin interface."
 msgstr ""
 
-#: models/person.py:444
+#: models/person.py:451
 msgid "Is admin"
 msgstr ""
 
-#: models/person.py:445
+#: models/person.py:452
 msgid "Grants elevated permissions within the CRM."
 msgstr ""
 
-#: models/person.py:449
+#: models/person.py:456
 msgid "Is active"
 msgstr ""
 
-#: models/person.py:450
+#: models/person.py:457
 msgid "Inactive users are treated as tombstones."
 msgstr ""
 
-#: models/person.py:454
+#: models/person.py:461
 msgid "Has HTML permission"
 msgstr ""
 
-#: models/person.py:455
+#: models/person.py:462
 msgid "Does this user have permission to create raw HTML for web pages?"
 msgstr ""
 
-#: models/person.py:467
+#: models/person.py:474
 msgid "Created at"
 msgstr ""
 
-#: models/person.py:469
+#: models/person.py:476
 msgid "Updated at"
 msgstr ""
 
-#: models/person.py:478
+#: models/person.py:485
 msgid "person"
 msgstr ""
 
-#: models/person.py:479
+#: models/person.py:486
 msgid "people"
 msgstr ""
 
-#: models/person.py:601
+#: models/person.py:608
 msgid "Was authenticated"
 msgstr ""
 
-#: models/person.py:603
+#: models/person.py:610
 msgid ""
 "Whether this tag was applied as a result of an authenticated action, rather "
 "than an anonymous form submission."
@@ -1326,7 +1336,7 @@ msgstr ""
 #: templates/socialaccount/_signup.html:61
 #: templates/underground_crm/auth/signup.html:4
 #: templates/underground_crm/auth/signup_with_oauth_or_form.html:6
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:58
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:61
 #: templates/underground_crm/registration_page.html:18
 msgid "Sign up"
 msgstr ""
@@ -1386,23 +1396,23 @@ msgstr ""
 msgid "Log in with %(provider)s"
 msgstr ""
 
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:67
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:70
 msgid "Or sign up with"
 msgstr ""
 
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:74
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:77
 msgid "Sign up with Discord"
 msgstr ""
 
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:83
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:86
 msgid "Sign up with Facebook"
 msgstr ""
 
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:92
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:95
 msgid "Sign up with LinkedIn"
 msgstr ""
 
-#: templates/underground_crm/auth/signup_with_oauth_or_form.html:101
+#: templates/underground_crm/auth/signup_with_oauth_or_form.html:104
 msgid "Already have an account? Log in"
 msgstr ""
 

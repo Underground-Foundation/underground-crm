@@ -1,6 +1,6 @@
 """
-Tests for the "Emailable addresses" and "Emailable living people" filters, which
-a migration seeds on every installation.
+Tests for the "Emailable addresses" and "Emailable living supporters" filters,
+which a migration seeds on every installation.
 """
 
 import datetime
@@ -27,12 +27,15 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
         self.emailable_addresses = PeopleFilter.objects.get(
             name=seed_migration.EMAILABLE_ADDRESSES_FILTER_NAME
         )
-        self.emailable_living_people = PeopleFilter.objects.get(
-            name=seed_migration.EMAILABLE_LIVING_PEOPLE_FILTER_NAME
+        self.emailable_living_supporters = PeopleFilter.objects.get(
+            name=seed_migration.EMAILABLE_LIVING_SUPPORTERS_FILTER_NAME
         )
 
-        self.subscriber = Person.objects.create_user(
-            email="charlie.subscriber@example.com", password="password"
+        self.supporter = Person.objects.create_user(
+            email="charlie.supporter@example.com", password="password", is_supporter=True
+        )
+        self.non_supporter = Person.objects.create_user(
+            email="robin.bystander@example.com", password="password", is_supporter=False
         )
         self.unsubscriber = Person.objects.create_user(
             email="jamie.unsubscribed@example.com",
@@ -46,8 +49,11 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
             email=import_people_csv._placeholder_email(LEGACY_ID_WITHOUT_EMAIL),
             password="password",
         )
-        self.deceased_subscriber = Person.objects.create_user(
-            email="frankie.late@example.com", password="password", is_deceased=True
+        self.deceased_supporter = Person.objects.create_user(
+            email="frankie.late@example.com",
+            password="password",
+            is_deceased=True,
+            is_supporter=True,
         )
 
     def _matched_emails(self, people_filter: PeopleFilter) -> set[str]:
@@ -56,16 +62,17 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
     def test_emailable_addresses(self):
         self.assertEqual(
             self._matched_emails(self.emailable_addresses),
-            {self.subscriber.email, self.deceased_subscriber.email},
+            {self.supporter.email, self.non_supporter.email, self.deceased_supporter.email},
             "Only these people are active, still subscribed and have a real email "
-            "address. Being deceased is left to the other filter.",
+            "address. Being deceased or not being a supporter is left to the other filter.",
         )
 
-    def test_emailable_living_people(self):
+    def test_emailable_living_supporters(self):
         self.assertEqual(
-            self._matched_emails(self.emailable_living_people),
-            {self.subscriber.email},
-            "Of the people with an emailable address, only this one is alive.",
+            self._matched_emails(self.emailable_living_supporters),
+            {self.supporter.email},
+            "Of the people with an emailable address, only this one is both alive and a "
+            "supporter.",
         )
 
     def test_blank_email_is_not_emailable(self):

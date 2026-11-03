@@ -132,6 +132,48 @@ class SignupRedirectionTest(django.test.TestCase):
                 )
 
 
+class SignupSupporterCheckboxTest(django.test.TestCase):
+    def _sign_up(self, **extra_data: str) -> Person:
+        self.client.post(
+            reverse("underground_crm:signup"),
+            data={
+                "email": MEMBER_EMAIL,
+                "preferred_name": "Priya",
+                "last_name": "Sharma",
+                "password": MEMBER_PASSWORD,
+                "password_confirm": MEMBER_PASSWORD,
+                **extra_data,
+            },
+        )
+        return Person.objects.get(email=MEMBER_EMAIL)
+
+    def test_checkbox_starts_ticked(self) -> None:
+        response = self.client.get(reverse("underground_crm:signup"))
+
+        self.assertIs(response.context["form"]["is_supporter"].value(), True)
+        self.assertContains(
+            response,
+            'name="is_supporter"',
+            msg_prefix="The visitor must be able to see the box in order to untick it",
+        )
+        self.assertContains(
+            response,
+            Person._meta.get_field("is_supporter").help_text,
+            msg_prefix="The visitor should be told what being a supporter means before deciding",
+        )
+
+    def test_leaving_it_ticked_makes_a_supporter(self) -> None:
+        # Browsers submit a ticked checkbox as "on".
+        self.assertTrue(self._sign_up(is_supporter="on").is_supporter)
+
+    def test_unticking_it_is_respected(self) -> None:
+        self.assertFalse(
+            self._sign_up().is_supporter,
+            "Browsers omit an unticked checkbox from the submission, and that must "
+            "not fall back to the box's initial state.",
+        )
+
+
 class SignupWithUndeliverableEmailTest(django.test.TestCase):
     def test_form_is_shown_again_with_an_error(self) -> None:
         response = self.client.post(

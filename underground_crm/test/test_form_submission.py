@@ -387,3 +387,11 @@ class FindIdentityConflictTest(django.test.TestCase):
         person = get_or_create_person("new@example.com", last_name="Jones", preferred_name="Bex")
         self.assertEqual(person.preferred_name, "Bex")
         self.assertIsNone(person.first_name)
+
+    def test_get_or_create_person_creates_a_supporter(self):
+        person = get_or_create_person("new@example.com", last_name="Jones", preferred_name="Bex")
+        self.assertTrue(
+            person.is_supporter,
+            "The newsletter signup creates people through this function, and they must "
+            "match the “Emailable living supporters” filter.",
+        )

@@ -250,15 +250,15 @@ def process_email_engagements(
 def handle_spam_or_unsubscription(
     event: Union[WebhookEmailDict, SMTPEvent], recipient, persist=True
 ):
-    updated_fields = ["unsubscribed_at"]
+    updated_fields = ["email_opt_in", "unsubscribed_at"]
     if event.get("event") == SMTP2GoEventType.SPAM:
         # This act will make emails harder to deliver to everyone else.
-        logger.warning("User %s 🗡 marked this email as spam: %s", recipient, event["subject"])
+        logger.warning("User %s 🗡 marked this email as spam: %s", recipient, event.get("subject"))
         # todo: add a person note explaining that they marked this as spam
         recipient.is_supporter = False
         updated_fields.append("is_supporter")
     else:
-        logger.info("User %s unsubscribed from this email: %s", recipient, event["subject"])
+        logger.info("User %s unsubscribed from this email: %s", recipient, event.get("subject"))
     recipient.email_opt_in = False
     recipient.unsubscribed_at = datetime.datetime.now(tz=datetime.timezone.utc)
     if persist:
@@ -415,6 +415,16 @@ def get_email_results_and_save_engagements(
         campaign.save(update_fields=updated)
 
 
+def _get_smtp2go_key() -> str:
+    """The shared secret that SMTP2Go presents when it delivers a webhook. This is
+    deliberately not the API key (see _api_key): it is sent in every delivery, and
+    somebody who intercepted it should not gain the ability to call SMTP2Go's API."""
+    key = settings.SMTP2GO_WEBHOOK_SECRET
+    if not key:
+        raise RuntimeError("SMTP2GO_WEBHOOK_SECRET environment variable is not set")
+    return key
+
+
 def register_email_failure_webhooks() -> None:
     """
     Register a webhook with SMTP2Go to receive delivery-failure notifications for
@@ -424,6 +434,8 @@ def register_email_failure_webhooks() -> None:
     publicly reachable from SMTP2Go's servers. Run this command once per
     deployment; re-running it will create a duplicate webhook entry on SMTP2Go's
     side, so check the existing webhooks first if you are unsure.
+
+    https://support.smtp2go.com/hc/en-gb/articles/223087967-Webhooks
     """
     from urllib.parse import urlparse
 
@@ -449,6 +461,8 @@ def register_email_failure_webhooks() -> None:
             "url": webhook_url,
             "events": ["spam", "bounce", "reject", "unsubscribe"],
             "output_format": "json",
+            "auth_header_type": "bearer",
+            "auth_header_value": _get_smtp2go_key(),
         },
         timeout=30,
     )
