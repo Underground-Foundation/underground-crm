@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 UNDELIVERABLE_EMAIL_MESSAGE = _(
     "The domain of this email address does not accept email. Please check it for typos."
 )
-INVALID_EMAIL_MESSAGE = _("Enter a valid email address.")
+INVALID_EMAIL_MESSAGE = _("Please enter a valid email address.")
 
 
 # Number types that no personal contact record should ever hold: nobody is
@@ -207,10 +207,7 @@ def validate_email_with_deliverability(email_address: str):
 
 
 def validate_person_email(email_address: str) -> None:
-    """Field validator running the same checks as
-    validate_email_with_deliverability, reporting a failure as a ValidationError.
-    Django forms only turn that exception into an error beside the field; anything
-    else, such as EmailNotValidError, escapes them as a server error."""
+    # This function casts errors as a ValidationError for use in Django forms.
     try:
         validate_email_with_deliverability(email_address)
     except EmailUndeliverableError as error:

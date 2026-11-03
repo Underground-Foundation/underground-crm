@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-03 13:32+1100\n"
+"POT-Creation-Date: 2026-11-03 14:12+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -92,10 +92,8 @@ msgid "Email"
 msgstr ""
 
 #: admin.py:371 admin.py:382 models/person.py:188
-#, fuzzy
-#| msgid "No file was submitted."
 msgid "Profile picture"
-msgstr "Please select a file to upload."
+msgstr ""
 
 #: admin.py:396
 msgid "Select this object for an action - {}"
@@ -132,11 +130,9 @@ msgid ""
 "typos."
 msgstr ""
 
-#: contactability.py:24
-#, fuzzy
-#| msgid "Enter a valid email address."
-msgid "Enter a valid email address."
-msgstr "Please enter a valid email address."
+#: contactability.py:24 views/subscribe.py:111
+msgid "Please enter a valid email address."
+msgstr ""
 
 #: feeds.py:75
 #, python-format
@@ -168,10 +164,8 @@ msgstr ""
 #: forms/form_submission.py:147 models/form_submission.py:26
 #: models/person.py:86
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:17
-#, fuzzy
-#| msgid "Enter a valid email address."
 msgid "Email address"
-msgstr "Please enter a valid email address."
+msgstr ""
 
 #: forms/form_submission.py:153
 msgid "First name"
@@ -183,16 +177,12 @@ msgstr ""
 
 #: forms/form_submission.py:212 forms/registration.py:357
 #: views/subscribe.py:107
-#, fuzzy
-#| msgid "This field is required."
 msgid "Email address is required."
-msgstr "Please fill in this field."
+msgstr ""
 
 #: forms/registration.py:252 models/person.py:144
-#, fuzzy
-#| msgid "Enter a number."
 msgid "Phone number"
-msgstr "Please enter a number."
+msgstr ""
 
 #: forms/registration.py:253
 msgid "A mobile or a landline number."
@@ -575,10 +565,8 @@ msgid "Time"
 msgstr ""
 
 #: models/pages.py:432
-#, fuzzy
-#| msgid "Enter a valid time."
 msgid "Date and time"
-msgstr "Please enter a valid time."
+msgstr ""
 
 #: models/pages.py:540
 msgid "Tags to apply on submission"
@@ -760,10 +748,8 @@ msgid "Mobile number is known to be invalid or unreachable."
 msgstr ""
 
 #: models/person.py:172
-#, fuzzy
-#| msgid "Enter a whole number."
 msgid "Work phone number"
-msgstr "Please enter a whole number."
+msgstr ""
 
 #: models/person.py:175
 msgid "Twitter login"
@@ -968,10 +954,8 @@ msgid "Do not contact"
 msgstr ""
 
 #: models/person.py:369
-#, fuzzy
-#| msgid "No file was submitted."
 msgid "Profile is published"
-msgstr "Please select a file to upload."
+msgstr ""
 
 #: models/person.py:370
 msgid "Whether this person's public profile is visible on the site."
@@ -1187,10 +1171,8 @@ msgid "Display options"
 msgstr ""
 
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:95
-#, fuzzy
-#| msgid "Enter a valid email address."
 msgid "Partial email addresses"
-msgstr "Please enter a valid email address."
+msgstr ""
 
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:113
 msgid "Toggle display options"
@@ -1527,6 +1509,64 @@ msgstr ""
 msgid "Same as home address"
 msgstr ""
 
+#: third_party_message_overrides.py:28
+msgid "This field is required."
+msgstr "Please fill in this field."
+
+#: third_party_message_overrides.py:29
+msgid "Enter a valid date."
+msgstr "Please enter a valid date."
+
+#: third_party_message_overrides.py:30
+msgid "Enter a valid time."
+msgstr "Please enter a valid time."
+
+#: third_party_message_overrides.py:31
+msgid "Enter a valid date/time."
+msgstr "Please enter a valid date and time."
+
+#: third_party_message_overrides.py:32
+msgid "Enter a valid URL."
+msgstr "Please enter a valid URL."
+
+#: third_party_message_overrides.py:33
+msgid "Enter a number."
+msgstr "Please enter a number."
+
+#: third_party_message_overrides.py:34
+msgid "Enter a whole number."
+msgstr "Please enter a whole number."
+
+#: third_party_message_overrides.py:35
+msgid "No file was submitted."
+msgstr "Please select a file to upload."
+
+#: third_party_message_overrides.py:37
+msgid "Enter a valid email address."
+msgstr "Please enter a valid email address."
+
+#: third_party_message_overrides.py:38
+msgid "Enter a valid integer."
+msgstr "Please enter a whole number."
+
+#: third_party_message_overrides.py:39
+#, python-format
+msgid "Ensure this value is less than or equal to %(limit_value)s."
+msgstr "Please enter a value of %(limit_value)s or less."
+
+#: third_party_message_overrides.py:40
+#, python-format
+msgid "Ensure this value is greater than or equal to %(limit_value)s."
+msgstr "Please enter a value of %(limit_value)s or more."
+
+#: third_party_message_overrides.py:42
+msgid "You must type the same password each time."
+msgstr "Please type the same password each time."
+
+#: third_party_message_overrides.py:43
+msgid "You must type the same email each time."
+msgstr "Please type the same email address each time."
+
 #: views/membership.py:30
 #, python-format
 msgid "Your %(membership_type)s membership has been cancelled."
@@ -1543,12 +1583,6 @@ msgstr ""
 #: views/subscribe.py:99
 msgid "This subscription is not available."
 msgstr ""
-
-#: views/subscribe.py:111
-#, fuzzy
-#| msgid "Enter a valid email address."
-msgid "Please enter a valid email address."
-msgstr "Please enter a valid email address."
 
 #: wagtail_hooks.py:57
 msgid "Underline"
@@ -1593,27 +1627,3 @@ msgstr ""
 #: widgets.py:65
 msgid "Postcode"
 msgstr ""
-
-#~ msgid "Enter a valid date."
-#~ msgstr "Please enter a valid date."
-
-#~ msgid "Enter a valid date/time."
-#~ msgstr "Please enter a valid date and time."
-
-#~ msgid "Enter a valid URL."
-#~ msgstr "Please enter a valid URL."
-
-#~ msgid "Enter a valid integer."
-#~ msgstr "Please enter a whole number."
-
-#~ msgid "Ensure this value is less than or equal to %(limit_value)s."
-#~ msgstr "Please enter a value of %(limit_value)s or less."
-
-#~ msgid "Ensure this value is greater than or equal to %(limit_value)s."
-#~ msgstr "Please enter a value of %(limit_value)s or more."
-
-#~ msgid "You must type the same password each time."
-#~ msgstr "Please type the same password each time."
-
-#~ msgid "You must type the same email each time."
-#~ msgstr "Please type the same email address each time."
