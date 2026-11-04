@@ -16,8 +16,8 @@ Underground CRM is not quite a standalone project − it is intended to be exten
 with the creation of a **theme project** that installs the library and provides
 a site name, branding templates, and any organisation-specific page models.
 
-The sibling repo `fusion-underground` is the reference theme for the Fusion
-Party and is the easiest way to see a working deployment.
+The repository [fusion-underground](https://github.com/owen9825/fusion-underground/) is the
+theme for the Fusion Party.
 
 Once your theme is implemented, notice here the file [start-containers.sh](./start_containers.sh)
 which starts the accompanying services for running this application.
@@ -137,9 +137,13 @@ reason. The name is mapped to the host gateway by an `extra_hosts` entry on the
 The tunnel must then listen where the container can reach it — the `docker0` gateway
 rather than `127.0.0.1` — and stay up for the whole run, as the loader has no reconnect
 logic. See the `addressr-loader` comments in `docker-compose.yml` for the exact `ssh`
-invocation, and
-[fusion-underground's README](https://github.com/owen9825/fusion-underground#day-to-day-operations)
-for the procedure written out against a real deployment.
+invocation.
+
+### Domain setup
+
+You will need to visit …/django-admin/sites/site/ and …/cms/sites/ to change your Django and
+Wagtail `Site` records from example.com to your actual domain. This gets exposed eg during
+the password reset process and the sending of bulk emails.
 
 ### Running the tests
 
