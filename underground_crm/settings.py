@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
     "wagtail.contrib.routable_page",
+    "wagtail.contrib.sitemaps",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -75,6 +76,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sites",
+    "django.contrib.sitemaps",
+    # robots.txt rules, edited in the Django admin — https://github.com/django-commons/django-robots
+    "robots",
     "underground_email",
     "underground_payments",
     "simple_history",
@@ -619,8 +623,20 @@ LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
-# Required by django.contrib.sites (used by allauth)
+# Required by django.contrib.sites (used by allauth and django-robots)
 SITE_ID = 1
+
+# django-robots — https://django-robots.readthedocs.io/en/latest/#settings
+# robots.txt lists the rules attached to the django.contrib.sites Site named by SITE_ID,
+# and advertises Wagtail's sitemap, which site_urls.py names "sitemap". With no rules at
+# all, every crawler is allowed everywhere.
+ROBOTS_SITEMAP_VIEW_NAME = "sitemap"
+# The Host directive was only ever honored by Yandex, which has since dropped it, and it
+# would name the django.contrib.sites domain, which is not kept in step with the real one.
+ROBOTS_USE_HOST = False
+# Seconds for which a generated robots.txt is cached. Unset or 0 disables the cache, so
+# that a rule edited in the admin takes effect on the next request.
+ROBOTS_CACHE_TIMEOUT = int(os.environ.get("ROBOTS_CACHE_TIMEOUT", "0")) or None
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

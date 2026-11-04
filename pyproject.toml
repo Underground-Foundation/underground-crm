@@ -48,6 +48,8 @@ dependencies = [
     "wagtail>=6.0,<7.0",
     "django-taggit>=6.0",
     "django-simple-history",
+    # robots.txt, built from rules edited in the Django admin (underground_crm/views/robots_txt.py)
+    "django-robots>=7.0",
     "django-allauth[socialaccount]>=65.0",
     "django-compressor>=4.0",
     "csscompressor>=0.9",
