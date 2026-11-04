@@ -438,7 +438,6 @@ def register_email_failure_webhooks(site: Site) -> None:
     """
     from urllib.parse import urlparse
 
-    from django.conf import settings
     from django.urls import reverse
 
     webhook_url = site.root_url.rstrip("/") + reverse("email_webhook")

@@ -416,9 +416,6 @@ else:
         }
     }
 
-# Wagtail
-WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
-
 # Sender for transactional email (e.g. subscription confirmations), dispatched
 # through SMTP2Go — the domain must be registered there.
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "webmaster@localhost")
@@ -648,6 +645,14 @@ SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
 _startup_logger = _logging.getLogger(__name__)
+
+# Wagtail
+WAGTAILADMIN_BASE_URL = os.environ.get("WAGTAILADMIN_BASE_URL", "http://localhost:8000")
+if not DEBUG and WAGTAILADMIN_BASE_URL and "localhost" in WAGTAILADMIN_BASE_URL:
+    _startup_logger.warning(
+        "The WAGTAILADMIN_BASE_URL should be a public domain. It is currently %s",
+        WAGTAILADMIN_BASE_URL,
+    )
 
 
 def _missing_env_vars(*names: str) -> list[str]:
