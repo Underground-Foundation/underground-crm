@@ -312,8 +312,6 @@ class EmailCampaign(PreviewableMixin, models.Model):
         context.update(
             {
                 "subject": self.subject,
-                # The raw template (e.g. "Hi {{ first_name }},") is shown unrendered, since a
-                # preview has no recipient; without a greeting, the template skips the line.
                 "greeting": self.greeting.greeting if self.greeting else "",
                 "body": self.body,
                 "signature": None if not self.sender else self.sender.signature,
