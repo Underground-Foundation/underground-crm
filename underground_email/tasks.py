@@ -1,9 +1,7 @@
 import logging
 import os
 import datetime
-from os import sched_get_priority_max
-from types import new_class
-from typing import Any, Dict, cast, List, Union, Tuple, Optional
+from typing import Dict, cast, List, Union, Tuple, Optional
 
 import requests
 from cachetools import cached
@@ -13,6 +11,7 @@ from django.template import Context, Template as DjangoTemplate
 from django.template.loader import render_to_string
 from django.utils import timezone
 from smtp2go.core import Smtp2goClient
+from wagtail.models import Site
 
 from underground_email import app_settings
 from underground_email.api import (
@@ -425,12 +424,12 @@ def get_smtp2go_key() -> str:
     return key
 
 
-def register_email_failure_webhooks() -> None:
+def register_email_failure_webhooks(site: Site) -> None:
     """
     Register a webhook with SMTP2Go to receive delivery-failure notifications for
     the four problem event types: spam, bounce, reject, and unsubscribe.
 
-    The webhook URL is derived from WAGTAILADMIN_BASE_URL, which must be set and
+    The webhook URL is derived from the root URL of the given site, which must be
     publicly reachable from SMTP2Go's servers. Run this command once per
     deployment; re-running it will create a duplicate webhook entry on SMTP2Go's
     side, so check the existing webhooks first if you are unsure.
@@ -442,14 +441,14 @@ def register_email_failure_webhooks() -> None:
     from django.conf import settings
     from django.urls import reverse
 
-    webhook_url = settings.WAGTAILADMIN_BASE_URL.rstrip("/") + reverse("email_webhook")
+    webhook_url = site.root_url.rstrip("/") + reverse("email_webhook")
 
     hostname = urlparse(webhook_url).hostname or ""
     if hostname == "localhost" or hostname.startswith("127.") or hostname == "::1":
         raise ValueError(
-            f"WAGTAILADMIN_BASE_URL resolves to a local address ({hostname!r}). "
-            "SMTP2Go cannot reach a localhost URL — set WAGTAILADMIN_BASE_URL to the "
-            "publicly accessible domain before registering webhooks."
+            f"The site's root URL resolves to a local address ({hostname!r}). "
+            "SMTP2Go cannot reach a localhost URL — choose a site with a publicly "
+            "accessible domain, or set this site's hostname to one, before registering webhooks."
         )
 
     logger.info("Registering SMTP2Go webhook at %s.", webhook_url)

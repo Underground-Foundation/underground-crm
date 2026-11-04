@@ -145,6 +145,16 @@ You will need to visit …/django-admin/sites/site/ and …/cms/sites/ to change
 Wagtail `Site` records from example.com to your actual domain. This gets exposed eg during
 the password reset process and the sending of bulk emails.
 
+### Email webhook registration
+We can receive a webhook call from SMTP2Go when someone eg marks our emails as spam:
+```shell
+python manage.py register_email_webhooks
+```
+This registers the default Wagtail site. To register another one, name it by its domain:
+```shell
+python manage.py register_email_webhooks --domain vic.example.org
+```
+
 ### Running the tests
 
 ```shell
