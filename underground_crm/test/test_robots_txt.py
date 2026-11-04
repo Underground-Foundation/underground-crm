@@ -7,9 +7,12 @@ from wagtail.models import Site as WagtailSite
 
 from underground_crm.models import BasicPage
 
-# The host a crawler asks for robots.txt on. ALLOWED_HOSTS has to accept it, as it would
-# a real deployment's domain, for the test client to be served at all.
-PUBLIC_HOST = "www.fusionparty.org.au"
+# The Host header of the simulated request. Django's test client calls the view in this
+# process, so nothing is fetched over the network; the header only stands in for the domain
+# a deployment would be reached on. It is under the reserved .example TLD (RFC 2606) so
+# that it cannot be mistaken for, or ever resolve to, a real website. ALLOWED_HOSTS has to
+# accept it, as it would a real deployment's domain, for the request to be served at all.
+PUBLIC_HOST = "www.peoples-party.example"
 # A fresh django.contrib.sites Site is named after example.com until somebody renames it
 # by hand, so robots.txt must not take the sitemap's host from it.
 UNCONFIGURED_DJANGO_SITE_DOMAIN = "example.com"
@@ -25,7 +28,8 @@ class RobotsTxtTest(TestCase):
             domain=UNCONFIGURED_DJANGO_SITE_DOMAIN
         )
 
-    def fetch_robots_txt(self) -> str:
+    def request_robots_txt(self) -> str:
+        """robots.txt as this codebase renders it for a request to PUBLIC_HOST."""
         with self.settings(ALLOWED_HOSTS=[PUBLIC_HOST]):
             response = self.client.get("/robots.txt", HTTP_HOST=PUBLIC_HOST)
         self.assertEqual(response.status_code, 200, "robots.txt is public.")
@@ -37,7 +41,7 @@ class RobotsTxtTest(TestCase):
         return response.content.decode()
 
     def test_without_rules_every_crawler_may_crawl_everything(self) -> None:
-        lines = self.fetch_robots_txt().splitlines()
+        lines = self.request_robots_txt().splitlines()
         self.assertIn("User-agent: *", lines)
         self.assertIn(
             "Disallow:",
@@ -47,7 +51,7 @@ class RobotsTxtTest(TestCase):
 
     def test_advertises_the_sitemap_on_the_host_that_was_asked(self) -> None:
         sitemap_line = f"Sitemap: http://{PUBLIC_HOST}{reverse('sitemap')}"
-        body = self.fetch_robots_txt()
+        body = self.request_robots_txt()
         self.assertIn(sitemap_line, body.splitlines())
         self.assertNotIn(
             UNCONFIGURED_DJANGO_SITE_DOMAIN,
@@ -58,7 +62,7 @@ class RobotsTxtTest(TestCase):
 
     def test_omits_the_obsolete_host_directive(self) -> None:
         self.assertFalse(
-            any(line.startswith("Host:") for line in self.fetch_robots_txt().splitlines()),
+            any(line.startswith("Host:") for line in self.request_robots_txt().splitlines()),
             "ROBOTS_USE_HOST is off, so no Host line should be written.",
         )
 
@@ -67,7 +71,7 @@ class RobotsTxtTest(TestCase):
         rule.sites.add(DjangoSite.objects.get(pk=settings.SITE_ID))
         rule.disallowed.add(Url.objects.create(pattern=PRIVATE_PATH))
 
-        self.assertIn(f"Disallow: {PRIVATE_PATH}", self.fetch_robots_txt().splitlines())
+        self.assertIn(f"Disallow: {PRIVATE_PATH}", self.request_robots_txt().splitlines())
 
 
 class SitemapTest(TestCase):
