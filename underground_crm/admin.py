@@ -277,6 +277,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             {
                 "fields": (
                     "email_opt_in",
+                    "email_is_bad",
                     "unsubscribed_at",
                     "is_supporter",
                     "support_level",

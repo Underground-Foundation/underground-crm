@@ -15,6 +15,7 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("first_name", "First name", "text"),
     ("last_name", "Last name", "text"),
     ("email", "Email", "text"),
+    ("email_is_bad", "Email address is bad", "boolean"),
     ("gender", "Gender", "text"),
     ("federal_district", "Federal district", "text"),
     ("state_upper_district", "State upper district", "text"),

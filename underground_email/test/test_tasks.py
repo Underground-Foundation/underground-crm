@@ -1,10 +1,58 @@
 import json
 import os
 import unittest
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
+import django.test
+from django.contrib.auth import get_user_model
+
+from underground_email.api import SMTP2GoEventType
 from underground_email.models import EmailCampaign, generate_base64_id
-from underground_email.tasks import process_email_engagements
+from underground_email.tasks import process_email_engagements, process_email_rejection
+
+Person = get_user_model()
+
+
+class EmailRejectionTest(django.test.TestCase):
+    RECIPIENT_EMAIL = "sam.fullmailbox@example.com"
+
+    def _email_is_bad_after(self, event_type: SMTP2GoEventType) -> Optional[bool]:
+        person = Person.objects.create_user(
+            email=self.RECIPIENT_EMAIL, password="password", email_opt_in=True
+        )
+        campaign = EmailCampaign(
+            utm_id=generate_base64_id(),
+            subject="Volunteers needed in Brunswick this weekend",
+            preview_text="Can you spare an hour on Saturday?",
+        )
+
+        process_email_rejection(
+            campaign,
+            recipients={person.email: person},
+            events=[{"recipient": person.email, "event": event_type}],
+        )
+
+        person.refresh_from_db()
+        return person.email_is_bad
+
+    def test_soft_bounce_does_not_mark_the_address_as_bad(self):
+        self.assertIsNone(
+            self._email_is_bad_after(SMTP2GoEventType.SOFT_BOUNCED),
+            "A soft bounce is temporary, so the address must stay unassessed.",
+        )
+
+    def test_hard_bounce_marks_the_address_as_bad(self):
+        self.assertTrue(
+            self._email_is_bad_after(SMTP2GoEventType.HARD_BOUNCED),
+            "A hard bounce means that the address cannot receive emails.",
+        )
+
+    def test_rejection_marks_the_address_as_bad(self):
+        self.assertTrue(
+            self._email_is_bad_after(SMTP2GoEventType.REJECTED),
+            "Rejected events have always marked the address as bad, and still should.",
+        )
 
 
 class TaskTest(unittest.TestCase):

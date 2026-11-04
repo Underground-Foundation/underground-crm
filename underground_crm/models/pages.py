@@ -165,8 +165,7 @@ class PageWithMetadata(Page):
         url_parts = self.get_url_parts()
         if not url_parts:
             return 0
-        logger.info("The URL parts for %s are %s", self.slug, url_parts)
-        _, _, page_path = url_parts
+        _, _, page_path = url_parts  # Omit site ID and root URL
 
         try:
             match = resolve(page_path)

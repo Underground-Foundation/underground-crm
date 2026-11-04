@@ -20,6 +20,9 @@ seed_migration = importlib.import_module(
 consent_migration = importlib.import_module(
     "underground_email.migrations.0014_emailable_addresses_require_contact_consent"
 )
+bad_address_migration = importlib.import_module(
+    "underground_email.migrations.0015_emailable_addresses_exclude_bad_addresses"
+)
 
 Person = get_user_model()
 
@@ -86,6 +89,13 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
             email_opt_in=True,
             do_not_contact=True,
         )
+        self.supporter_with_bad_address = Person.objects.create_user(
+            email="taylor.bounced@example.com",
+            password="password",
+            is_supporter=True,
+            email_opt_in=True,
+            email_is_bad=True,
+        )
 
     def _matched_emails(self, people_filter: PeopleFilter) -> set[str]:
         return set(people_filter.apply(Person.objects.all()).values_list("email", flat=True))
@@ -95,8 +105,74 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
             self._matched_emails(self.emailable_addresses),
             {self.supporter.email, self.non_supporter.email, self.deceased_supporter.email},
             "Only these people are active, opted in, not marked as do-not-contact, still "
-            "subscribed and have a real email address. Being deceased or not being a "
-            "supporter is left to the other filter.",
+            "subscribed and have a real address that is not known to be bad. Being deceased "
+            "or not being a supporter is left to the other filter.",
+        )
+
+    def test_address_confirmed_as_working_is_emailable(self):
+        self.assertIsNone(
+            self.supporter.email_is_bad,
+            "A person's address has not been assessed until something says otherwise.",
+        )
+        self.supporter_with_bad_address.email_is_bad = False
+        self.supporter_with_bad_address.save()
+
+        self.assertEqual(
+            self._matched_emails(self.emailable_living_supporters),
+            {self.supporter.email, self.supporter_with_bad_address.email},
+            "Both an address that was never assessed and one that was found to work can be "
+            "emailed; only an address that is positively marked as bad is excluded.",
+        )
+
+    def test_bad_address_exclusion_keeps_an_administrators_edits(self):
+        tag_rule = {"field": "tags__name", "operator": "exact", "value": "Volunteer"}
+        self.emailable_addresses.criteria = {"logic": "AND", "rules": [tag_rule]}
+        self.emailable_addresses.save()
+
+        bad_address_migration.exclude_bad_addresses(django.apps.apps, None)
+
+        self.emailable_addresses.refresh_from_db()
+        self.assertEqual(
+            self.emailable_addresses.criteria["rules"],
+            [tag_rule, bad_address_migration.EXCLUDE_BAD_ADDRESSES_GROUP],
+        )
+
+    def test_bad_address_exclusion_still_narrows_a_filter_edited_to_match_any_rule(self):
+        self.emailable_addresses.criteria = {
+            "logic": "OR",
+            "rules": [
+                {"field": "email", "operator": "exact", "value": person.email}
+                for person in (self.supporter, self.supporter_with_bad_address)
+            ],
+        }
+        self.emailable_addresses.save()
+
+        bad_address_migration.exclude_bad_addresses(django.apps.apps, None)
+
+        self.emailable_addresses.refresh_from_db()
+        self.assertEqual(
+            self._matched_emails(self.emailable_addresses),
+            {self.supporter.email},
+            "Both people match the administrator's rules, but only this one's address is "
+            "not known to be bad.",
+        )
+
+    def test_reversing_removes_only_the_bad_address_exclusion(self):
+        group = bad_address_migration.EXCLUDE_BAD_ADDRESSES_GROUP
+        criteria_with_group = self.emailable_addresses.criteria
+        self.assertIn(
+            group,
+            criteria_with_group["rules"],
+            "The migrations have already run on the test database, so the group is present.",
+        )
+        expected_rules = [rule for rule in criteria_with_group["rules"] if rule != group]
+
+        bad_address_migration.stop_excluding_bad_addresses(django.apps.apps, None)
+
+        self.emailable_addresses.refresh_from_db()
+        self.assertEqual(self.emailable_addresses.criteria["rules"], expected_rules)
+        self.assertEqual(
+            self.emailable_addresses.description, bad_address_migration.PREVIOUS_DESCRIPTION
         )
 
     def test_consent_rules_keep_an_administrators_edits(self):
@@ -137,6 +213,11 @@ class EmailablePeopleFiltersTest(django.test.TestCase):
         )
 
     def test_reversing_removes_only_the_consent_rules(self):
+        # Django reverses migrations newest first, so the later migration has been undone
+        # by the time this one is, which restores the description that this one expects.
+        bad_address_migration.stop_excluding_bad_addresses(django.apps.apps, None)
+        self.emailable_addresses.refresh_from_db()
+
         criteria_with_rules = self.emailable_addresses.criteria
         expected_rules = [
             rule

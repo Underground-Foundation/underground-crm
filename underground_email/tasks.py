@@ -282,11 +282,15 @@ def process_email_rejection(
                 event["recipient"],
             )
             continue
-        if event["event"] in (
-            SMTP2GoEventType.SOFT_BOUNCED,
-            SMTP2GoEventType.HARD_BOUNCED,
-            SMTP2GoEventType.REJECTED,
-        ):
+        if event["event"] == SMTP2GoEventType.SOFT_BOUNCED:
+            # A soft bounce is a temporary failure, such as a full mailbox, so it says
+            # nothing about whether the address can receive emails in general.
+            logger.info(
+                "User %s temporarily could not receive an email (%s)",
+                event["recipient"],
+                event["event"],
+            )
+        elif event["event"] in (SMTP2GoEventType.HARD_BOUNCED, SMTP2GoEventType.REJECTED):
             logger.warning(
                 "User %s could not receive an email (%s)", event["recipient"], event["event"]
             )
