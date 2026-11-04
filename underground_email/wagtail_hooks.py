@@ -1,5 +1,8 @@
 import logging
+from collections.abc import Iterable
 
+from django.contrib.admin.utils import quote, unquote
+from django.db.models import Model
 from django.templatetags.static import static
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _, ngettext
@@ -69,7 +72,31 @@ class EmailViewSetGroup(SnippetViewSetGroup):
 register_snippet(EmailViewSetGroup)
 
 
-class ScheduleEmailCampaignAction(SnippetBulkAction):
+class EmailCampaignBulkAction(SnippetBulkAction):
+    """
+    Finds campaigns from the identifiers that Wagtail's listing page submits.
+
+    The listing page escapes each primary key with admin_urlquote, which rewrites "_" as
+    "_5F", but BulkAction looks up the submitted values without reversing the escaping.
+    A campaign whose utm_id contains an underscore is therefore never found: selected
+    alone it produces a 404, and selected alongside others it is silently left out.
+
+    This class is a temporary measure. Remove it once underground-crm depends on a release
+    of Wagtail that unescapes these values itself, because unescaping twice would corrupt
+    any utm_id that happens to contain an escape sequence.
+    """
+
+    @classmethod
+    def get_queryset(cls, model: type[Model], object_ids: Iterable[str]) -> list[Model]:
+        return super().get_queryset(model, [unquote(pk) for pk in object_ids])
+
+    def get_all_objects_in_listing_query(self, parent_id: str | None) -> list[str]:
+        # "Select all" supplies unescaped primary keys, whereas get_queryset above expects
+        # the escaped form that the listing page submits.
+        return [quote(pk) for pk in super().get_all_objects_in_listing_query(parent_id)]
+
+
+class ScheduleEmailCampaignAction(EmailCampaignBulkAction):
     display_name = _("Send at scheduled time")
     action_type = "schedule_email"
     aria_label = _("Schedule selected email campaigns for sending")
@@ -157,7 +184,7 @@ class ScheduleEmailCampaignAction(SnippetBulkAction):
         ) % {"count": num_parent_objects}
 
 
-class CancelEmailCampaignAction(SnippetBulkAction):
+class CancelEmailCampaignAction(EmailCampaignBulkAction):
     display_name = _("Cancel sending")
     action_type = "cancel_email"
     aria_label = _("Cancel scheduled sending for selected email campaigns")
