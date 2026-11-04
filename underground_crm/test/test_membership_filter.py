@@ -5,6 +5,7 @@ import zoneinfo
 import django.test
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from underground_crm.forms.person_filter import QueryBuilderWidget
 from underground_crm.models import Membership, MembershipType, PeopleFilter
@@ -28,6 +29,7 @@ CUTOFF = datetime.datetime(2026, 7, 1, 8, 30, tzinfo=MELBOURNE)
 # The query builder's datetime-local input submits this form, with no UTC offset.
 CUTOFF_AS_SUBMITTED = "2026-07-01T08:30"
 ONE_MINUTE = datetime.timedelta(minutes=1)
+ONE_DAY = datetime.timedelta(days=1)
 
 
 def _membership_rule(membership_type: MembershipType) -> dict:
@@ -48,7 +50,8 @@ def _membership_since_rule(membership_type: MembershipType, since: str) -> dict:
 
 
 def _matched_emails(logic: str, *rules: dict) -> set[str]:
-    people_filter = PeopleFilter.objects.create(
+    # This stays unsaved because a test may evaluate several filters, and names are unique.
+    people_filter = PeopleFilter(
         name="Members under test", criteria={"logic": logic, "rules": list(rules)}
     )
     return set(people_filter.apply(Person.objects.all()).values_list("email", flat=True))
@@ -136,6 +139,89 @@ class MembershipFilterTest(django.test.TestCase):
             [self.cutoff_fusion_member.email],
         )
 
+    def _fusion_members_matched(self) -> dict[str, set[str]]:
+        """Return who each of the two operators matches for Fusion Party membership."""
+        return {
+            MEMBERSHIP_HELD_OPERATOR: _matched_emails(LOGIC_ALL, _membership_rule(self.fusion)),
+            MEMBERSHIP_SINCE_OPERATOR: _matched_emails(
+                LOGIC_ALL, _membership_since_rule(self.fusion, CUTOFF_AS_SUBMITTED)
+            ),
+        }
+
+    def test_expired_membership_does_not_count(self):
+        Membership.objects.filter(person=self.cutoff_fusion_member).update(
+            expires_on=timezone.localdate() - ONE_DAY
+        )
+
+        for operator, matched in self._fusion_members_matched().items():
+            self.assertNotIn(self.cutoff_fusion_member.email, matched, operator)
+
+    def test_membership_expiring_today_still_counts(self):
+        Membership.objects.filter(person=self.cutoff_fusion_member).update(
+            expires_on=timezone.localdate()
+        )
+
+        for operator, matched in self._fusion_members_matched().items():
+            self.assertIn(
+                self.cutoff_fusion_member.email,
+                matched,
+                f"{operator}: Membership.is_active holds through the whole expiry date.",
+            )
+
+    def test_suspended_membership_does_not_count(self):
+        Membership.objects.filter(person=self.cutoff_fusion_member).update(suspended_at=CUTOFF)
+
+        for operator, matched in self._fusion_members_matched().items():
+            self.assertNotIn(self.cutoff_fusion_member.email, matched, operator)
+
+    def test_lapsed_membership_does_not_hide_an_active_one_of_the_same_type(self):
+        Membership.objects.filter(person=self.cutoff_fusion_member).update(
+            expires_on=timezone.localdate() - ONE_DAY
+        )
+        self._join(self.cutoff_fusion_member, self.fusion, CUTOFF + ONE_MINUTE)
+
+        for operator, matched in self._fusion_members_matched().items():
+            self.assertIn(
+                self.cutoff_fusion_member.email,
+                matched,
+                f"{operator}: this person rejoined, so they currently hold the membership.",
+            )
+
+    def test_since_is_not_satisfied_by_a_recent_lapsed_and_an_old_active_membership(self):
+        Membership.objects.filter(person=self.cutoff_fusion_member).update(
+            suspended_at=CUTOFF + ONE_DAY
+        )
+        self._join(self.cutoff_fusion_member, self.fusion, CUTOFF - ONE_MINUTE)
+
+        self.assertNotIn(
+            self.cutoff_fusion_member.email,
+            _matched_emails(LOGIC_ALL, _membership_since_rule(self.fusion, CUTOFF_AS_SUBMITTED)),
+            "Their recent membership is suspended and their active one predates the "
+            "cutoff, so no single membership is both active and recent enough.",
+        )
+
+    def test_active_queryset_agrees_with_the_is_active_property(self):
+        today = timezone.localdate()
+        membership = Membership.objects.get(person=self.cutoff_fusion_member)
+        for expires_on, suspended_at in (
+            (None, None),
+            (today, None),
+            (today - ONE_DAY, None),
+            (today + ONE_DAY, None),
+            (None, CUTOFF),
+            (today + ONE_DAY, CUTOFF),
+        ):
+            membership.expires_on = expires_on
+            membership.suspended_at = suspended_at
+            membership.save()
+
+            self.assertEqual(
+                Membership.objects.active().filter(pk=membership.pk).exists(),
+                membership.is_active,
+                f"expires_on={expires_on}, suspended_at={suspended_at}: the filter's idea "
+                "of an active membership must not drift from the model's.",
+            )
+
     def test_rule_with_an_unusable_time_matches_nobody(self):
         self.assertEqual(
             _matched_emails(LOGIC_ALL, _membership_since_rule(self.fusion, "")),
@@ -149,7 +235,7 @@ class MembershipFilterAdminFormTest(django.test.TestCase):
     """Saves filters through the real admin form, which is what the query builder submits to."""
 
     TYPE_ERROR = "Choose a membership type for each membership condition."
-    TIME_ERROR = "Choose a time for each &quot;has membership since&quot; condition."
+    TIME_ERROR = "Choose a time for each &quot;has active membership since&quot; condition."
 
     def setUp(self):
         self.client.force_login(

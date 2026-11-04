@@ -1,6 +1,9 @@
+import datetime
 import uuid
 
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -15,6 +18,20 @@ class MembershipType(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class MembershipQuerySet(models.QuerySet):
+    def active(self, today: datetime.date | None = None) -> "MembershipQuerySet":
+        """
+        Narrow to the memberships for which Membership.is_active holds: those which
+        have not been suspended and have not expired as of ``today``, which defaults
+        to the current date in the site's time zone. A membership lasts through the
+        whole of its expiry date.
+        """
+        today = today or timezone.localdate()
+        return self.filter(
+            Q(expires_on__isnull=True) | Q(expires_on__gte=today), suspended_at__isnull=True
+        )
 
 
 class Membership(models.Model):
@@ -39,6 +56,8 @@ class Membership(models.Model):
     expires_on = models.DateField(null=True, verbose_name=_("Expiration date"), blank=True)
     suspended_at = models.DateTimeField(null=True, verbose_name=_("Suspension date"), blank=True)
 
+    objects = MembershipQuerySet.as_manager()
+
     class Meta:
         ordering = ["-started_at"]
 
@@ -47,10 +66,8 @@ class Membership(models.Model):
 
     @property
     def is_active(self):
-        from django.utils import timezone
-
         if self.suspended_at:
             return False
-        if self.expires_on and self.expires_on < timezone.now().date():
+        if self.expires_on and self.expires_on < timezone.localdate():
             return False
         return True

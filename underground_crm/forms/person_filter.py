@@ -91,5 +91,7 @@ class PeopleFilterAdminForm(forms.ModelForm):
                 rule.get("operator") == MEMBERSHIP_SINCE_OPERATOR
                 and parse_membership_since(rule.get(MEMBERSHIP_SINCE_KEY)) is None
             ):
-                raise ValidationError(_('Choose a time for each "has membership since" condition.'))
+                raise ValidationError(
+                    _('Choose a time for each "has active membership since" condition.')
+                )
         return criteria

@@ -97,11 +97,11 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str | Promise, bool]]] = {
     "filter": [
         ("matches", "matches", True),
     ],
-    # Any membership of the chosen type counts, including one that has since
-    # expired or been suspended.
+    # Only an active membership of the chosen type counts: not one that has expired
+    # or been suspended.
     "membership": [
-        (MEMBERSHIP_HELD_OPERATOR, _("has membership"), True),
-        (MEMBERSHIP_SINCE_OPERATOR, _("has membership since"), True),
+        (MEMBERSHIP_HELD_OPERATOR, _("has active membership"), True),
+        (MEMBERSHIP_SINCE_OPERATOR, _("has active membership since"), True),
     ],
 }
 
@@ -114,6 +114,21 @@ FIELD_TYPES: dict[str, str] = {
 LOGIC_ALL = "AND"
 LOGIC_ANY = "OR"
 LOGIC_NONE = "NONE"
+
+
+def _is_many_valued(field_path: str) -> bool:
+    """Return whether a Person field path crosses a relation holding several rows per person."""
+    from .person import Person
+
+    model: type[models.Model] = Person
+    for part in field_path.split("__"):
+        field = model._meta.get_field(part)
+        if field.many_to_many or field.one_to_many:
+            return True
+        if not field.is_relation:
+            return False
+        model = field.related_model
+    return False
 
 
 def parse_membership_type_id(value: Any) -> uuid.UUID | None:
@@ -247,11 +262,9 @@ class PeopleFilter(models.Model):
         for q in q_list[1:]:
             result = (result & q) if logic == LOGIC_ALL else (result | q)
         if logic == LOGIC_NONE:
-            # Negating the combined Q directly would go wrong for many-valued
-            # relations such as tags__name, for the reason given under
-            # "not_exact" in _rule_to_q: it would negate a join row rather than
-            # the person. This excludes every person who matches any of the
-            # rules instead.
+            # This excludes every person who matches any of the rules, so that the
+            # negation always applies to the person and never to a row that one of
+            # the rules happens to have joined.
             from .person import Person
 
             matching_people = Person.objects.filter(result)
@@ -278,6 +291,20 @@ class PeopleFilter(models.Model):
         if field == MEMBERSHIP_FIELD:
             return self._membership_rule_to_q(rule)
 
+        field_q = self._field_rule_to_q(field, op, value)
+        if op != "not_exact" and _is_many_valued(field):
+            # All the conditions of one filter() call share a single join, so "tagged
+            # Volunteer and tagged Donor" would demand one tag row with both names, and
+            # match nobody. A person matching through two rows would also be listed
+            # twice. A subquery gives each condition its own join and yields each person
+            # once. "not_exact" already tests the person rather than a join row.
+            from .person import Person
+
+            return Q(pk__in=Person.objects.filter(field_q).values("pk"))
+        return field_q
+
+    @staticmethod
+    def _field_rule_to_q(field: str, op: str, value: Any) -> Q:
         is_text = FIELD_TYPES.get(field) == "text"
         if op == "isnull":
             empty = Q(**{f"{field}__isnull": True})
@@ -313,12 +340,12 @@ class PeopleFilter(models.Model):
     def _membership_rule_to_q(rule: dict) -> Q:
         # This selects people through a subquery rather than with a condition such
         # as Q(memberships__type=...). All the conditions of one filter() call share
-        # a single join, so "has membership A and has membership B" would otherwise
-        # demand one membership row of both types, and match nobody.
+        # a single join, so "has active membership A and has active membership B"
+        # would otherwise demand one membership row of both types, and match nobody.
         membership_type_id = parse_membership_type_id(rule.get("value"))
         if membership_type_id is None:
             return Q(pk__in=[])
-        memberships = Membership.objects.filter(type_id=membership_type_id)
+        memberships = Membership.objects.active().filter(type_id=membership_type_id)
         if rule["operator"] == MEMBERSHIP_SINCE_OPERATOR:
             since = parse_membership_since(rule.get(MEMBERSHIP_SINCE_KEY))
             if since is None:

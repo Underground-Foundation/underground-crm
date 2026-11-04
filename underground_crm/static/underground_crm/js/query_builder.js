@@ -80,7 +80,7 @@
       membershipTypeSelect.appendChild(opt(type.id, type.label, type.id === rule.value));
     });
 
-    // Start time for "has membership since"
+    // Start time for "has active membership since"
     const sinceInput = el("input", "qb-value qb-since-value");
     sinceInput.type = "datetime-local";
     sinceInput.style.display = "none";
