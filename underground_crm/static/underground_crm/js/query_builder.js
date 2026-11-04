@@ -6,7 +6,8 @@
  *
  * Field definitions and their operators are read from the textarea's
  * data-fields and data-operators attributes (JSON strings).
- * Available nested filters are read from data-people-filters.
+ * Available nested filters are read from data-people-filters, and available
+ * membership types from data-membership-types.
  *
  * On form submit the DOM tree is serialised back to JSON and written
  * into the textarea so Django's normal form handling saves it.
@@ -30,6 +31,10 @@
     return o;
   }
 
+  // The operator of a membership condition which also needs a start time, as
+  // MEMBERSHIP_SINCE_OPERATOR in underground_crm/models/filter.py.
+  const MEMBERSHIP_SINCE_OPERATOR = "since";
+
   // ── Rule row ───────────────────────────────────────────────────────────────
 
   /**
@@ -37,7 +42,7 @@
    * a fresh default; it is NOT mutated — state is read entirely from the DOM
    * when serialising.
    */
-  function buildRuleEl(fields, operators, peopleFilters, rule) {
+  function buildRuleEl(fields, operators, peopleFilters, membership, rule) {
     rule = rule || {};
     const row = el("div", "qb-rule");
 
@@ -65,6 +70,22 @@
       filterSelect.appendChild(opt(pf.id, pf.label, pf.id === rule.value));
     });
 
+    // Membership type select. It starts on a blank placeholder rather than on the
+    // first type, so that the admin has to make a choice, and so that a rule whose
+    // type has been deleted does not silently switch to some other type.
+    const membershipTypeSelect = el("select", "qb-value qb-membership-type-value");
+    membershipTypeSelect.style.display = "none";
+    membershipTypeSelect.appendChild(opt("", membership.placeholder, true));
+    membership.types.forEach(function (type) {
+      membershipTypeSelect.appendChild(opt(type.id, type.label, type.id === rule.value));
+    });
+
+    // Start time for "has active membership since"
+    const sinceInput = el("input", "qb-value qb-since-value");
+    sinceInput.type = "datetime-local";
+    sinceInput.style.display = "none";
+    if (rule.since) sinceInput.value = rule.since;
+
     function getFieldType() {
       const fieldDef = fields.find(function (f) { return f.id === fieldSel.value; });
       return fieldDef ? fieldDef.type : "text";
@@ -84,7 +105,14 @@
 
     function refreshValueVisibility() {
       const fieldType = getFieldType();
-      if (fieldType === "filter") {
+      const isMembership = fieldType === "membership";
+      membershipTypeSelect.style.display = isMembership ? "" : "none";
+      sinceInput.style.display =
+        (isMembership && opSel.value === MEMBERSHIP_SINCE_OPERATOR) ? "" : "none";
+      if (isMembership) {
+        valueInput.style.display = "none";
+        filterSelect.style.display = "none";
+      } else if (fieldType === "filter") {
         valueInput.style.display = "none";
         filterSelect.style.display = "";
       } else {
@@ -113,13 +141,15 @@
     row.appendChild(opSel);
     row.appendChild(valueInput);
     row.appendChild(filterSelect);
+    row.appendChild(membershipTypeSelect);
+    row.appendChild(sinceInput);
     row.appendChild(removeBtn);
     return row;
   }
 
   // ── Group ──────────────────────────────────────────────────────────────────
 
-  function buildGroupEl(fields, operators, peopleFilters, node, isRoot) {
+  function buildGroupEl(fields, operators, peopleFilters, membership, node, isRoot) {
     node = node || {};
     const group = el("div", isRoot ? "qb-group qb-root" : "qb-group qb-nested");
 
@@ -140,9 +170,9 @@
     const rulesContainer = el("div", "qb-rules");
     (node.rules || []).forEach(function (rule) {
       if ("field" in rule) {
-        rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, rule));
+        rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, membership, rule));
       } else {
-        rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, rule, false));
+        rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, membership, rule, false));
       }
     });
     group.appendChild(rulesContainer);
@@ -154,7 +184,7 @@
     addRuleBtn.type = "button";
     addRuleBtn.textContent = "+ Add condition";
     addRuleBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, {}));
+      rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, membership, {}));
     });
     footer.appendChild(addRuleBtn);
 
@@ -162,7 +192,7 @@
     addGroupBtn.type = "button";
     addGroupBtn.textContent = "+ Add group";
     addGroupBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, {logic: "AND", rules: []}, false));
+      rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, membership, {logic: "AND", rules: []}, false));
     });
     footer.appendChild(addGroupBtn);
 
@@ -193,11 +223,20 @@
       if (child.classList.contains("qb-rule")) {
         const fieldSel = child.querySelector(".qb-field");
         const opSel = child.querySelector(".qb-operator");
-        const valueInput = child.querySelector(".qb-value");
+        // The start time input also carries .qb-value for its styling, so this has
+        // to exclude it to find the row's ordinary value input.
+        const valueInput = child.querySelector("input.qb-value:not(.qb-since-value)");
+        const membershipTypeSelect = child.querySelector(".qb-membership-type-value");
+        const sinceInput = child.querySelector(".qb-since-value");
         const filterSelect = child.querySelector(".qb-filter-value");
         if (!fieldSel || !opSel) return;
         const rule = {field: fieldSel.value, operator: opSel.value};
-        if (filterSelect && filterSelect.style.display !== "none") {
+        if (membershipTypeSelect && membershipTypeSelect.style.display !== "none") {
+          rule.value = membershipTypeSelect.value;
+          if (sinceInput && sinceInput.style.display !== "none") {
+            rule.since = sinceInput.value;
+          }
+        } else if (filterSelect && filterSelect.style.display !== "none") {
           rule.value = filterSelect.value;
         } else if (valueInput && valueInput.style.display !== "none") {
           rule.value = valueInput.value;
@@ -223,18 +262,24 @@
       if (!criteria.logic) criteria.logic = "AND";
       if (!criteria.rules) criteria.rules = [];
 
-      let fields, operators, peopleFilters;
+      let fields, operators, peopleFilters, membershipTypes;
       try {
         fields = JSON.parse(textarea.dataset.fields || "[]");
         operators = JSON.parse(textarea.dataset.operators || "{}");
         peopleFilters = JSON.parse(textarea.dataset.peopleFilters || "[]");
+        membershipTypes = JSON.parse(textarea.dataset.membershipTypes || "[]");
       } catch (_) {
         fields = [];
         operators = {};
         peopleFilters = [];
+        membershipTypes = [];
       }
+      const membership = {
+        types: membershipTypes,
+        placeholder: textarea.dataset.membershipTypePlaceholder || "",
+      };
 
-      const rootEl = buildGroupEl(fields, operators, peopleFilters, criteria, true);
+      const rootEl = buildGroupEl(fields, operators, peopleFilters, membership, criteria, true);
       textarea.parentNode.insertBefore(rootEl, textarea);
 
       const form = textarea.closest("form");
