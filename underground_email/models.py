@@ -312,7 +312,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
         context.update(
             {
                 "subject": self.subject,
-                "greeting": self.greeting,
+                "greeting": self.greeting.greeting if self.greeting else "",
                 "body": self.body,
                 "signature": None if not self.sender else self.sender.signature,
                 "preview_text": self.preview_text,
