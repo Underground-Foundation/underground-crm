@@ -634,9 +634,8 @@ ROBOTS_SITEMAP_VIEW_NAME = "sitemap"
 # The Host directive was only ever honored by Yandex, which has since dropped it, and it
 # would name the django.contrib.sites domain, which is not kept in step with the real one.
 ROBOTS_USE_HOST = False
-# Seconds for which a generated robots.txt is cached. Unset or 0 disables the cache, so
-# that a rule edited in the admin takes effect on the next request.
-ROBOTS_CACHE_TIMEOUT = int(os.environ.get("ROBOTS_CACHE_TIMEOUT", "0")) or None
+# Cache the robots.txt rules for this long (in seconds). 0 disables the cache.
+ROBOTS_CACHE_TIMEOUT = int(os.environ.get("ROBOTS_CACHE_TIMEOUT", "180")) or None
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
