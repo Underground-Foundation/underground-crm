@@ -110,7 +110,9 @@
 <body style="margin: 0 !important; padding: 0 !important; background-color: #f5f1ff;" bgcolor="#f5f1ff">
 
   <!-- Preview text (hidden) -->
-  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">{{ preview_text }}</div>
+  {% if preview_text %}
+    <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">{{ preview_text }}</div>
+  {% endif %}
   <!-- Prevent preview text bleeding -->
   <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 
@@ -163,9 +165,11 @@
                         <td align="left"
                             style="font-size: 16px; line-height: 25px; font-family: 'Open Sans', Helvetica, Arial, sans-serif; color: #333333;">
                           <!--[if mso]><span style="font-family: Arial, Helvetica, sans-serif;"><![endif]-->
-                          <p>
-                            {{ greeting }}
-                          </p>
+                          {% if greeting %}
+                            <p>
+                              {{ greeting }}
+                            </p>
+                          {% endif %}
                           {% include_block body %}
                           {% if signature %}
                             {{ signature|richtext }}
