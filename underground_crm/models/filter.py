@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import Any
 
@@ -5,13 +6,27 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.utils.functional import Promise
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
+from .membership import Membership
+
+# The pseudo-field of a membership condition, and its two operators. Both operators
+# take a membership type's ID as the rule's "value"; MEMBERSHIP_SINCE_OPERATOR also
+# takes the earliest acceptable start time as the rule's MEMBERSHIP_SINCE_KEY.
+MEMBERSHIP_FIELD = "__membership__"
+MEMBERSHIP_HELD_OPERATOR = "has"
+MEMBERSHIP_SINCE_OPERATOR = "since"
+MEMBERSHIP_SINCE_KEY = "since"
+
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
-# field_type must be one of: "text", "boolean", "integer", "date", "filter".
-PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
+# field_type must be one of: "text", "boolean", "integer", "date", "filter",
+# "membership".
+PERSON_FILTER_FIELDS: list[tuple[str, str | Promise, str]] = [
     ("first_name", "First name", "text"),
     ("last_name", "Last name", "text"),
     ("email", "Email", "text"),
@@ -42,13 +57,14 @@ PERSON_FILTER_FIELDS: list[tuple[str, str, str]] = [
     ("priority_level", "Priority level", "integer"),
     ("donations_count", "Donations count", "integer"),
     ("__filter__", "People filter", "filter"),
+    (MEMBERSHIP_FIELD, _("Membership"), "membership"),
 ]
 
 # Operators available for each field type.
 # Each entry is (operator_id, display_label, has_value).
 # operator_id is either a raw Django ORM lookup suffix or a special sentinel
 # handled by PersonFilter._rule_to_q().
-FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
+FIELD_OPERATORS: dict[str, list[tuple[str, str | Promise, bool]]] = {
     "text": [
         ("icontains", "contains", True),
         ("exact", "is exactly", True),
@@ -81,6 +97,12 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str, bool]]] = {
     "filter": [
         ("matches", "matches", True),
     ],
+    # Any membership of the chosen type counts, including one that has since
+    # expired or been suspended.
+    "membership": [
+        (MEMBERSHIP_HELD_OPERATOR, _("has membership"), True),
+        (MEMBERSHIP_SINCE_OPERATOR, _("has membership since"), True),
+    ],
 }
 
 FIELD_TYPES: dict[str, str] = {
@@ -92,6 +114,32 @@ FIELD_TYPES: dict[str, str] = {
 LOGIC_ALL = "AND"
 LOGIC_ANY = "OR"
 LOGIC_NONE = "NONE"
+
+
+def parse_membership_type_id(value: Any) -> uuid.UUID | None:
+    """Return the membership type ID held by a rule, or None if it does not hold one."""
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+def parse_membership_since(value: Any) -> datetime.datetime | None:
+    """
+    Return the start time held by a rule, or None if it does not hold one.
+
+    The query builder submits a time with no UTC offset, such as "2026-07-01T09:00",
+    which is read as a time in the site's time zone.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        since = parse_datetime(value)
+    except ValueError:
+        return None
+    if since is not None and timezone.is_naive(since):
+        return timezone.make_aware(since)
+    return since
 
 
 class PeopleFilter(models.Model):
@@ -110,6 +158,12 @@ class PeopleFilter(models.Model):
                         {"field": "tags__name", "operator": "exact", "value": "Volunteer"},
                         {"field": "is_donor",   "operator": "true"}
                     ]
+                },
+                {
+                    "field": "__membership__",
+                    "operator": "since",
+                    "value": "<MembershipType UUID>",
+                    "since": "2026-07-01T09:00"
                 }
             ]
         }
@@ -221,6 +275,9 @@ class PeopleFilter(models.Model):
             sub_qs = sub_filter.apply(Person.objects.all(), _seen=seen)
             return Q(pk__in=sub_qs)
 
+        if field == MEMBERSHIP_FIELD:
+            return self._membership_rule_to_q(rule)
+
         is_text = FIELD_TYPES.get(field) == "text"
         if op == "isnull":
             empty = Q(**{f"{field}__isnull": True})
@@ -251,3 +308,20 @@ class PeopleFilter(models.Model):
             matching_people = Person.objects.filter(**{f"{field}__exact": value})
             return ~Q(pk__in=matching_people.values("pk"))
         return Q(**{f"{field}__{op}": value})
+
+    @staticmethod
+    def _membership_rule_to_q(rule: dict) -> Q:
+        # This selects people through a subquery rather than with a condition such
+        # as Q(memberships__type=...). All the conditions of one filter() call share
+        # a single join, so "has membership A and has membership B" would otherwise
+        # demand one membership row of both types, and match nobody.
+        membership_type_id = parse_membership_type_id(rule.get("value"))
+        if membership_type_id is None:
+            return Q(pk__in=[])
+        memberships = Membership.objects.filter(type_id=membership_type_id)
+        if rule["operator"] == MEMBERSHIP_SINCE_OPERATOR:
+            since = parse_membership_since(rule.get(MEMBERSHIP_SINCE_KEY))
+            if since is None:
+                return Q(pk__in=[])
+            memberships = memberships.filter(started_at__gte=since)
+        return Q(pk__in=memberships.values("person"))
