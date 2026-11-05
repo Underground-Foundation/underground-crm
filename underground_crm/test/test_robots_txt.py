@@ -23,6 +23,14 @@ VOLUNTEER_PAGE_SLUG = "volunteer"
 
 
 class RobotsTxtTest(TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if settings.ROBOTS_CACHE_TIMEOUT:
+            raise cls.failureException(
+                "The caching of robots.txt needs to be disabled for tests to run independently"
+            )
+        super().setUpClass()
+
     def setUp(self) -> None:
         DjangoSite.objects.filter(pk=settings.SITE_ID).update(
             domain=UNCONFIGURED_DJANGO_SITE_DOMAIN
@@ -68,10 +76,18 @@ class RobotsTxtTest(TestCase):
 
     def test_lists_a_disallowed_path_from_the_admin(self) -> None:
         rule = Rule.objects.create(robot=CRAWLER)
-        rule.sites.add(DjangoSite.objects.get(pk=settings.SITE_ID))
+        site = DjangoSite.objects.get(pk=settings.SITE_ID)
+        rule.sites.add(site)
         rule.disallowed.add(Url.objects.create(pattern=PRIVATE_PATH))
-
-        self.assertIn(f"Disallow: {PRIVATE_PATH}", self.request_robots_txt().splitlines())
+        robot_rules = self.request_robots_txt()
+        self.assertIn(
+            f"Disallow: {PRIVATE_PATH}",
+            robot_rules.splitlines(),
+            msg=(
+                f"It was thought that the private path {PRIVATE_PATH} would be explicitly "
+                f"disallowed for robots:\n{robot_rules}"
+            ),
+        )
 
 
 class SitemapTest(TestCase):
