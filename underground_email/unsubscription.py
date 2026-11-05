@@ -63,12 +63,15 @@ def unsubscribe_from_tag_via_email_campaign(
     """
     User = get_user_model()
     try:
-        person = User.objects.get(email=email_address, unsubscribed_at__isnull=False)
+        person = User.objects.get(email=email_address)
     except User.DoesNotExist:
         logger.warning("Unsubscription failed for %s", email_address)
         raise ValueError(
             _("No current user found with email address %(email)s") % {"email": email_address}
         )
+    if person.unsubscribed_at:
+        logger.info("%s has already unsubscribed", email_address)
+        return None
 
     campaign = EmailCampaign.objects.select_related("unsubscription_tag").get(
         utm_id=utm_campaign_id
