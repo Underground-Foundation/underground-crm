@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
     "wagtail.contrib.routable_page",
+    "wagtail.contrib.sitemaps",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -75,6 +76,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sites",
+    "django.contrib.sitemaps",
+    # robots.txt rules, edited in the Django admin — https://github.com/django-commons/django-robots
+    "robots",
     "underground_email",
     "underground_payments",
     "simple_history",
@@ -619,8 +623,15 @@ LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
-# Required by django.contrib.sites (used by allauth)
+# Required by django.contrib.sites (used by allauth and django-robots)
 SITE_ID = 1
+
+# django-robots — https://django-robots.readthedocs.io/en/latest/#settings
+ROBOTS_SITEMAP_VIEW_NAME = "sitemap"
+# Host is unsupported: https://webmasterid.com/robots/host-directive
+ROBOTS_USE_HOST = False
+# Cache the robots.txt rules for this long (in seconds). 0 disables the cache.
+ROBOTS_CACHE_TIMEOUT = int(os.environ.get("ROBOTS_CACHE_TIMEOUT", "180")) or None
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

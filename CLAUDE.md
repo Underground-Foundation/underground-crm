@@ -159,6 +159,17 @@ a base map from `MAP_TILE_LAYERS` with Leaflet's layers control, and their brows
 remembers the choice. A layer whose tile URL needs an `{apikey}` (Thunderforest, via
 `THUNDERFOREST_API_KEY`) is left out of the choices while its key is blank.
 
+## robots.txt and the sitemap
+
+`/robots.txt` comes from django-robots, whose `Rule`/`Url` models are edited in the Django
+admin and attached to the django.contrib.sites `Site` named by `SITE_ID`. `/sitemap.xml` is
+Wagtail's sitemap, named `"sitemap"` in `site_urls.py` so that `ROBOTS_SITEMAP_VIEW_NAME`
+can reverse it. `underground_crm/views/robots_txt.py` subclasses django-robots' view only
+to take the sitemap's host from the request rather than from the django.contrib.sites
+domain, which is maintained by hand and is often still "example.com". The obsolete `Host:`
+directive is switched off (`ROBOTS_USE_HOST = False`). The models of django-robots are
+third-party, so their primary keys and migrations are not ours to change.
+
 ## Addressr (Australian address search)
 
 `docker-compose.yml` runs Addressr backed by OpenSearch. The G-NAF dataset
