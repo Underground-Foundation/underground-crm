@@ -167,8 +167,8 @@ Wagtail's sitemap, named `"sitemap"` in `site_urls.py` so that `ROBOTS_SITEMAP_V
 can reverse it. `underground_crm/views/robots_txt.py` subclasses django-robots' view only
 to take the sitemap's host from the request rather than from the django.contrib.sites
 domain, which is maintained by hand and is often still "example.com". The obsolete `Host:`
-directive is switched off (`ROBOTS_USE_HOST = False`). django-robots' models are
-third-party, so their integer PKs and migrations are not ours to change.
+directive is switched off (`ROBOTS_USE_HOST = False`). The models of django-robots are
+third-party, so their primary keys and migrations are not ours to change.
 
 ## Addressr (Australian address search)
 

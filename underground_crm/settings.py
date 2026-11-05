@@ -627,12 +627,8 @@ LOGOUT_REDIRECT_URL = "/"
 SITE_ID = 1
 
 # django-robots — https://django-robots.readthedocs.io/en/latest/#settings
-# robots.txt lists the rules attached to the django.contrib.sites Site named by SITE_ID,
-# and advertises Wagtail's sitemap, which site_urls.py names "sitemap". With no rules at
-# all, every crawler is allowed everywhere.
 ROBOTS_SITEMAP_VIEW_NAME = "sitemap"
-# The Host directive was only ever honored by Yandex, which has since dropped it, and it
-# would name the django.contrib.sites domain, which is not kept in step with the real one.
+# Host is unsupported: https://webmasterid.com/robots/host-directive
 ROBOTS_USE_HOST = False
 # Cache the robots.txt rules for this long (in seconds). 0 disables the cache.
 ROBOTS_CACHE_TIMEOUT = int(os.environ.get("ROBOTS_CACHE_TIMEOUT", "180")) or None
