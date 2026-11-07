@@ -540,7 +540,7 @@ class Person(AbstractBaseUser, PermissionsMixin):
 
     @property
     def first_name_or_friend(self):
-        return self.first_name or "Friend"
+        return self.preferred_name or self.first_name or "Friend"
 
     @property
     def age(self) -> int | None:

@@ -112,11 +112,13 @@ def record_rsvp_engagement(event_guest_id: str) -> None:
     )
 
 
-def send_subscription_confirmation(person_id: str, tag_id: str) -> None:
+def send_subscription_confirmation(person_id: str, tag_id: str, site_id: int) -> None:
     """
     Email a "confirm your subscription" verification link to a Person created
     by an unauthenticated mailing-list subscription (queued by the
-    subscription_created receiver in signals.py).
+    subscription_created receiver in signals.py). The link is rooted at the
+    Wagtail Site identified by `site_id`, which is the site the visitor
+    subscribed on.
 
     Verification state lives in allauth's EmailAddress model: the link points
     at allauth's account_confirm_email view, which marks the address verified
@@ -129,6 +131,7 @@ def send_subscription_confirmation(person_id: str, tag_id: str) -> None:
     from django.template.loader import render_to_string
     from django.urls import reverse
     from smtp2go.core import Smtp2goClient
+    from wagtail.models import Site
 
     try:
         person = Person.objects.get(pk=uuid.UUID(person_id))
@@ -148,7 +151,17 @@ def send_subscription_confirmation(person_id: str, tag_id: str) -> None:
         )
         return
 
-    confirm_url = settings.WAGTAILADMIN_BASE_URL + reverse(
+    try:
+        site = Site.objects.get(pk=site_id)
+    except Site.DoesNotExist:
+        logger.warning(
+            "send_subscription_confirmation: Site %s not found; not emailing %s",
+            site_id,
+            person.email,
+        )
+        return
+
+    confirm_url = site.root_url.rstrip("/") + reverse(
         "account_confirm_email", args=[EmailConfirmationHMAC(email_address).key]
     )
     html = render_to_string(
