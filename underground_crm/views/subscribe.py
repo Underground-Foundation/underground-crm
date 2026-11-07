@@ -8,7 +8,7 @@ from django.core.validators import validate_email
 from django.http import JsonResponse
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
-from wagtail.models import Page
+from wagtail.models import Page, Site
 
 from ..forms.form_submission import find_identity_conflict, get_or_create_person
 from ..models.form_submission import FormSubmission
@@ -143,6 +143,7 @@ def subscription_view(request):
         tag=tag,
         was_authenticated=is_authenticated,
         person_created=should_create,
+        site=Site.find_for_request(request),
     )
     logger.info("%s has subscribed to tag %s at %s", request.user, tag, email_address)
 

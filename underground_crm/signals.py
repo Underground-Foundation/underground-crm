@@ -1,15 +1,21 @@
+import logging
+
 from django.core.exceptions import PermissionDenied
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import Signal, receiver
 from django_q.tasks import async_task
+from wagtail.models import Site
 
 from .models.address import Address
 from .models.pages import EventGuest
 from .models.person import Tag
 
+logger = logging.getLogger(__name__)
+
 # Sent by views.subscribe.subscribe_view after a mailing-list Tag is applied.
 # Kwargs: person, tag, was_authenticated, person_created (True when the
-# subscription created a new placeholder Person for a previously unseen email).
+# subscription created a new placeholder Person for a previously unseen email),
+# site (the Wagtail Site the visitor subscribed on, or None if none matched).
 subscription_created = Signal()
 
 _ADDRESS_CONTENT_FIELDS = ("line1", "line2", "line3", "city", "state", "postcode", "country_code")
@@ -50,17 +56,39 @@ def on_event_guest_saved(
 
 @receiver(subscription_created)
 def on_subscription_created(
-    sender, person, tag: Tag, was_authenticated: bool, person_created: bool, **kwargs
+    sender,
+    person,
+    tag: Tag,
+    was_authenticated: bool,
+    person_created: bool,
+    site: Site | None,
+    **kwargs,
 ) -> None:
     """
     When an unauthenticated visitor subscribes with a previously unseen email
     address, queue a "confirm your subscription" verification email. Known
     email addresses (matched or authenticated) skip it — the address either
     belongs to an established record or the visitor proved it by logging in.
+
+    The site is passed by ID so that the confirmation link points back at the
+    site the visitor subscribed on.
     """
     if was_authenticated or not person_created:
         return
-    async_task("underground_crm.tasks.send_subscription_confirmation", str(person.pk), str(tag.pk))
+    if site is None:
+        logger.error(
+            "No site matched the subscription of %s to tag %s, so no confirmation email "
+            "can be sent",
+            person.email,
+            tag,
+        )
+        return
+    async_task(
+        "underground_crm.tasks.send_subscription_confirmation",
+        str(person.pk),
+        str(tag.pk),
+        site.pk,
+    )
 
 
 @receiver(pre_delete, sender=Tag)
