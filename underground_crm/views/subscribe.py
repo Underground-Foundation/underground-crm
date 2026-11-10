@@ -133,7 +133,11 @@ def subscription_view(request):
     submission.save()
 
     target_person.tags.add(tag, through_defaults={"was_authenticated": is_authenticated})
-    if not target_person.email_opt_in:
+    # A visitor who subscribes with an address we have never seen has not shown that the
+    # address is theirs, so they are opted into email only once they confirm it, by the
+    # email_confirmed receiver in signals.py. Until then they match no "Emailable
+    # addresses" filter.
+    if not should_create and not target_person.email_opt_in:
         target_person.email_opt_in = True
         target_person.save(update_fields=["email_opt_in"])
 

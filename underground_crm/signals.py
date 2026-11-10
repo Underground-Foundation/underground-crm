@@ -1,5 +1,7 @@
 import logging
 
+from allauth.account.models import EmailAddress
+from allauth.account.signals import email_confirmed
 from django.core.exceptions import PermissionDenied
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import Signal, receiver
@@ -8,7 +10,7 @@ from wagtail.models import Site
 
 from .models.address import Address
 from .models.pages import EventGuest
-from .models.person import Tag
+from .models.person import PersonTag, Tag
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,39 @@ def on_subscription_created(
         str(tag.pk),
         site.pk,
     )
+
+
+@receiver(email_confirmed)
+def on_email_confirmed(sender, request, email_address: EmailAddress, **kwargs) -> None:
+    """
+    Record on the Person what following an allauth confirmation link proves,
+    then delete the EmailAddress row, which exists only to give that link
+    something to point at (see send_subscription_confirmation). Person is the
+    only record of whether an address works: email_is_bad=False means that it
+    has received email.
+
+    allauth sends this signal for every confirmed address, including the one
+    somebody verifies after signing up for a website account. That proves the
+    address works too, but it is not consent to email, so only a person who
+    has subscribed to a mailing list anonymously, without logging in, is also
+    opted in; subscription_view leaves their opt-in unset until now.
+
+    The row can be deleted here because allauth does nothing more with it once
+    the signal has been sent, beyond reading its address for a flash message.
+    """
+    person = email_address.user
+    if email_address.email.casefold() == person.email.casefold():
+        person.email_is_bad = False
+        update_fields = ["email_is_bad"]
+        if (
+            not person.email_opt_in
+            and PersonTag.objects.filter(content_object=person, was_authenticated=False).exists()
+        ):
+            person.email_opt_in = True
+            update_fields.append("email_opt_in")
+        person.save(update_fields=update_fields)
+        logger.info("%s has confirmed their email address", person.email)
+    email_address.delete()
 
 
 @receiver(pre_delete, sender=Tag)
