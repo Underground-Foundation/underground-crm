@@ -33,8 +33,9 @@ dependencies = [
     "dnspython>=2.0",
     "email-validator",
     "feedparser>=6.0",
-    # Only nameparser.config.CONSTANTS.titles is used (for titles in people's names)
-    "nameparser>=1.1",
+    # Only nameparser.config.CONSTANTS.titles is used (for titles in people's names).
+    # nameparser 3.0 removed CONSTANTS in favour of its new Lexicon API.
+    "nameparser>=2.2.0,<3",
     "Pillow>=10.0",
     "psycopg[binary]",
     "python-dateutil>=2.9.0.post0,<3.0",
