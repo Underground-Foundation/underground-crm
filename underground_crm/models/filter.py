@@ -12,6 +12,7 @@ from django.utils.functional import Promise
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
+from .interaction import Interaction
 from .membership import Membership
 
 # The pseudo-field of a membership condition, and its two operators. Both operators
@@ -22,10 +23,19 @@ MEMBERSHIP_HELD_OPERATOR = "has"
 MEMBERSHIP_SINCE_OPERATOR = "since"
 MEMBERSHIP_SINCE_KEY = "since"
 
+# The pseudo-field of an interaction condition, and its two operators. Both take the
+# first date of the period as the rule's "value", in YYYY-MM-DD form;
+# INTERACTION_BETWEEN_OPERATOR also takes the last date as the rule's
+# INTERACTION_UNTIL_KEY. Both dates are inclusive, and are read in the site's time zone.
+INTERACTION_FIELD = "__interaction__"
+INTERACTION_SINCE_OPERATOR = "since"
+INTERACTION_BETWEEN_OPERATOR = "between"
+INTERACTION_UNTIL_KEY = "until"
+
 # Fields that can appear in a PersonFilter rule.
 # Each entry is (field_path, display_label, field_type).
-# field_type must be one of: "text", "boolean", "integer", "date", "filter",
-# "membership".
+# field_type must be one of: "text", "presence", "boolean", "integer", "date",
+# "filter", "membership", "interaction".
 PERSON_FILTER_FIELDS: list[tuple[str, str | Promise, str]] = [
     ("first_name", "First name", "text"),
     ("last_name", "Last name", "text"),
@@ -48,6 +58,10 @@ PERSON_FILTER_FIELDS: list[tuple[str, str | Promise, str]] = [
     ("is_fundraiser", "Is fundraiser", "boolean"),
     ("is_deceased", "Is deceased", "boolean"),
     ("is_active", "Is active", "boolean"),
+    ("phone_number", _("Phone number"), "presence"),
+    ("mobile_number", _("Mobile number"), "presence"),
+    ("mobile_opt_in", _("Mobile opt-in"), "boolean"),
+    ("is_mobile_bad", _("Mobile number is bad"), "boolean"),
     ("email_opt_in", "Email opt-in", "boolean"),
     ("unsubscribed_at", "Unsubscribed at", "date"),
     ("do_not_call", "Do not call", "boolean"),
@@ -58,6 +72,7 @@ PERSON_FILTER_FIELDS: list[tuple[str, str | Promise, str]] = [
     ("donations_count", "Donations count", "integer"),
     ("__filter__", "People filter", "filter"),
     (MEMBERSHIP_FIELD, _("Membership"), "membership"),
+    (INTERACTION_FIELD, _("Interaction"), "interaction"),
 ]
 
 # Operators available for each field type.
@@ -72,6 +87,12 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str | Promise, bool]]] = {
         ("istartswith", "starts with", True),
         ("isnull", "is empty", False),
         ("not_isnull", "is not empty", False),
+    ],
+    # A field such as a phone number, whose contents are not worth searching, so
+    # only whether it holds anything at all. NULL and "" both count as empty.
+    "presence": [
+        ("isnull", _("is empty"), False),
+        ("not_isnull", _("is not empty"), False),
     ],
     "boolean": [
         ("true", "is true", False),
@@ -103,7 +124,15 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str | Promise, bool]]] = {
         (MEMBERSHIP_HELD_OPERATOR, _("has active membership"), True),
         (MEMBERSHIP_SINCE_OPERATOR, _("has active membership since"), True),
     ],
+    # Any interaction counts, whatever its method or outcome.
+    "interaction": [
+        (INTERACTION_SINCE_OPERATOR, _("had an interaction on or after"), True),
+        (INTERACTION_BETWEEN_OPERATOR, _("had an interaction between"), True),
+    ],
 }
+
+# Field types whose blank values may be stored as "" as well as NULL.
+STRING_FIELD_TYPES = {"text", "presence"}
 
 FIELD_TYPES: dict[str, str] = {
     field_path: field_type for field_path, _label, field_type in PERSON_FILTER_FIELDS
@@ -157,6 +186,16 @@ def parse_membership_since(value: Any) -> datetime.datetime | None:
     return since
 
 
+def parse_interaction_date(value: Any) -> datetime.date | None:
+    """Return the date (YYYY-MM-DD) held by an interaction rule, or None if it does not hold one."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 class PeopleFilter(models.Model):
     """
     A saved Person query, stored as a nested AND/OR/NONE tree.
@@ -179,6 +218,12 @@ class PeopleFilter(models.Model):
                     "operator": "since",
                     "value": "<MembershipType UUID>",
                     "since": "2026-07-01T09:00"
+                },
+                {
+                    "field": "__interaction__",
+                    "operator": "between",
+                    "value": "2026-07-01",
+                    "until": "2026-07-31"
                 }
             ]
         }
@@ -291,6 +336,9 @@ class PeopleFilter(models.Model):
         if field == MEMBERSHIP_FIELD:
             return self._membership_rule_to_q(rule)
 
+        if field == INTERACTION_FIELD:
+            return self._interaction_rule_to_q(rule)
+
         field_q = self._field_rule_to_q(field, op, value)
         if op != "not_exact" and _is_many_valued(field):
             # All the conditions of one filter() call share a single join, so "tagged
@@ -305,7 +353,7 @@ class PeopleFilter(models.Model):
 
     @staticmethod
     def _field_rule_to_q(field: str, op: str, value: Any) -> Q:
-        is_text = FIELD_TYPES.get(field) == "text"
+        is_text = FIELD_TYPES.get(field) in STRING_FIELD_TYPES
         if op == "isnull":
             empty = Q(**{f"{field}__isnull": True})
             if is_text:
@@ -352,3 +400,21 @@ class PeopleFilter(models.Model):
                 return Q(pk__in=[])
             memberships = memberships.filter(started_at__gte=since)
         return Q(pk__in=memberships.values("person"))
+
+    @staticmethod
+    def _interaction_rule_to_q(rule: dict) -> Q:
+        # As with memberships, a subquery lets two interaction conditions in one
+        # group match two different interactions, and lists each person once however
+        # many of their interactions fall in the period.
+        first_date = parse_interaction_date(rule.get("value"))
+        if first_date is None:
+            return Q(pk__in=[])
+        # created_at__date takes the date on which the interaction happened in the
+        # site's time zone, so a late-evening call is not counted as the next day's.
+        interactions = Interaction.objects.filter(created_at__date__gte=first_date)
+        if rule["operator"] == INTERACTION_BETWEEN_OPERATOR:
+            last_date = parse_interaction_date(rule.get(INTERACTION_UNTIL_KEY))
+            if last_date is None:
+                return Q(pk__in=[])
+            interactions = interactions.filter(created_at__date__lte=last_date)
+        return Q(pk__in=interactions.values("person"))
