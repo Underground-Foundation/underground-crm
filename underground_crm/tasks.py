@@ -120,9 +120,12 @@ def send_subscription_confirmation(person_id: str, tag_id: str, site_id: int) ->
     Wagtail Site identified by `site_id`, which is the site the visitor
     subscribed on.
 
-    Verification state lives in allauth's EmailAddress model: the link points
-    at allauth's account_confirm_email view, which marks the address verified
-    on confirmation. The message goes out through SMTP2Go's HTTP API like all
+    The link points at allauth's account_confirm_email view, whose key has to
+    name an allauth EmailAddress row, so one is created for the purpose. On
+    confirmation, the email_confirmed receiver in signals.py marks the
+    Person's address as working (email_is_bad=False), opts them into email and
+    deletes that row. A Person whose address is already known to work is not
+    emailed. The message goes out through SMTP2Go's HTTP API like all
     other outbound email — Django's SMTP email backend is not configured in
     deployments.
     """
@@ -142,12 +145,10 @@ def send_subscription_confirmation(person_id: str, tag_id: str, site_id: int) ->
         )
         return
 
-    email_address, _created = EmailAddress.objects.get_or_create(
-        user=person, email=person.email, defaults={"primary": True, "verified": False}
-    )
-    if email_address.verified:
+    if person.email_is_bad is False:
         logger.info(
-            "send_subscription_confirmation: %s is already verified; not emailing", person.email
+            "send_subscription_confirmation: %s is already known to work; not emailing",
+            person.email,
         )
         return
 
@@ -161,6 +162,9 @@ def send_subscription_confirmation(person_id: str, tag_id: str, site_id: int) ->
         )
         return
 
+    email_address, _created = EmailAddress.objects.get_or_create(
+        user=person, email=person.email, defaults={"primary": True, "verified": False}
+    )
     confirm_url = site.root_url.rstrip("/") + reverse(
         "account_confirm_email", args=[EmailConfirmationHMAC(email_address).key]
     )
