@@ -68,6 +68,10 @@ def _rules_on(node: dict[str, Any], field: str) -> Iterator[dict[str, Any]]:
 
 
 class PeopleFilterAdminForm(forms.ModelForm):
+    class Meta:
+        model = PeopleFilter
+        fields = ["name", "description", "criteria"]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         current_pk = self.instance.pk if self.instance and self.instance.pk else None
