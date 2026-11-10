@@ -143,3 +143,8 @@
 .form-row .qb-group {
   margin-top: 6px;
 }
+
+.qb-conjunction {
+  font-size: 13px;
+  color: #333;
+}

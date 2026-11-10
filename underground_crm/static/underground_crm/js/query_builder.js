@@ -34,6 +34,9 @@
   // The operator of a membership condition which also needs a start time, as
   // MEMBERSHIP_SINCE_OPERATOR in underground_crm/models/filter.py.
   const MEMBERSHIP_SINCE_OPERATOR = "since";
+  // The operator of an interaction condition which also needs an end date, as
+  // INTERACTION_BETWEEN_OPERATOR in underground_crm/models/filter.py.
+  const INTERACTION_BETWEEN_OPERATOR = "between";
 
   // ── Rule row ───────────────────────────────────────────────────────────────
 
@@ -42,7 +45,7 @@
    * a fresh default; it is NOT mutated — state is read entirely from the DOM
    * when serialising.
    */
-  function buildRuleEl(fields, operators, peopleFilters, membership, rule) {
+  function buildRuleEl(fields, operators, peopleFilters, ruleOptions, rule) {
     rule = rule || {};
     const row = el("div", "qb-rule");
 
@@ -75,8 +78,8 @@
     // type has been deleted does not silently switch to some other type.
     const membershipTypeSelect = el("select", "qb-value qb-membership-type-value");
     membershipTypeSelect.style.display = "none";
-    membershipTypeSelect.appendChild(opt("", membership.placeholder, true));
-    membership.types.forEach(function (type) {
+    membershipTypeSelect.appendChild(opt("", ruleOptions.membershipTypePlaceholder, true));
+    ruleOptions.membershipTypes.forEach(function (type) {
       membershipTypeSelect.appendChild(opt(type.id, type.label, type.id === rule.value));
     });
 
@@ -85,6 +88,15 @@
     sinceInput.type = "datetime-local";
     sinceInput.style.display = "none";
     if (rule.since) sinceInput.value = rule.since;
+
+    // End date for "had an interaction between", preceded by the word "and"
+    const untilConjunction = el("span", "qb-conjunction");
+    untilConjunction.textContent = ruleOptions.periodConjunction;
+    untilConjunction.style.display = "none";
+    const untilInput = el("input", "qb-value qb-until-value");
+    untilInput.type = "date";
+    untilInput.style.display = "none";
+    if (rule.until) untilInput.value = rule.until;
 
     function getFieldType() {
       const fieldDef = fields.find(function (f) { return f.id === fieldSel.value; });
@@ -109,6 +121,10 @@
       membershipTypeSelect.style.display = isMembership ? "" : "none";
       sinceInput.style.display =
         (isMembership && opSel.value === MEMBERSHIP_SINCE_OPERATOR) ? "" : "none";
+      const needsUntil =
+        fieldType === "interaction" && opSel.value === INTERACTION_BETWEEN_OPERATOR;
+      untilConjunction.style.display = needsUntil ? "" : "none";
+      untilInput.style.display = needsUntil ? "" : "none";
       if (isMembership) {
         valueInput.style.display = "none";
         filterSelect.style.display = "none";
@@ -119,7 +135,8 @@
         const ops = operators[fieldType] || operators["text"] || [];
         const selOp = ops.find(function (op) { return op.id === opSel.value; });
         // Date fields get the browser's date picker, which submits YYYY-MM-DD.
-        valueInput.type = (fieldType === "date") ? "date" : "text";
+        valueInput.type =
+          (fieldType === "date" || fieldType === "interaction") ? "date" : "text";
         valueInput.style.display = (selOp && !selOp.has_value) ? "none" : "";
         filterSelect.style.display = "none";
       }
@@ -143,13 +160,15 @@
     row.appendChild(filterSelect);
     row.appendChild(membershipTypeSelect);
     row.appendChild(sinceInput);
+    row.appendChild(untilConjunction);
+    row.appendChild(untilInput);
     row.appendChild(removeBtn);
     return row;
   }
 
   // ── Group ──────────────────────────────────────────────────────────────────
 
-  function buildGroupEl(fields, operators, peopleFilters, membership, node, isRoot) {
+  function buildGroupEl(fields, operators, peopleFilters, ruleOptions, node, isRoot) {
     node = node || {};
     const group = el("div", isRoot ? "qb-group qb-root" : "qb-group qb-nested");
 
@@ -170,9 +189,9 @@
     const rulesContainer = el("div", "qb-rules");
     (node.rules || []).forEach(function (rule) {
       if ("field" in rule) {
-        rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, membership, rule));
+        rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, ruleOptions, rule));
       } else {
-        rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, membership, rule, false));
+        rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, ruleOptions, rule, false));
       }
     });
     group.appendChild(rulesContainer);
@@ -184,7 +203,7 @@
     addRuleBtn.type = "button";
     addRuleBtn.textContent = "+ Add condition";
     addRuleBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, membership, {}));
+      rulesContainer.appendChild(buildRuleEl(fields, operators, peopleFilters, ruleOptions, {}));
     });
     footer.appendChild(addRuleBtn);
 
@@ -192,7 +211,7 @@
     addGroupBtn.type = "button";
     addGroupBtn.textContent = "+ Add group";
     addGroupBtn.addEventListener("click", function () {
-      rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, membership, {logic: "AND", rules: []}, false));
+      rulesContainer.appendChild(buildGroupEl(fields, operators, peopleFilters, ruleOptions, {logic: "AND", rules: []}, false));
     });
     footer.appendChild(addGroupBtn);
 
@@ -223,9 +242,12 @@
       if (child.classList.contains("qb-rule")) {
         const fieldSel = child.querySelector(".qb-field");
         const opSel = child.querySelector(".qb-operator");
-        // The start time input also carries .qb-value for its styling, so this has
-        // to exclude it to find the row's ordinary value input.
-        const valueInput = child.querySelector("input.qb-value:not(.qb-since-value)");
+        // The start time and end date inputs also carry .qb-value for their styling,
+        // so this has to exclude them to find the row's ordinary value input.
+        const valueInput = child.querySelector(
+          "input.qb-value:not(.qb-since-value):not(.qb-until-value)"
+        );
+        const untilInput = child.querySelector(".qb-until-value");
         const membershipTypeSelect = child.querySelector(".qb-membership-type-value");
         const sinceInput = child.querySelector(".qb-since-value");
         const filterSelect = child.querySelector(".qb-filter-value");
@@ -240,6 +262,9 @@
           rule.value = filterSelect.value;
         } else if (valueInput && valueInput.style.display !== "none") {
           rule.value = valueInput.value;
+          if (untilInput && untilInput.style.display !== "none") {
+            rule.until = untilInput.value;
+          }
         }
         node.rules.push(rule);
       } else if (child.classList.contains("qb-group")) {
@@ -274,12 +299,15 @@
         peopleFilters = [];
         membershipTypes = [];
       }
-      const membership = {
-        types: membershipTypes,
-        placeholder: textarea.dataset.membershipTypePlaceholder || "",
+      // What the rows need beyond the fields and operators: the membership types to
+      // choose from, and the text shown in the controls of the special conditions.
+      const ruleOptions = {
+        membershipTypes: membershipTypes,
+        membershipTypePlaceholder: textarea.dataset.membershipTypePlaceholder || "",
+        periodConjunction: textarea.dataset.periodConjunction || "and",
       };
 
-      const rootEl = buildGroupEl(fields, operators, peopleFilters, membership, criteria, true);
+      const rootEl = buildGroupEl(fields, operators, peopleFilters, ruleOptions, criteria, true);
       textarea.parentNode.insertBefore(rootEl, textarea);
 
       const form = textarea.closest("form");

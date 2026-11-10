@@ -8,11 +8,15 @@ from django.utils.translation import gettext_lazy as _
 
 from underground_crm.models.filter import (
     FIELD_OPERATORS,
+    INTERACTION_BETWEEN_OPERATOR,
+    INTERACTION_FIELD,
+    INTERACTION_UNTIL_KEY,
     MEMBERSHIP_FIELD,
     MEMBERSHIP_SINCE_KEY,
     MEMBERSHIP_SINCE_OPERATOR,
     PERSON_FILTER_FIELDS,
     PeopleFilter,
+    parse_interaction_date,
     parse_membership_since,
     parse_membership_type_id,
 )
@@ -49,19 +53,25 @@ class QueryBuilderWidget(forms.Textarea):
             }
         )
         attrs["data-membership-type-placeholder"] = str(_("Choose a membership type"))
+        # The word between the two dates of "had an interaction between".
+        attrs["data-period-conjunction"] = str(_("and"))
         return attrs
 
 
-def _membership_rules(node: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """Yield every membership condition in a criteria tree, however deeply nested."""
+def _rules_on(node: dict[str, Any], field: str) -> Iterator[dict[str, Any]]:
+    """Yield every condition on the given field in a criteria tree, however deeply nested."""
     for rule in node.get("rules", []):
-        if rule.get("field") == MEMBERSHIP_FIELD:
+        if rule.get("field") == field:
             yield rule
         elif "rules" in rule:
-            yield from _membership_rules(rule)
+            yield from _rules_on(rule, field)
 
 
 class PeopleFilterAdminForm(forms.ModelForm):
+    class Meta:
+        model = PeopleFilter
+        fields = ["name", "description", "criteria"]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         current_pk = self.instance.pk if self.instance and self.instance.pk else None
@@ -78,9 +88,12 @@ class PeopleFilterAdminForm(forms.ModelForm):
         self.fields["criteria"].widget = widget
 
     def clean_criteria(self) -> dict[str, Any]:
-        """Require a membership condition to name an existing type, and a time if it needs one."""
+        """
+        Require a membership condition to name an existing type, and a time if it
+        needs one, and require an interaction condition to give a valid period.
+        """
         criteria: dict[str, Any] = self.cleaned_data["criteria"]
-        for rule in _membership_rules(criteria):
+        for rule in _rules_on(criteria, MEMBERSHIP_FIELD):
             membership_type_id = parse_membership_type_id(rule.get("value"))
             if (
                 membership_type_id is None
@@ -94,4 +107,21 @@ class PeopleFilterAdminForm(forms.ModelForm):
                 raise ValidationError(
                     _('Choose a time for each "has active membership since" condition.')
                 )
+        for rule in _rules_on(criteria, INTERACTION_FIELD):
+            first_date = parse_interaction_date(rule.get("value"))
+            if first_date is None:
+                raise ValidationError(_("Choose a date for each interaction condition."))
+            if rule.get("operator") == INTERACTION_BETWEEN_OPERATOR:
+                last_date = parse_interaction_date(rule.get(INTERACTION_UNTIL_KEY))
+                if last_date is None:
+                    raise ValidationError(
+                        _('Choose an end date for each "had an interaction between" condition.')
+                    )
+                if last_date < first_date:
+                    raise ValidationError(
+                        _(
+                            'The end date of a "had an interaction between" condition '
+                            "cannot come before its start date."
+                        )
+                    )
         return criteria
