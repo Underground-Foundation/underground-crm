@@ -50,6 +50,22 @@ class DiscordMembershipTests(TestCase):
                 self.assertEqual(response.status_code, 401)
                 self.assertNotIn("eligible", response.json())
 
+    def test_unauthorized_request_does_not_log_the_presented_credential(self) -> None:
+        presented_credential = "Bearer synthetic-wrong-credential-that-must-not-be-logged"
+        with self.assertLogs("underground_crm.api.discord_membership", level="ERROR") as logs:
+            response = self.client.get(self.url, HTTP_AUTHORIZATION=presented_credential)
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn(
+            presented_credential,
+            "\n".join(logs.output),
+            "The Authorization header must never be written to logs, even when it is wrong.",
+        )
+        self.assertNotIn(
+            "synthetic-wrong-credential",
+            "\n".join(logs.output),
+            "No part of a presented bearer token may be written to logs.",
+        )
+
     def test_disabled_or_invalid_configuration_fails_closed(self) -> None:
         for configuration in (
             {"DISCORD_MEMBERSHIP_INTEGRATION_TOKEN": ""},

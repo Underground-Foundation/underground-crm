@@ -88,8 +88,11 @@ def discord_membership(request: HttpRequest, discord_id: str) -> JsonResponse:
 
     authorization = request.headers.get("Authorization", "")
     if not authorization or not constant_time_compare(authorization, f"Bearer {token}"):
+        # Never log the presented header: it is either the real bearer token or a
+        # near-miss that may still contain a useful secret.
         logger.error(
-            "A request for checking Discord membership was unauthorized: %s", authorization
+            "A request for checking Discord membership was unauthorized%s",
+            "" if authorization else " (no bearer token)",
         )
         response = JsonResponse({"error": "unauthorized"}, status=401)
         response["WWW-Authenticate"] = "Bearer"
