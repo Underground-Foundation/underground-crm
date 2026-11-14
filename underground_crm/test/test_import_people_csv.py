@@ -292,6 +292,18 @@ class ImportPeopleCsvMembershipTest(django.test.TestCase):
             datetime(2022, 2, 6, 19, 46, 10, tzinfo=ZoneInfo("Etc/GMT-11")),
         )
 
+    def test_imported_memberships_are_approved(self):
+        csv_path = self._write_csv()
+
+        call_command("import_people_csv", csv_path)
+
+        person = Person.objects.get(legacy_id=int(self._LEGACY_ID))
+        self.assertFalse(
+            Membership.objects.filter(person=person, is_approved=False).exists(),
+            msg="The previous CRM had already granted these memberships, so they "
+            "must not join the queue of new memberships awaiting approval",
+        )
+
     def test_running_twice_does_not_duplicate_memberships(self):
         csv_path = self._write_csv()
 

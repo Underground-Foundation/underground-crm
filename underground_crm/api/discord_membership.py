@@ -109,6 +109,8 @@ def discord_membership(request: HttpRequest, discord_id: str) -> JsonResponse:
             type_id=membership_type,
             started_at__lte=now,
             suspended_at__isnull=True,
+            # A membership awaiting approval does not yet admit anyone.
+            is_approved=True,
         )
         .filter(Q(expires_on__isnull=True) | Q(expires_on__gte=timezone.localdate(now)))
         .exists()

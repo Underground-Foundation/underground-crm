@@ -1,4 +1,5 @@
 from djmoney.contrib.django_rest_framework import MoneyField
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from ..models import Address, Donation, Engagement, Interaction, Membership, PersonNote, Tag
@@ -117,8 +118,29 @@ class MembershipSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Membership
-        fields = ["id", "type", "type_name", "started_at", "expires_on", "suspended_at"]
-        read_only_fields = ["id", "started_at", "expires_on", "suspended_at"]
+        fields = [
+            "id",
+            "type",
+            "type_name",
+            "started_at",
+            "expires_on",
+            "suspended_at",
+            "is_approved",
+        ]
+        # is_approved is for staff to grant, so a client can never approve
+        # its own membership.
+        read_only_fields = ["id", "started_at", "expires_on", "suspended_at", "is_approved"]
+
+    def validate_type(self, membership_type):
+        """Nobody may hold two current memberships of the same type, whether
+        approved or still awaiting approval."""
+        person = self.context["request"].user
+        if person.memberships.current().filter(type=membership_type).exists():
+            raise serializers.ValidationError(
+                _("You already hold a %(membership_type)s membership.")
+                % {"membership_type": membership_type.name}
+            )
+        return membership_type
 
 
 class UnverifiedAddressSerializer(serializers.ModelSerializer):

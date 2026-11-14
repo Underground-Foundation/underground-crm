@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import json
 import zoneinfo
 
@@ -12,6 +13,7 @@ from underground_crm.models import Membership, MembershipType, PeopleFilter
 from underground_crm.models.filter import (
     LOGIC_ALL,
     LOGIC_NONE,
+    MEMBERSHIP_AWAITING_APPROVAL_OPERATOR,
     MEMBERSHIP_FIELD,
     MEMBERSHIP_HELD_OPERATOR,
     MEMBERSHIP_SINCE_KEY,
@@ -81,7 +83,12 @@ class MembershipFilterTest(django.test.TestCase):
     def _join(
         person: Person, membership_type: MembershipType, started_at: datetime.datetime
     ) -> None:
-        Membership.objects.create(person=person, type=membership_type, started_at=started_at)
+        # Approved, because these tests are about which memberships count by type,
+        # start time, expiry and suspension; MembershipApprovalFilterTest covers
+        # approval.
+        Membership.objects.create(
+            person=person, type=membership_type, started_at=started_at, is_approved=True
+        )
 
     def test_has_membership_matches_only_people_with_that_type(self):
         self.assertEqual(
@@ -200,26 +207,39 @@ class MembershipFilterTest(django.test.TestCase):
             "cutoff, so no single membership is both active and recent enough.",
         )
 
-    def test_active_queryset_agrees_with_the_is_active_property(self):
+    def test_querysets_agree_with_the_properties(self):
         today = timezone.localdate()
         membership = Membership.objects.get(person=self.cutoff_fusion_member)
-        for expires_on, suspended_at in (
-            (None, None),
-            (today, None),
-            (today - ONE_DAY, None),
-            (today + ONE_DAY, None),
+        for expires_on, suspended_at, is_approved in itertools.product(
+            (None, today, today - ONE_DAY, today + ONE_DAY),
             (None, CUTOFF),
-            (today + ONE_DAY, CUTOFF),
+            (True, False),
         ):
             membership.expires_on = expires_on
             membership.suspended_at = suspended_at
+            membership.is_approved = is_approved
             membership.save()
 
+            state = (
+                f"expires_on={expires_on}, suspended_at={suspended_at}, is_approved={is_approved}"
+            )
             self.assertEqual(
                 Membership.objects.active().filter(pk=membership.pk).exists(),
                 membership.is_active,
-                f"expires_on={expires_on}, suspended_at={suspended_at}: the filter's idea "
-                "of an active membership must not drift from the model's.",
+                f"{state}: the filter's idea of an active membership must not drift "
+                "from the model's.",
+            )
+            self.assertEqual(
+                Membership.objects.current().filter(pk=membership.pk).exists(),
+                membership.is_current,
+                f"{state}: the filter's idea of a current membership must not drift "
+                "from the model's.",
+            )
+            self.assertEqual(
+                Membership.objects.awaiting_approval().filter(pk=membership.pk).exists(),
+                membership.is_current and not membership.is_approved,
+                f"{state}: a membership awaits approval exactly when it is current "
+                "but unapproved.",
             )
 
     def test_rule_with_an_unusable_time_matches_nobody(self):
@@ -295,4 +315,73 @@ class MembershipFilterAdminFormTest(django.test.TestCase):
         self.assertIn(
             {"id": str(self.fusion.pk), "label": self.fusion.name},
             json.loads(widget.attrs["data-membership-types"]),
+        )
+
+
+def _awaiting_approval_rule(membership_type: MembershipType) -> dict:
+    return {
+        "field": MEMBERSHIP_FIELD,
+        "operator": MEMBERSHIP_AWAITING_APPROVAL_OPERATOR,
+        "value": str(membership_type.pk),
+    }
+
+
+class MembershipApprovalFilterTest(django.test.TestCase):
+    """Only an approved membership counts as active, so "has active membership"
+    finds approved members, and "has active membership awaiting approval" finds
+    the applicants whom staff have yet to approve."""
+
+    def setUp(self):
+        self.fusion, _ = MembershipType.objects.get_or_create(name="Fusion Party")
+        self.pirate, _ = MembershipType.objects.get_or_create(name="Pirate Party")
+
+        self.approved_member = self._member("amara.okafor@example.com", self.fusion, True)
+        self.applicant = self._member("tomasz.kowalski@example.com", self.fusion, False)
+
+    @staticmethod
+    def _member(email: str, membership_type: MembershipType, is_approved: bool) -> Person:
+        person = Person.objects.create_user(email=email, password="password")
+        Membership.objects.create(
+            person=person,
+            type=membership_type,
+            started_at=CUTOFF,
+            is_approved=is_approved,
+        )
+        return person
+
+    def test_active_membership_means_an_approved_one(self):
+        self.assertEqual(
+            _matched_emails(LOGIC_ALL, _membership_rule(self.fusion)),
+            {self.approved_member.email},
+            "An applicant does not become a member until staff approve them.",
+        )
+
+    def test_awaiting_approval_matches_only_unapproved_members(self):
+        self.assertEqual(
+            _matched_emails(LOGIC_ALL, _awaiting_approval_rule(self.fusion)),
+            {self.applicant.email},
+        )
+
+    def test_one_membership_must_be_both_of_the_type_and_awaiting_approval(self):
+        # The approved Fusion member also has a Pirate membership awaiting approval.
+        Membership.objects.create(
+            person=self.approved_member, type=self.pirate, started_at=CUTOFF, is_approved=False
+        )
+
+        self.assertNotIn(
+            self.approved_member.email,
+            _matched_emails(LOGIC_ALL, _awaiting_approval_rule(self.fusion)),
+            "Only this person's Pirate membership awaits approval, so it must not make "
+            "their approved Fusion membership count as awaiting approval.",
+        )
+
+    def test_expired_application_is_no_longer_awaiting_approval(self):
+        Membership.objects.filter(person=self.applicant).update(
+            expires_on=timezone.localdate() - ONE_DAY
+        )
+
+        self.assertNotIn(
+            self.applicant.email,
+            _matched_emails(LOGIC_ALL, _awaiting_approval_rule(self.fusion)),
+            "A cancelled application must drop out of the queue awaiting approval.",
         )

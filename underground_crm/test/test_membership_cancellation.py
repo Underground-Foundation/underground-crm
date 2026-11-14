@@ -195,3 +195,157 @@ class RegistrationPageMembershipsTest(django.test.TestCase):
 
         self.assertContains(response, "toast-notification")
         self.assertContains(response, MEMBERSHIP_TYPE_NAME)
+
+
+ADD_MEMBERSHIP_BUTTON_TEXT = f"Add {MEMBERSHIP_TYPE_NAME} membership"
+
+
+class AddMembershipTest(django.test.TestCase):
+    """The "Add membership" button on a RegistrationPage, and the view it posts to."""
+
+    def setUp(self):
+        home_page = Site.objects.get(is_default_site=True).root_page
+        self.membership_type = MembershipType.objects.create(name=MEMBERSHIP_TYPE_NAME)
+        self.page = RegistrationPage(
+            title="Become a member", slug="become-a-member", membership=self.membership_type
+        )
+        self.page.body = [
+            ("person_field", {"field": "preferred_name", "label_override": ""}),
+        ]
+        home_page.add_child(instance=self.page)
+        self.url = reverse("underground_crm:add_membership", kwargs={"page_id": self.page.pk})
+
+        self.member = Person.objects.create_user(
+            email="priya.sharma@example.com", password=PASSWORD
+        )
+
+    def _create_membership(self, expires_on: datetime.date, is_approved: bool = True) -> Membership:
+        return Membership.objects.create(
+            person=self.member,
+            type=self.membership_type,
+            started_at=timezone.now(),
+            expires_on=expires_on,
+            is_approved=is_approved,
+        )
+
+    def test_button_is_offered_to_a_visitor_without_a_membership(self):
+        self.client.force_login(self.member)
+        response = self.client.get(self.page.url)
+        self.assertContains(response, ADD_MEMBERSHIP_BUTTON_TEXT)
+
+    def test_button_is_offered_again_after_a_membership_has_expired(self):
+        self._create_membership(expires_on=PAST_EXPIRY)
+        self.client.force_login(self.member)
+        response = self.client.get(self.page.url)
+        self.assertContains(
+            response,
+            ADD_MEMBERSHIP_BUTTON_TEXT,
+            msg_prefix="A lapsed member must be able to rejoin, since resubmitting "
+            "the form never grants a type they have held before.",
+        )
+
+    def test_button_is_not_offered_to_an_active_member(self):
+        self._create_membership(expires_on=FUTURE_EXPIRY)
+        self.client.force_login(self.member)
+        response = self.client.get(self.page.url)
+        self.assertNotContains(response, ADD_MEMBERSHIP_BUTTON_TEXT)
+
+    def test_button_is_not_offered_to_an_applicant_awaiting_approval(self):
+        self._create_membership(expires_on=FUTURE_EXPIRY, is_approved=False)
+        self.client.force_login(self.member)
+        response = self.client.get(self.page.url)
+        self.assertNotContains(
+            response,
+            ADD_MEMBERSHIP_BUTTON_TEXT,
+            msg_prefix="Nobody may hold two memberships of the same type, and an "
+            "application awaiting approval already is one.",
+        )
+        self.assertContains(response, "awaiting approval")
+
+    def test_button_is_not_offered_when_the_page_grants_no_membership(self):
+        self.page.membership = None
+        self.page.save()
+        self.client.force_login(self.member)
+        response = self.client.get(self.page.url)
+        self.assertNotContains(response, ADD_MEMBERSHIP_BUTTON_TEXT)
+
+    def test_adding_applies_for_the_pages_membership_type(self):
+        self.client.force_login(self.member)
+        self.client.post(self.url)
+        self.assertTrue(
+            self.member.memberships.awaiting_approval().filter(type=self.membership_type).exists(),
+            "Pressing the button must apply for the membership type the page offers, "
+            "and the application must wait for staff to approve it.",
+        )
+
+    def test_rejoining_keeps_the_expired_membership_as_a_record(self):
+        expired = self._create_membership(expires_on=PAST_EXPIRY)
+        self.client.force_login(self.member)
+        self.client.post(self.url)
+
+        self.assertTrue(
+            Membership.objects.filter(pk=expired.pk, expires_on=PAST_EXPIRY).exists(),
+            "The earlier term must be kept unchanged as a record of past membership.",
+        )
+        self.assertTrue(
+            self.member.memberships.awaiting_approval().filter(type=self.membership_type).exists(),
+            "A new membership must be started beside the expired one.",
+        )
+
+    def test_adding_twice_creates_only_one_membership(self):
+        self.client.force_login(self.member)
+        self.client.post(self.url)
+        self.client.post(self.url)
+        self.assertEqual(
+            self.member.memberships.filter(type=self.membership_type).count(),
+            1,
+            "A double click must not leave the visitor with two memberships of " "the same type.",
+        )
+
+    def test_adding_shows_a_toast_on_return_to_the_page(self):
+        self.client.force_login(self.member)
+        response = self.client.post(self.url, {"next": self.page.url}, follow=True)
+        self.assertContains(response, "toast-notification")
+        self.assertContains(response, MEMBERSHIP_TYPE_NAME)
+
+    def test_ignores_an_off_site_next_url(self):
+        self.client.force_login(self.member)
+        response = self.client.post(self.url, {"next": UNSAFE_NEXT_URL})
+        self.assertNotEqual(
+            response.url,
+            UNSAFE_NEXT_URL,
+            "An attacker-supplied next URL must never be followed, or this "
+            "endpoint becomes an open redirect.",
+        )
+
+    def test_unpublished_page_grants_nothing(self):
+        self.page.unpublish()
+        self.client.force_login(self.member)
+        response = self.client.post(self.url)
+        self.assertEqual(
+            response.status_code,
+            404,
+            "Only a live page may grant a membership, so withdrawing a page "
+            "also withdraws its offer.",
+        )
+        self.assertFalse(self.member.memberships.exists())
+
+    def test_anonymous_visitor_is_redirected_to_login(self):
+        response = self.client.post(self.url)
+        self.assertEqual(
+            response.status_code,
+            302,
+            "An anonymous visitor must be sent to log in, since a membership "
+            "needs a Person to belong to.",
+        )
+        self.assertIn("/account/login/", response.url)
+        self.assertFalse(Membership.objects.exists())
+
+    def test_get_request_is_rejected(self):
+        self.client.force_login(self.member)
+        response = self.client.get(self.url)
+        self.assertEqual(
+            response.status_code,
+            405,
+            "Adding a membership changes data, so it must only be reachable by POST.",
+        )

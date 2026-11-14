@@ -10,6 +10,16 @@
 {% block memberships %}
   {% if user.is_authenticated %}
     {% include "underground_crm/includes/memberships.html" with memberships=user.memberships.all %}
+    {% if offers_membership %}
+      {# See RegistrationPage.offers_membership_to for when this is offered. #}
+      <form class="my-4" method="post" action="{% url 'underground_crm:add_membership' page_id=page.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="btn btn-primary">
+          {% blocktrans with membership_type=page.membership.name %}Add {{ membership_type }} membership{% endblocktrans %}
+        </button>
+      </form>
+    {% endif %}
   {% else %}
     <section class="alert alert-info my-4" aria-label="{% trans 'Log in or sign up' %}">
       <p>{% trans "Your existing answers are missing because you are not logged in." %}</p>

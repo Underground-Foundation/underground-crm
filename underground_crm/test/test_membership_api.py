@@ -87,6 +87,35 @@ class MembershipAPITestCase(APITestCase):
             "started_at is server-set and must not be backdated by the client.",
         )
 
+    def test_client_cannot_approve_its_own_membership(self) -> None:
+        self.client.force_authenticate(user=self.member)
+        response = self.client.post(
+            self.list_url, data={"type": self.membership_type.pk, "is_approved": True}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertFalse(
+            Membership.objects.get(pk=response.data["id"]).is_approved,
+            "Only staff may approve a membership, whatever the request body claims.",
+        )
+
+    def test_cannot_hold_two_current_memberships_of_one_type(self) -> None:
+        self.client.force_authenticate(user=self.member)
+        first = self.client.post(self.list_url, data={"type": self.membership_type.pk})
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+
+        second = self.client.post(self.list_url, data={"type": self.membership_type.pk})
+        self.assertEqual(
+            second.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            "The first membership still awaits approval, but it is current, and "
+            "nobody may hold two current memberships of the same type.",
+        )
+        self.assertEqual(
+            Membership.objects.filter(person=self.member, type=self.membership_type).count(),
+            1,
+            "The rejected request must not have created a second membership.",
+        )
+
     def test_user_can_delete_own_membership(self) -> None:
         membership = Membership.objects.create(
             person=self.member, type=self.membership_type, started_at=timezone.now()

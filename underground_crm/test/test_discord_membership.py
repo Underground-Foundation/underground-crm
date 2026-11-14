@@ -28,6 +28,7 @@ class DiscordMembershipTests(TestCase):
             person=self.person,
             type=self.membership_type,
             started_at=timezone.now() - timedelta(days=1),
+            is_approved=True,
         )
 
     def lookup(self):
@@ -81,12 +82,17 @@ class DiscordMembershipTests(TestCase):
             {"started_at": now + timedelta(days=1)},
             {"suspended_at": now},
             {"expires_on": timezone.localdate() - timedelta(days=1)},
+            # An application that staff have yet to approve does not admit anyone.
+            {"is_approved": False},
         ):
             with self.subTest(changes=changes):
                 Membership.objects.filter(pk=self.membership.pk).update(**changes)
                 self.assertEqual(self.lookup().json(), {"eligible": False})
                 Membership.objects.filter(pk=self.membership.pk).update(
-                    started_at=now - timedelta(days=1), suspended_at=None, expires_on=None
+                    started_at=now - timedelta(days=1),
+                    suspended_at=None,
+                    expires_on=None,
+                    is_approved=True,
                 )
 
     def test_missing_configured_membership_type_is_unavailable(self) -> None:

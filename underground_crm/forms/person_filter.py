@@ -14,11 +14,13 @@ from underground_crm.models.filter import (
     MEMBERSHIP_FIELD,
     MEMBERSHIP_SINCE_KEY,
     MEMBERSHIP_SINCE_OPERATOR,
+    MEMBERSHIP_START_DATE_KEY,
+    MEMBERSHIP_START_DATE_LOOKUPS,
     PERSON_FILTER_FIELDS,
     PeopleFilter,
-    parse_interaction_date,
     parse_membership_since,
     parse_membership_type_id,
+    parse_rule_date,
 )
 from underground_crm.models.membership import MembershipType
 
@@ -89,8 +91,8 @@ class PeopleFilterAdminForm(forms.ModelForm):
 
     def clean_criteria(self) -> dict[str, Any]:
         """
-        Require a membership condition to name an existing type, and a time if it
-        needs one, and require an interaction condition to give a valid period.
+        Require a membership condition to name an existing type, and a time or date
+        if it needs one, and require an interaction condition to give a valid period.
         """
         criteria: dict[str, Any] = self.cleaned_data["criteria"]
         for rule in _rules_on(criteria, MEMBERSHIP_FIELD):
@@ -107,12 +109,19 @@ class PeopleFilterAdminForm(forms.ModelForm):
                 raise ValidationError(
                     _('Choose a time for each "has active membership since" condition.')
                 )
+            if (
+                rule.get("operator") in MEMBERSHIP_START_DATE_LOOKUPS
+                and parse_rule_date(rule.get(MEMBERSHIP_START_DATE_KEY)) is None
+            ):
+                raise ValidationError(
+                    _("Choose a start date for each membership condition that needs one.")
+                )
         for rule in _rules_on(criteria, INTERACTION_FIELD):
-            first_date = parse_interaction_date(rule.get("value"))
+            first_date = parse_rule_date(rule.get("value"))
             if first_date is None:
                 raise ValidationError(_("Choose a date for each interaction condition."))
             if rule.get("operator") == INTERACTION_BETWEEN_OPERATOR:
-                last_date = parse_interaction_date(rule.get(INTERACTION_UNTIL_KEY))
+                last_date = parse_rule_date(rule.get(INTERACTION_UNTIL_KEY))
                 if last_date is None:
                     raise ValidationError(
                         _('Choose an end date for each "had an interaction between" condition.')

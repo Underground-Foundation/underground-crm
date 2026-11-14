@@ -666,6 +666,26 @@ class RegistrationPage(FormServingPage):
 
         return RegistrationForm
 
+    def offers_membership_to(self, person) -> bool:
+        """
+        Whether this page should offer `person` its membership type with an
+        "Add membership" button: it must grant one, and the person must not
+        already hold a current membership of that type, whether approved or
+        still awaiting approval, because nobody may hold two memberships of
+        the same type at once. A person whose membership of the type has
+        expired or been cancelled is offered it again, which is the only way
+        back in, because submitting the form never grants a type the person
+        has held before (see RegistrationForm._grant_membership).
+        """
+        if self.membership_id is None or not person.is_authenticated:
+            return False
+        return not person.memberships.current().filter(type_id=self.membership_id).exists()
+
+    def get_context(self, request, *args, **kwargs) -> dict:
+        context = super().get_context(request, *args, **kwargs)
+        context["offers_membership"] = self.offers_membership_to(request.user)
+        return context
+
     def _calculated_cache_time(self) -> int:
         """Never cache by default, because the page differs per visitor: a
         logged-in visitor sees their own answers pre-filled, and an anonymous

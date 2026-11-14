@@ -184,7 +184,7 @@ class InteractionInline(CurrentUserAuthorMixin, admin.TabularInline):
 class MembershipInline(admin.TabularInline):
     model = Membership
     extra = 0
-    fields = ["type", "started_at", "expires_on", "suspended_at"]
+    fields = ["type", "started_at", "expires_on", "suspended_at", "is_approved"]
     # MembershipTypeAdmin declares search_fields, so the type can use the
     # autocomplete widget rather than a <select> evaluated for every row.
     autocomplete_fields = ["type"]
@@ -494,8 +494,8 @@ class MembershipTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Membership)
 class MembershipAdmin(admin.ModelAdmin):
-    list_display = ["person", "type", "started_at", "expires_on", "suspended_at"]
-    list_filter = ["type"]
+    list_display = ["person", "type", "started_at", "expires_on", "suspended_at", "is_approved"]
+    list_filter = ["type", "is_approved"]
     search_fields = ["person__email", "person__first_name", "person__last_name"]
 
 
