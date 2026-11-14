@@ -34,6 +34,9 @@
   // The operator of a membership condition which also needs a start time, as
   // MEMBERSHIP_SINCE_OPERATOR in underground_crm/models/filter.py.
   const MEMBERSHIP_SINCE_OPERATOR = "since";
+  // The operators of a membership condition which also need a start date, as the
+  // keys of MEMBERSHIP_START_DATE_LOOKUPS in underground_crm/models/filter.py.
+  const MEMBERSHIP_START_DATE_OPERATORS = ["started_before", "started_by"];
   // The operator of an interaction condition which also needs an end date, as
   // INTERACTION_BETWEEN_OPERATOR in underground_crm/models/filter.py.
   const INTERACTION_BETWEEN_OPERATOR = "between";
@@ -89,6 +92,12 @@
     sinceInput.style.display = "none";
     if (rule.since) sinceInput.value = rule.since;
 
+    // Start date for "has active membership that started before" or "... started by"
+    const startDateInput = el("input", "qb-value qb-start-date-value");
+    startDateInput.type = "date";
+    startDateInput.style.display = "none";
+    if (rule.start_date) startDateInput.value = rule.start_date;
+
     // End date for "had an interaction between", preceded by the word "and"
     const untilConjunction = el("span", "qb-conjunction");
     untilConjunction.textContent = ruleOptions.periodConjunction;
@@ -121,6 +130,8 @@
       membershipTypeSelect.style.display = isMembership ? "" : "none";
       sinceInput.style.display =
         (isMembership && opSel.value === MEMBERSHIP_SINCE_OPERATOR) ? "" : "none";
+      startDateInput.style.display =
+        (isMembership && MEMBERSHIP_START_DATE_OPERATORS.includes(opSel.value)) ? "" : "none";
       const needsUntil =
         fieldType === "interaction" && opSel.value === INTERACTION_BETWEEN_OPERATOR;
       untilConjunction.style.display = needsUntil ? "" : "none";
@@ -160,6 +171,7 @@
     row.appendChild(filterSelect);
     row.appendChild(membershipTypeSelect);
     row.appendChild(sinceInput);
+    row.appendChild(startDateInput);
     row.appendChild(untilConjunction);
     row.appendChild(untilInput);
     row.appendChild(removeBtn);
@@ -242,14 +254,16 @@
       if (child.classList.contains("qb-rule")) {
         const fieldSel = child.querySelector(".qb-field");
         const opSel = child.querySelector(".qb-operator");
-        // The start time and end date inputs also carry .qb-value for their styling,
-        // so this has to exclude them to find the row's ordinary value input.
+        // The start time, start date and end date inputs also carry .qb-value for
+        // their styling, so this has to exclude them to find the row's ordinary value
+        // input.
         const valueInput = child.querySelector(
-          "input.qb-value:not(.qb-since-value):not(.qb-until-value)"
+          "input.qb-value:not(.qb-since-value):not(.qb-start-date-value):not(.qb-until-value)"
         );
         const untilInput = child.querySelector(".qb-until-value");
         const membershipTypeSelect = child.querySelector(".qb-membership-type-value");
         const sinceInput = child.querySelector(".qb-since-value");
+        const startDateInput = child.querySelector(".qb-start-date-value");
         const filterSelect = child.querySelector(".qb-filter-value");
         if (!fieldSel || !opSel) return;
         const rule = {field: fieldSel.value, operator: opSel.value};
@@ -257,6 +271,9 @@
           rule.value = membershipTypeSelect.value;
           if (sinceInput && sinceInput.style.display !== "none") {
             rule.since = sinceInput.value;
+          }
+          if (startDateInput && startDateInput.style.display !== "none") {
+            rule.start_date = startDateInput.value;
           }
         } else if (filterSelect && filterSelect.style.display !== "none") {
           rule.value = filterSelect.value;

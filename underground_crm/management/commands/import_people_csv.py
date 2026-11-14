@@ -989,6 +989,8 @@ class Command(BaseCommand):
                         defaults={
                             "expires_on": expires_on,
                             "suspended_at": suspended_at,
+                            # The previous CRM had already granted it.
+                            "is_approved": True,
                         },
                     )
 

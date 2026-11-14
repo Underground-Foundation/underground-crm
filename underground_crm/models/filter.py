@@ -15,13 +15,28 @@ from django.utils.translation import gettext_lazy as _
 from .interaction import Interaction
 from .membership import Membership
 
-# The pseudo-field of a membership condition, and its two operators. Both operators
-# take a membership type's ID as the rule's "value"; MEMBERSHIP_SINCE_OPERATOR also
-# takes the earliest acceptable start time as the rule's MEMBERSHIP_SINCE_KEY.
+# The pseudo-field of a membership condition, and its operators. Every operator takes
+# a membership type's ID as the rule's "value". MEMBERSHIP_SINCE_OPERATOR also takes
+# the earliest acceptable start time as the rule's MEMBERSHIP_SINCE_KEY.
+# MEMBERSHIP_STARTED_BEFORE_OPERATOR and MEMBERSHIP_STARTED_BY_OPERATOR take a date
+# (YYYY-MM-DD) as the rule's MEMBERSHIP_START_DATE_KEY, and compare it with the date
+# on which the membership started in the site's time zone: "before" excludes that
+# date, whereas "by" includes it. MEMBERSHIP_AWAITING_APPROVAL_OPERATOR takes
+# nothing more; it matches a current membership that staff have yet to approve,
+# where every other operator matches an approved one.
 MEMBERSHIP_FIELD = "__membership__"
 MEMBERSHIP_HELD_OPERATOR = "has"
 MEMBERSHIP_SINCE_OPERATOR = "since"
 MEMBERSHIP_SINCE_KEY = "since"
+MEMBERSHIP_STARTED_BEFORE_OPERATOR = "started_before"
+MEMBERSHIP_STARTED_BY_OPERATOR = "started_by"
+MEMBERSHIP_START_DATE_KEY = "start_date"
+MEMBERSHIP_AWAITING_APPROVAL_OPERATOR = "awaiting_approval"
+# The lookup on Membership with which each start date operator compares its date.
+MEMBERSHIP_START_DATE_LOOKUPS: dict[str, str] = {
+    MEMBERSHIP_STARTED_BEFORE_OPERATOR: "started_at__date__lt",
+    MEMBERSHIP_STARTED_BY_OPERATOR: "started_at__date__lte",
+}
 
 # The pseudo-field of an interaction condition, and its two operators. Both take the
 # first date of the period as the rule's "value", in YYYY-MM-DD form;
@@ -118,11 +133,23 @@ FIELD_OPERATORS: dict[str, list[tuple[str, str | Promise, bool]]] = {
     "filter": [
         ("matches", "matches", True),
     ],
-    # Only an active membership of the chosen type counts: not one that has expired
-    # or been suspended.
+    # Only an active membership of the chosen type counts: one that staff have
+    # approved and that has neither expired nor been suspended. The exception is
+    # "awaiting approval", which counts a current membership not yet approved.
     "membership": [
         (MEMBERSHIP_HELD_OPERATOR, _("has active membership"), True),
         (MEMBERSHIP_SINCE_OPERATOR, _("has active membership since"), True),
+        (
+            MEMBERSHIP_STARTED_BEFORE_OPERATOR,
+            _("has active membership that started before"),
+            True,
+        ),
+        (MEMBERSHIP_STARTED_BY_OPERATOR, _("has active membership that started by"), True),
+        (
+            MEMBERSHIP_AWAITING_APPROVAL_OPERATOR,
+            _("has active membership awaiting approval"),
+            True,
+        ),
     ],
     # Any interaction counts, whatever its method or outcome.
     "interaction": [
@@ -186,8 +213,8 @@ def parse_membership_since(value: Any) -> datetime.datetime | None:
     return since
 
 
-def parse_interaction_date(value: Any) -> datetime.date | None:
-    """Return the date (YYYY-MM-DD) held by an interaction rule, or None if it does not hold one."""
+def parse_rule_date(value: Any) -> datetime.date | None:
+    """Return the date (YYYY-MM-DD) held by a rule, or None if it does not hold one."""
     if not isinstance(value, str):
         return None
     try:
@@ -218,6 +245,12 @@ class PeopleFilter(models.Model):
                     "operator": "since",
                     "value": "<MembershipType UUID>",
                     "since": "2026-07-01T09:00"
+                },
+                {
+                    "field": "__membership__",
+                    "operator": "started_by",
+                    "value": "<MembershipType UUID>",
+                    "start_date": "2026-06-30"
                 },
                 {
                     "field": "__interaction__",
@@ -393,12 +426,24 @@ class PeopleFilter(models.Model):
         membership_type_id = parse_membership_type_id(rule.get("value"))
         if membership_type_id is None:
             return Q(pk__in=[])
-        memberships = Membership.objects.active().filter(type_id=membership_type_id)
+        if rule["operator"] == MEMBERSHIP_AWAITING_APPROVAL_OPERATOR:
+            memberships = Membership.objects.awaiting_approval()
+        else:
+            memberships = Membership.objects.active()
+        memberships = memberships.filter(type_id=membership_type_id)
         if rule["operator"] == MEMBERSHIP_SINCE_OPERATOR:
             since = parse_membership_since(rule.get(MEMBERSHIP_SINCE_KEY))
             if since is None:
                 return Q(pk__in=[])
             memberships = memberships.filter(started_at__gte=since)
+        elif rule["operator"] in MEMBERSHIP_START_DATE_LOOKUPS:
+            start_date = parse_rule_date(rule.get(MEMBERSHIP_START_DATE_KEY))
+            if start_date is None:
+                return Q(pk__in=[])
+            # started_at__date takes the date on which the membership started in the
+            # site's time zone, so a late-evening signup is not counted as the next day's.
+            lookup = MEMBERSHIP_START_DATE_LOOKUPS[rule["operator"]]
+            memberships = memberships.filter(**{lookup: start_date})
         return Q(pk__in=memberships.values("person"))
 
     @staticmethod
@@ -406,14 +451,14 @@ class PeopleFilter(models.Model):
         # As with memberships, a subquery lets two interaction conditions in one
         # group match two different interactions, and lists each person once however
         # many of their interactions fall in the period.
-        first_date = parse_interaction_date(rule.get("value"))
+        first_date = parse_rule_date(rule.get("value"))
         if first_date is None:
             return Q(pk__in=[])
         # created_at__date takes the date on which the interaction happened in the
         # site's time zone, so a late-evening call is not counted as the next day's.
         interactions = Interaction.objects.filter(created_at__date__gte=first_date)
         if rule["operator"] == INTERACTION_BETWEEN_OPERATOR:
-            last_date = parse_interaction_date(rule.get(INTERACTION_UNTIL_KEY))
+            last_date = parse_rule_date(rule.get(INTERACTION_UNTIL_KEY))
             if last_date is None:
                 return Q(pk__in=[])
             interactions = interactions.filter(created_at__date__lte=last_date)

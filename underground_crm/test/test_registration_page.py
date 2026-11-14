@@ -604,9 +604,14 @@ class MembershipGrantTest(RegistrationFormTestMixin, django.test.TestCase):
 
         membership = Membership.objects.get(person=person, type=self.membership_type)
         self.assertTrue(
-            membership.is_active,
-            "A freshly granted membership must start active, with no expiry or "
+            membership.is_current,
+            "A freshly granted membership must start current, with no expiry or "
             "suspension already set against it.",
+        )
+        self.assertFalse(
+            membership.is_approved,
+            "A membership granted through a registration page must wait for staff "
+            "to approve it before it becomes active.",
         )
 
     def test_page_without_a_membership_configured_grants_nothing(self):
