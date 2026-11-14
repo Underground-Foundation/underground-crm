@@ -790,3 +790,9 @@ UNDERGROUND_EMAIL_BUTTON_TEXT_COLORS = [
 # Use a dedicated random secret, never the Django secret or a staff API token.
 DISCORD_MEMBERSHIP_INTEGRATION_TOKEN = os.environ.get("DISCORD_MEMBERSHIP_INTEGRATION_TOKEN", "")
 DISCORD_MEMBERSHIP_TYPE_ID = os.environ.get("DISCORD_MEMBERSHIP_TYPE_ID", "")
+
+# Server-to-server integration credentials. The value is JSON:
+#   {"tokens": [{"name": "member-portal", "token": "...", "scopes": ["people:read"]}]}
+# Each token is independent and read-only; see underground_crm/api/integration_auth.py.
+# An empty value disables the integration API rather than accepting an unauthenticated request.
+INTEGRATION_API_TOKENS = os.environ.get("INTEGRATION_API_TOKENS", "")
