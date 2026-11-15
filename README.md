@@ -12,6 +12,9 @@ Migration tooling is included to help you move from a previous CRM.
 
 ## Architecture
 
+> ![An architecture diagram](./docs/Architecture.png)
+> A recent screenshot of the architecture diagram at https://miro.com/app/board/uXjVHGTScEo=/?share_link_id=589300101768
+
 Underground CRM is not quite a standalone project − it is intended to be extended (by you)
 with the creation of a **theme project** that installs the library and provides
 a site name, branding templates, and any organisation-specific page models.

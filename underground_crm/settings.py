@@ -459,8 +459,10 @@ ADDRESSR_BASE_URL = os.environ.get("ADDRESSR_BASE_URL", "http://localhost:8080")
 # maps with public tile servers. Neither is vendored into this library, so that it does
 # not carry a copy of somebody else's minified JavaScript, and every URL below is
 # overridable for deployments that self-host their assets, cannot reach a public CDN, or
-# have their own tile server. The OpenStreetMap Foundation's tile usage policy allows the
-# incidental traffic an internal admin page generates, but not a public-facing map.
+# have their own tile server. A page that uses OpenStreetMap's own tile server must meet
+# the conditions of the OpenStreetMap Foundation's tile usage policy, which is defined at
+# https://operations.osmfoundation.org/policies/tiles/ — among them, that the browser
+# sends a Referer header and that the map shows the attribution of each layer.
 LEAFLET_CSS_URL = os.environ.get(
     "LEAFLET_CSS_URL", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 )
