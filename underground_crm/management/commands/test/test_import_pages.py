@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import django.test
 from django.conf import settings
 from django.core.management.base import CommandError
+from bs4 import BeautifulSoup
 from wagtail.models import Page, Site
 
 from underground_crm.contactability import get_validated_email_address
@@ -18,6 +19,7 @@ from underground_crm.management.commands.import_pages import (
     Command,
     build_form_page,
     build_registration_page,
+    decode_cloudflare_protected_email,
     extract_donation_frequency,
     extract_event_population,
     extract_event_time,
@@ -30,6 +32,7 @@ from underground_crm.management.commands.import_pages import (
     get_host_by_email_address,
     is_site_root,
     parse_event_datetime,
+    restore_cloudflare_protected_email_addresses,
 )
 from underground_crm.models import UndergroundBasicPage
 from underground_crm.models.pages import FormPage, RegistrationPage
@@ -104,6 +107,94 @@ class TestParseEventDatetime(unittest.TestCase):
         clean = parse_event_datetime("May 16, 2026 at 18:00 - 11pm (VIC timezone)")
         padded = parse_event_datetime("    May 16, 2026 at 18:00 - 11pm (VIC timezone)")
         self.assertEqual(clean, padded)
+
+
+def encode_as_cloudflare(text: str, key: int = 0x5A) -> str:
+    """The inverse of decode_cloudflare_protected_email."""
+    return bytes([key, *(byte ^ key for byte in text.encode("utf-8"))]).hex()
+
+
+class TestDecodeCloudflareProtectedEmail(unittest.TestCase):
+
+    def test_decode(self):
+        self.assertEqual(
+            decode_cloudflare_protected_email(
+                "dbb8b4b5afbab8af9bbdaea8b2b4b5abbaa9afa2f5b4a9bcf5baae"
+            ),
+            "contact@fusionparty.org.au",
+        )
+
+    def test_decode_unescapes_the_query_string_of_a_link(self):
+        self.assertEqual(
+            decode_cloudflare_protected_email(
+                encode_as_cloudflare("a@example.org?subject=Hi&amp;body=Yo")
+            ),
+            "a@example.org?subject=Hi&body=Yo",
+        )
+
+    def test_decode_rejects_text_that_is_not_hexadecimal(self):
+        self.assertIsNone(decode_cloudflare_protected_email("not-hex"))
+
+
+class TestRestoreCloudflareProtectedEmailAddresses(unittest.TestCase):
+    """The legacy pages were fetched through Cloudflare's Email Address
+    Obfuscation, which replaced each address with "[email protected]"."""
+
+    logger_name = "underground_crm.management.commands.import_pages"
+
+    @staticmethod
+    def hidden_address(href_text: str = "contact@example.org") -> str:
+        return (
+            f'<p><a href="/cdn-cgi/l/email-protection#{encode_as_cloudflare(href_text)}">'
+            f'<span class="__cf_email__" data-cfemail="{encode_as_cloudflare("contact@example.org")}">'
+            "[email&nbsp;protected]</span></a> 🙋</p>"
+        )
+
+    def restore(self, markup: str) -> BeautifulSoup:
+        soup = BeautifulSoup(markup, "html.parser")
+        restore_cloudflare_protected_email_addresses(soup, "page.html")
+        return soup
+
+    def test_hidden_address_becomes_a_link_to_the_decoded_address(self):
+        soup = self.restore(self.hidden_address())
+        link = soup.find("a")
+        self.assertEqual(link["href"], "mailto:contact@example.org")
+        self.assertEqual(link.get_text(), "contact@example.org")
+        self.assertEqual(soup.get_text(), "contact@example.org 🙋")
+
+    def test_query_string_of_the_link_is_kept(self):
+        markup = self.hidden_address("contact@example.org?subject=hosting%20a%20sign&amp;body=Hi")
+        link = self.restore(markup).find("a")
+        self.assertEqual(
+            link["href"], "mailto:contact@example.org?subject=hosting%20a%20sign&body=Hi"
+        )
+        self.assertEqual(link.get_text(), "contact@example.org")
+
+    def test_text_of_a_hidden_link_is_kept(self):
+        markup = f'<a href="/cdn-cgi/l/email-protection#{encode_as_cloudflare("contact@example.org")}">email us</a>'
+        link = self.restore(markup).find("a")
+        self.assertEqual(link["href"], "mailto:contact@example.org")
+        self.assertEqual(link.get_text(), "email us")
+
+    def test_hidden_address_outside_a_link_becomes_text(self):
+        markup = f'<p>Write to <span data-cfemail="{encode_as_cloudflare("contact@example.org")}">[email protected]</span></p>'
+        self.assertEqual(self.restore(markup).get_text(), "Write to contact@example.org")
+
+    def test_link_without_an_encoded_address_is_kept_and_warned_of(self):
+        markup = '<a href="/cdn-cgi/l/email-protection">[email\xa0protected]</a>'
+        soup = BeautifulSoup(markup, "html.parser")
+        with self.assertLogs(self.logger_name, level="WARNING") as logs:
+            restore_cloudflare_protected_email_addresses(soup, "page.html")
+        self.assertEqual(soup.find("a")["href"], "/cdn-cgi/l/email-protection")
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("page.html", logs.output[0])
+
+    def test_ordinary_mailto_link_is_left_alone(self):
+        markup = '<a href="mailto:contact@example.org">Email us</a>'
+        soup = BeautifulSoup(markup, "html.parser")
+        with self.assertNoLogs(self.logger_name, level="INFO"):
+            restore_cloudflare_protected_email_addresses(soup, "page.html")
+        self.assertEqual(str(soup), markup)
 
 
 class TestEventDetailExtraction(unittest.TestCase):

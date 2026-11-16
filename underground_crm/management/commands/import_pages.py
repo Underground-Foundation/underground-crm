@@ -164,6 +164,60 @@ def _load_page_attributes(json_path: Path) -> dict | None:
     return attributes
 
 
+CLOUDFLARE_EMAIL_PROTECTION_PATH = "/cdn-cgi/l/email-protection"
+
+
+def decode_cloudflare_protected_email(encoded: str) -> Optional[str]:
+    """Decode a hex string written by Cloudflare's Email Address Obfuscation,
+    which is the XOR key in its first byte followed by the XOR-encoded,
+    UTF-8 text. That text is HTML-escaped, and, when it comes from a link,
+    may be followed by the link's query string (e.g. "?subject=…").
+    Return None when `encoded` is not such a string."""
+    try:
+        key, *payload = bytes.fromhex(encoded)
+    except ValueError:
+        return None
+    return html.unescape(bytes(byte ^ key for byte in payload).decode("utf-8", errors="replace"))
+
+
+def restore_cloudflare_protected_email_addresses(soup: Tag, source_name: str) -> None:
+    """Restore each email address that Cloudflare's Email Address Obfuscation
+    hid when the legacy page was fetched. A hidden address is imported as the
+    literal text "[email protected]", or as a link to Cloudflare's decoding
+    endpoint, neither of which works without Cloudflare; the address itself
+    is encoded in the element (see decode_cloudflare_protected_email).
+
+    A link becomes a mailto: link, keeping its query string (e.g.
+    "?subject=…") and its text, except that "[email protected]" becomes the
+    decoded address. An address that cannot be decoded is left in place and
+    logged as a warning, so that the page can be corrected by hand."""
+    for link in soup.select(f'a[href^="{CLOUDFLARE_EMAIL_PROTECTION_PATH}"]'):
+        decoded = decode_cloudflare_protected_email(str(link["href"]).partition("#")[2])
+        if decoded:
+            link["href"] = f"mailto:{decoded}"
+            logger.info(
+                "[email] '%s': restored a link to %r hidden by Cloudflare.", source_name, decoded
+            )
+        else:
+            logger.warning(
+                "[email] '%s' contains a link to an email address hidden by Cloudflare, which "
+                "could not be decoded (text: %r).",
+                source_name,
+                link.get_text(strip=True),
+            )
+    for element in soup.select("[data-cfemail]"):
+        decoded = decode_cloudflare_protected_email(str(element["data-cfemail"]))
+        if decoded:
+            element.replace_with(decoded)
+            logger.info("[email] '%s': restored %r hidden by Cloudflare.", source_name, decoded)
+        else:
+            logger.warning(
+                "[email] '%s' contains an email address hidden by Cloudflare, which could not "
+                "be decoded.",
+                source_name,
+            )
+
+
 def extract_importable_html(
     html_file: Path,
     importable_dir: Optional[Path],
@@ -178,6 +232,9 @@ def extract_importable_html(
 
     With a `document_resolver`, links to legacy documents are replaced with
     links to our migrated documents before the extraction occurs.
+
+    Email addresses hidden by Cloudflare are restored; see
+    restore_cloudflare_protected_email_addresses.
     """
     document_soup = BeautifulSoup(html_file.read_text(encoding="utf-8"), "html.parser")
     if document_resolver is not None:
@@ -185,6 +242,7 @@ def extract_importable_html(
     body_soup = get_body_soup(document_soup)
     if body_soup is None:
         return None
+    restore_cloudflare_protected_email_addresses(body_soup, html_file.name)
     html_content = _prettify(body_soup)
     if importable_dir:
         (importable_dir / html_file.name).write_text(html_content, encoding="utf-8")
