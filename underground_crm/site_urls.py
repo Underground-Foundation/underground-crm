@@ -14,6 +14,7 @@ from wagtail.contrib.sitemaps.views import sitemap
 from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
+from underground_crm.views.page_explorer import explorer_urlpatterns
 from underground_crm.views.robots_txt import robots_txt_view
 
 urlpatterns = [
@@ -22,6 +23,8 @@ urlpatterns = [
     path("robots.txt", robots_txt_view, name="robots_rule_list"),
     path("api/", include("underground_crm.api.urls")),
     path("django-admin/", admin.site.urls),
+    # The page explorer, with a slug column; it must precede Wagtail's own explorer URLs.
+    path("cms/", include(explorer_urlpatterns)),
     path("cms/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
     path("account/", include("allauth.urls")),
