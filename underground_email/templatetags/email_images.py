@@ -18,7 +18,7 @@ _PERCENTAGE_WIDTH = re.compile(r"(?<![\w-])width\s*:\s*(\d+(?:\.\d+)?)%")
 _FULL_WIDTH_PERCENT = 100.0
 
 
-def _percentage_width(style: Optional[str]) -> float:
+def _get_percentage_width(style: Optional[str]) -> float:
     """Return the percentage of its container that an image's inline style asks it to fill,
     or 100 when the style sets no percentage width."""
     match = _PERCENTAGE_WIDTH.search(style or "")
@@ -48,9 +48,9 @@ def cap_image_widths(html: str, column_width: int) -> SafeString:
     soup = BeautifulSoup(str(html), "html.parser")
     for img in soup.find_all("img"):
         width = img.get("width", "")
-        if not width.isdigit():
+        if not width or not width.isdigit():
             continue
-        cap = int(int(column_width) * _percentage_width(img.get("style")) / _FULL_WIDTH_PERCENT)
+        cap = int(int(column_width) * _get_percentage_width(img.get("style")) / _FULL_WIDTH_PERCENT)
         if int(width) > cap:
             img["width"] = str(cap)
             if img.has_attr("height"):

@@ -37,7 +37,7 @@ CAMPAIGN_TEMPLATE = "underground_email/smtp2go_base.html"
 IN_MEMORY_CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 
-def _only_img(html: str) -> Tag:
+def _assert_only_one_img(html: str) -> Tag:
     images = BeautifulSoup(html, "html.parser").find_all("img")
     assert len(images) == 1, f"Expected exactly one <img> in: {html}"
     return images[0]
@@ -88,7 +88,7 @@ class IntrinsicFormatTests(TestCase):
                 (self.small_logo, SMALL_LOGO_SIZE),
             ):
                 with self.subTest(format_name=format_name, image=image.title):
-                    img = _only_img(self._render(format_name, image))
+                    img = _assert_only_one_img(self._render(format_name, image))
                     self._assert_proportions_survive_style_stripping(img)
                     self.assertEqual(
                         int(img["width"]),
@@ -99,7 +99,7 @@ class IntrinsicFormatTests(TestCase):
                     self.assertIn(f"max-width: {size[0]}px", img["style"])
 
     def test_half_width_style_asks_for_half_the_container(self) -> None:
-        img = _only_img(self._render("w-50", self.wide_photo))
+        img = _assert_only_one_img(self._render("w-50", self.wide_photo))
         self.assertIn(f"width: {HALF_WIDTH_PERCENT}%", img["style"])
 
     def test_campaign_template_caps_a_wide_photo_at_its_column(self) -> None:
@@ -130,7 +130,7 @@ class CapImageWidthsTests(SimpleTestCase):
             f'style="display: block; margin: 0 auto; width: 100%; '
             f'max-width: {WIDE_PHOTO_SIZE[0]}px; height: auto">'
         )
-        img = _only_img(cap_image_widths(html, COLUMN_WIDTH))
+        img = _assert_only_one_img(cap_image_widths(html, COLUMN_WIDTH))
         self.assertEqual(int(img["width"]), COLUMN_WIDTH)
 
     def test_half_width_photo_is_capped_at_half_the_column(self) -> None:
@@ -139,7 +139,7 @@ class CapImageWidthsTests(SimpleTestCase):
             f'width="{WIDE_PHOTO_SIZE[0]}" style="width: {HALF_WIDTH_PERCENT}%; '
             f'max-width: {WIDE_PHOTO_SIZE[0]}px; height: auto">'
         )
-        img = _only_img(cap_image_widths(html, COLUMN_WIDTH))
+        img = _assert_only_one_img(cap_image_widths(html, COLUMN_WIDTH))
         self.assertEqual(int(img["width"]), COLUMN_WIDTH * HALF_WIDTH_PERCENT // 100)
 
     def test_capped_image_loses_its_height_attribute(self) -> None:
@@ -148,7 +148,7 @@ class CapImageWidthsTests(SimpleTestCase):
             f'<img alt="{ALT_TEXT}" src="https://fusionparty.space/media/election_party.jpg" '
             f'width="{WIDE_PHOTO_SIZE[0]}" height="{WIDE_PHOTO_SIZE[1]}">'
         )
-        img = _only_img(cap_image_widths(html, COLUMN_WIDTH))
+        img = _assert_only_one_img(cap_image_widths(html, COLUMN_WIDTH))
         self.assertEqual(int(img["width"]), COLUMN_WIDTH)
         self.assertNotIn(
             "height",
@@ -161,7 +161,7 @@ class CapImageWidthsTests(SimpleTestCase):
             f'<img alt="Party logo" src="/media/images/party_logo.original.png" '
             f'width="{SMALL_LOGO_SIZE[0]}" height="{SMALL_LOGO_SIZE[1]}">'
         )
-        img = _only_img(cap_image_widths(html, COLUMN_WIDTH))
+        img = _assert_only_one_img(cap_image_widths(html, COLUMN_WIDTH))
         self.assertEqual(int(img["width"]), SMALL_LOGO_SIZE[0])
         self.assertEqual(
             int(img["height"]),
@@ -172,5 +172,5 @@ class CapImageWidthsTests(SimpleTestCase):
     def test_percentage_width_attribute_is_left_alone(self) -> None:
         percentage_width = f"{HALF_WIDTH_PERCENT}%"
         html = f'<img alt="Party logo" src="/media/party_logo.png" width="{percentage_width}">'
-        img = _only_img(cap_image_widths(html, COLUMN_WIDTH))
+        img = _assert_only_one_img(cap_image_widths(html, COLUMN_WIDTH))
         self.assertEqual(img["width"], percentage_width)
