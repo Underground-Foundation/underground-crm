@@ -7,8 +7,26 @@
     therefore the field's placement in the grid); this template renders only the
     contents of that element.
 {% endcomment %}
+{% load underground_crm_forms %}
 {{ field.errors }}
-{% if field.field.widget.input_type == "checkbox" and field.label %}
+{% if field|is_option_group %}
+  {% comment %}
+    A group of radio buttons or checkboxes (e.g. the radio_buttons and
+    checkboxes input blocks): the question captions the whole group as its
+    legend, since no single <label> can belong to several inputs, and each
+    option sits in its own .form-check wrapper for the same reason as the
+    single checkbox below.
+  {% endcomment %}
+  <fieldset>
+    <legend class="col-form-label pt-0">{{ field.label }}</legend>
+    {% for option in field %}
+      <div class="form-check">
+        {{ option.tag }}
+        <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+      </div>
+    {% endfor %}
+  </fieldset>
+{% elif field.field.widget.input_type == "checkbox" and field.label %}
   {% comment %}
     A plain checkbox field (e.g. a BooleanField block): Bootstrap only lines
     the checkbox up with its caption when both sit inside a .form-check

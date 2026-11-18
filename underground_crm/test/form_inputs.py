@@ -13,3 +13,19 @@ def form_input(
     default is a bool, and every other input's is its pre-filled text.
     """
     return {"label": label, "help_text": help_text, "required": required, "default": default}
+
+
+def choice_input(
+    label: str, choices: list[str], *, help_text: str = "", required: bool = False
+) -> dict[str, Any]:
+    """
+    The StreamField value of one radio_buttons, dropdown or checkboxes block:
+    like form_input, but offering the given choices (which the editor types
+    one per line) instead of a pre-filled value.
+    """
+    return {
+        "label": label,
+        "help_text": help_text,
+        "required": required,
+        "choices": "\n".join(choices),
+    }

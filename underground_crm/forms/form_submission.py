@@ -1,4 +1,3 @@
-import copy
 from typing import Any, Optional
 
 from django import forms
@@ -7,7 +6,7 @@ from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from wagtail.blocks.stream_block import StreamValue
 
-from ..blocks import PERSON_FIELD_AUTOCOMPLETE
+from ..blocks import CHOICE_SEPARATOR, PERSON_FIELD_AUTOCOMPLETE
 from ..models.form_submission import FormSubmission, SubmittedField
 
 Person = get_user_model()
@@ -189,21 +188,9 @@ class FormSubmissionForm(forms.Form):
 
     @staticmethod
     def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:
-        """
-        Every input block's "default" child is a built-in Wagtail FieldBlock
-        (or this library's AddressBlock), and a FieldBlock is itself defined
-        by a Django form field — so reuse that field directly rather than
-        re-mapping block types by hand. Deep-copied because the block
-        definition (and its field) is module-level shared state, which this
-        visitor's question, help text and pre-filled value must not leak into.
-        """
-        default_block = input_block.block.child_blocks["default"]
-        field = copy.deepcopy(default_block.field)
-        field.required = input_block.value["required"]
-        field.label = input_block.value["label"]
-        field.help_text = input_block.value["help_text"]
-        field.initial = input_block.value["default"]
-        return field
+        """Each input block (a FormInputBlock) builds its own visitor field from
+        the label, help text and so on that the editor gave it."""
+        return input_block.block.visitor_field(input_block.value)
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
@@ -260,6 +247,9 @@ class FormSubmissionForm(forms.Form):
                 # A checkbox's answer is has_value alone; str(True) in value
                 # would just duplicate it.
                 has_value, value = field_value, ""
+            elif isinstance(field_value, list):
+                # The choices ticked in a set of checkboxes.
+                has_value, value = bool(field_value), CHOICE_SEPARATOR.join(field_value)
             else:
                 has_value = field_value is not None and field_value != ""
                 value = str(field_value) if has_value else ""

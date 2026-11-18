@@ -1,3 +1,4 @@
+import copy
 import logging
 
 from django import forms
@@ -6,7 +7,15 @@ from django.core.validators import URLValidator
 from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from colorfield.widgets import ColorWidget
-from wagtail.blocks import CharBlock, ChoiceBlock, FieldBlock, StructBlock
+from wagtail.blocks import (
+    BooleanBlock,
+    CharBlock,
+    ChoiceBlock,
+    FieldBlock,
+    StructBlock,
+    StructValue,
+    TextBlock,
+)
 
 from underground_crm.widgets import AddressAutocompleteInput
 
@@ -288,13 +297,153 @@ class PersonFieldBlock(StructBlock):
         icon = "user"
         label = _("Person field")
         group = _("Form inputs")
-        # This template is empty, for the same reason as the generic
-        # form-input blocks configured by _input_block_kwargs() in
-        # models/pages.py: the block's stored value (the chosen Person
+        # This template is empty, for the same reason as FormInputBlock's
+        # (see its Meta): the block's stored value (the chosen Person
         # field and label override) must not print as inert text in the
         # page body — the actual <input> is rendered separately by
         # FormSubmissionForm.
         template = "underground_crm/blocks/input_block.html"
+
+
+# The longest label SubmittedField can record (see its label field), so that a
+# question accepted by the editor can always be snapshotted with its answer.
+FORM_INPUT_LABEL_MAX_LENGTH = 255
+
+
+class FormInputBlock(StructBlock):
+    """
+    A visitor input on a FormPage: the question the visitor sees (label),
+    optional guidance beneath it (help_text) and whether it must be answered
+    (required). Each subclass adds whatever else its kind of input needs and
+    builds the visitor's form field from the block's value (see
+    visitor_field), which is all FormSubmissionForm asks of an input block.
+    """
+
+    label = CharBlock(
+        max_length=FORM_INPUT_LABEL_MAX_LENGTH,
+        label=_("Label"),
+        help_text=_("The question shown to the visitor beside this input."),
+    )
+    help_text = CharBlock(
+        required=False,
+        label=_("Help text"),
+        help_text=_("Optional guidance shown to the visitor beneath the input."),
+    )
+    required = BooleanBlock(
+        required=False,
+        label=_("Required"),
+        help_text=_("The visitor must answer before the form can be submitted."),
+    )
+
+    class Meta:
+        group = _("Form inputs")
+        # This template is empty. These blocks live in a page's body
+        # StreamField, and Wagtail would otherwise render each one's stored
+        # value (its label, choices and so on) as plain, non-interactive text
+        # wherever that body is displayed. The actual <input> element is
+        # rendered separately by FormSubmissionForm, so the StreamField's own
+        # rendering must stay empty to avoid printing the question twice.
+        template = "underground_crm/blocks/input_block.html"
+
+    def visitor_field(self, value: StructValue) -> forms.Field:
+        """The form field a visitor answers this input with."""
+        field = self.unlabelled_field(value)
+        field.label = value["label"]
+        field.help_text = value["help_text"]
+        field.required = value["required"]
+        return field
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        """The form field for this kind of input, before visitor_field gives it
+        the editor's label, help text and required setting."""
+        raise NotImplementedError
+
+
+def required_block(help_text: str) -> BooleanBlock:
+    """A replacement for FormInputBlock's "required" child, explaining what
+    being required means for one particular kind of input."""
+    return BooleanBlock(required=False, label=_("Required"), help_text=help_text)
+
+
+class PrefillableInputBlock(FormInputBlock):
+    """
+    An input whose kind is decided by its "default" child, a FieldBlock given
+    as a local block, e.g.
+    PrefillableInputBlock([("default", DateBlock(required=False))]). That
+    block's Django form field becomes the visitor's field, and its value is
+    pre-filled for the visitor.
+    """
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        # Deep-copied because the block definition (and its field) is
+        # module-level shared state, which one visitor's question must not
+        # leak into.
+        field = copy.deepcopy(self.child_blocks["default"].field)
+        field.initial = value["default"]
+        return field
+
+
+def choices_in(value: StructValue) -> list[str]:
+    """
+    The choices an editor listed, one per line: blank lines are dropped,
+    and a choice listed twice is offered once. Each choice is its own value
+    as well as its caption, so SubmittedField records the answer in the
+    words the visitor saw.
+    """
+    lines = (line.strip() for line in value["choices"].splitlines())
+    return list(dict.fromkeys(line for line in lines if line))
+
+
+# Separates the choices of a multiple-choice answer in SubmittedField.value.
+# A choice is one line of the editor's list, so it can never contain one.
+CHOICE_SEPARATOR = "\n"
+
+
+class ChoiceInputBlock(FormInputBlock):
+    """An input answered by picking from choices the editor lists."""
+
+    choices = TextBlock(
+        label=_("Choices"),
+        help_text=_("One choice per line, in the order the visitor should see them."),
+    )
+
+    def choice_pairs(self, value: StructValue) -> list[tuple[str, str]]:
+        return [(choice, choice) for choice in choices_in(value)]
+
+
+class RadioButtonsInputBlock(ChoiceInputBlock):
+    """Exactly one of the choices, picked from a set of radio buttons."""
+
+    required = required_block(_("The visitor must pick one of the choices."))
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        return forms.ChoiceField(choices=self.choice_pairs(value), widget=forms.RadioSelect)
+
+
+class DropdownInputBlock(ChoiceInputBlock):
+    """Exactly one of the choices, picked from a drop-down list."""
+
+    required = required_block(_("The visitor must pick one of the choices."))
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        # The list starts on a blank prompt rather than on the first choice,
+        # so that a visitor who skips the question is not recorded as having
+        # picked it.
+        return forms.ChoiceField(
+            choices=[("", _("Choose one"))] + self.choice_pairs(value),
+            widget=forms.Select,
+        )
+
+
+class CheckboxesInputBlock(ChoiceInputBlock):
+    """Any number of the choices, each ticked in a checkbox of its own."""
+
+    required = required_block(_("The visitor must tick at least one of the boxes."))
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        return forms.MultipleChoiceField(
+            choices=self.choice_pairs(value), widget=forms.CheckboxSelectMultiple
+        )
 
 
 class ButtonBlock(StructBlock):

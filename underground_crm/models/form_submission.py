@@ -99,8 +99,11 @@ class SubmittedField(models.Model):
     label (the human-readable label the visitor saw).
 
     value holds the actual answer for date/datetime/text-style fields (e.g.
-    "How many guests will be accompanying you?" -> "2"); it's irrelevant for
-    checkboxes, where has_value alone (checked/unchecked) is the answer.
+    "How many guests will be accompanying you?" -> "2") and the picked choice
+    for radio buttons and drop-down lists. For a group of checkboxes it holds
+    every ticked choice, one per line (see blocks.CHOICE_SEPARATOR). It's
+    irrelevant for a single checkbox, where has_value alone
+    (checked/unchecked) is the answer.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

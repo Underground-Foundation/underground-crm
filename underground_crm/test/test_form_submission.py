@@ -9,6 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.template.loader import render_to_string
 from django.test import RequestFactory
 from wagtail.models import Page
 
@@ -20,7 +21,8 @@ from underground_crm.forms.form_submission import (
 from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from underground_crm.models.form_submission import FormSubmission
-from underground_crm.test.form_inputs import form_input
+from underground_crm.blocks import CHOICE_SEPARATOR
+from underground_crm.test.form_inputs import choice_input, form_input
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +349,139 @@ class FormInputLabelTest(django.test.TestCase):
             form.is_valid(),
             msg=f"The suburb question is not marked as required, so a blank answer is accepted: {form.errors}",
         )
+
+
+class ChoiceInputTest(django.test.TestCase):
+    """
+    The radio_buttons, dropdown and checkboxes blocks offer the choices an
+    editor lists one per line, and SubmittedField records the answer in the
+    words of the choice the visitor picked.
+    """
+
+    electorate_question = "Which electorate do you live in?"
+    electorates = ["Wills", "Cooper", "Melbourne", "Macnamara"]
+    contact_question = "How should we contact you?"
+    contact_methods = ["Phone call", "Text message", "Email"]
+    activities_question = "What could you help with on election day?"
+    activities = ["Handing out how-to-vote cards", "Scrutineering", "Driving voters to booths"]
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        root = Page.objects.get(id=1)
+        self.page = FormPage(
+            title="Election day volunteers",
+            slug="election-day",
+            body=[
+                ("dropdown", choice_input(self.electorate_question, self.electorates)),
+                (
+                    "radio_buttons",
+                    choice_input(self.contact_question, self.contact_methods, required=True),
+                ),
+                ("checkboxes", choice_input(self.activities_question, self.activities)),
+            ],
+        )
+        root.add_child(instance=self.page)
+        self.page.refresh_from_db()
+        self.electorate, self.contact, self.activity = self.page.inputs
+        self.member = Person.objects.create_user(
+            email="booth-captain@example.com", password="password"
+        )
+
+    def _form(self, data=None) -> FormSubmissionForm:
+        request = self.factory.post("/election-day/", data or {})
+        request.user = self.member
+        return FormSubmissionForm(data, request=request, page=self.page)
+
+    def _submit(self, data) -> dict[str, tuple[bool, str]]:
+        """Submits the form, returning each input's (has_value, value) by label."""
+        form = self._form(data)
+        self.assertTrue(form.is_valid(), msg=f"Form errors: {form.errors}")
+        submission = form.save()
+        return {row.label: (row.has_value, row.value) for row in submission.submitted_fields.all()}
+
+    def test_every_choice_is_offered_in_the_order_listed(self):
+        form = self._form()
+        for input_block, choices in [
+            (self.contact, self.contact_methods),
+            (self.activity, self.activities),
+        ]:
+            offered = [label for _value, label in form.fields[f"input_{input_block.id}"].choices]
+            self.assertEqual(offered, choices)
+
+    def test_dropdown_starts_on_a_blank_prompt(self):
+        form = self._form()
+        dropdown_choices = form.fields[f"input_{self.electorate.id}"].choices
+        self.assertEqual(
+            [value for value, _label in dropdown_choices],
+            [""] + self.electorates,
+            msg="A visitor who skips the drop-down must not be recorded as picking its first choice",
+        )
+
+    def test_picked_choices_are_recorded_in_the_visitors_words(self):
+        picked_electorate = self.electorates[1]
+        picked_contact = self.contact_methods[2]
+        picked_activities = [self.activities[0], self.activities[2]]
+        answers = self._submit(
+            {
+                f"input_{self.electorate.id}": picked_electorate,
+                f"input_{self.contact.id}": picked_contact,
+                f"input_{self.activity.id}": picked_activities,
+            }
+        )
+        self.assertEqual(
+            answers,
+            {
+                self.electorate_question: (True, picked_electorate),
+                self.contact_question: (True, picked_contact),
+                self.activities_question: (True, CHOICE_SEPARATOR.join(picked_activities)),
+            },
+        )
+
+    def test_unanswered_optional_choices_are_recorded_as_unanswered(self):
+        answers = self._submit({f"input_{self.contact.id}": self.contact_methods[0]})
+        self.assertEqual(answers[self.electorate_question], (False, ""))
+        self.assertEqual(
+            answers[self.activities_question],
+            (False, ""),
+            msg="Ticking none of the boxes is a row with no value, not a missing row",
+        )
+
+    def test_required_radio_buttons_must_be_answered(self):
+        form = self._form({})
+        self.assertFalse(form.is_valid())
+        self.assertIn(f"input_{self.contact.id}", form.errors)
+
+    def test_a_choice_the_editor_did_not_list_is_rejected(self):
+        form = self._form(
+            {
+                f"input_{self.contact.id}": self.contact_methods[0],
+                f"input_{self.electorate.id}": "Kooyong",
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            f"input_{self.electorate.id}",
+            form.errors,
+            msg="Kooyong is not among the listed electorates, so a tampered request must not record it",
+        )
+
+    def test_choices_render_as_a_captioned_group(self):
+        form = self._form()
+        for input_block, question, choices in [
+            (self.contact, self.contact_question, self.contact_methods),
+            (self.activity, self.activities_question, self.activities),
+        ]:
+            field_html = render_to_string(
+                "underground_crm/includes/form_field.html",
+                {"field": form[f"input_{input_block.id}"]},
+            )
+            self.assertIn(
+                f'<legend class="col-form-label pt-0">{question}</legend>',
+                field_html,
+                msg="A group of options is captioned by a legend, since no one <label> fits them all",
+            )
+            for choice in choices:
+                self.assertIn(f">{choice}</label>", field_html)
 
 
 class GetVolunteersWithFieldCommandTest(django.test.TestCase):
