@@ -1,4 +1,3 @@
-import copy
 import logging
 
 from django import forms
@@ -11,10 +10,15 @@ from wagtail.blocks import (
     BooleanBlock,
     CharBlock,
     ChoiceBlock,
+    DecimalBlock,
+    EmailBlock,
     FieldBlock,
+    FloatBlock,
+    IntegerBlock,
     StructBlock,
     StructValue,
     TextBlock,
+    URLBlock,
 )
 
 from underground_crm.widgets import AddressAutocompleteInput
@@ -365,22 +369,117 @@ def required_block(help_text: str) -> BooleanBlock:
     return BooleanBlock(required=False, label=_("Required"), help_text=help_text)
 
 
-class PrefillableInputBlock(FormInputBlock):
-    """
-    An input whose kind is decided by its "default" child, a FieldBlock given
-    as a local block, e.g.
-    PrefillableInputBlock([("default", DateBlock(required=False))]). That
-    block's Django form field becomes the visitor's field, and its value is
-    pre-filled for the visitor.
-    """
+class CheckboxInputBlock(FormInputBlock):
+    """A single box for the visitor to tick, such as a consent to be contacted."""
+
+    required = required_block(_("The visitor must tick the box."))
+    default = BooleanBlock(required=False, label=_("Ticked by default"))
 
     def unlabelled_field(self, value: StructValue) -> forms.Field:
-        # Deep-copied because the block definition (and its field) is
-        # module-level shared state, which one visitor's question must not
-        # leak into.
-        field = copy.deepcopy(self.child_blocks["default"].field)
-        field.initial = value["default"]
+        return forms.BooleanField(initial=value["default"])
+
+
+class PlaceholderInputBlock(FormInputBlock):
+    """
+    An input the visitor types into, which may show the editor's example
+    answer as placeholder text while it is empty. Each subclass names, as
+    field_block_class, the Wagtail FieldBlock whose Django form field (and
+    therefore whose validation and widget) the visitor answers with. It is a
+    class attribute rather than a child block because it belongs to the kind
+    of input, not to any one page's value.
+    """
+
+    field_block_class: type[FieldBlock]
+
+    placeholder = CharBlock(
+        required=False,
+        label=_("Placeholder"),
+        help_text=_(
+            "Faint example text shown in the empty input, such as \u201cBrunswick\u201d. "
+            "It disappears as the visitor types, and is never submitted."
+        ),
+    )
+
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        # A fresh FieldBlock each time, so that one visitor's field (and its
+        # widget's attributes) is never shared with another's.
+        field = self.field_block_class(required=False).field
+        if value["placeholder"]:
+            field.widget.attrs["placeholder"] = value["placeholder"]
         return field
+
+
+class TextInputBlock(PlaceholderInputBlock):
+    field_block_class = CharBlock
+
+
+class MultilineTextInputBlock(PlaceholderInputBlock):
+    field_block_class = TextBlock
+
+
+class EmailInputBlock(PlaceholderInputBlock):
+    field_block_class = EmailBlock
+
+
+class AddressInputBlock(PlaceholderInputBlock):
+    field_block_class = AddressBlock
+
+
+class IntegerInputBlock(PlaceholderInputBlock):
+    field_block_class = IntegerBlock
+
+
+class DecimalInputBlock(PlaceholderInputBlock):
+    field_block_class = DecimalBlock
+
+
+class FloatInputBlock(PlaceholderInputBlock):
+    field_block_class = FloatBlock
+
+
+class URLInputBlock(PlaceholderInputBlock):
+    field_block_class = URLBlock
+
+
+# The formats in which the browser's native pickers (below) exchange values
+# with the server, whatever format they display to the visitor.
+NATIVE_DATE_FORMAT = "%Y-%m-%d"
+NATIVE_TIME_FORMATS = ["%H:%M", "%H:%M:%S"]
+NATIVE_DATETIME_FORMATS = ["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
+
+
+# The date and time inputs use the browser's own pickers rather than the
+# widgets of Wagtail's DateBlock, TimeBlock and DateTimeBlock. Those are built
+# for the CMS editor and depend on its JavaScript bundle and its wagtailConfig
+# global, neither of which a public page loads, so a visitor would get a bare
+# text box. The native pickers need no JavaScript, suit phones, and display
+# dates in the visitor's own locale. Being pickers, they have no placeholder.
+
+
+class DateInputBlock(FormInputBlock):
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        return forms.DateField(
+            input_formats=[NATIVE_DATE_FORMAT],
+            widget=forms.DateInput(attrs={"type": "date"}, format=NATIVE_DATE_FORMAT),
+        )
+
+
+class TimeInputBlock(FormInputBlock):
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        return forms.TimeField(
+            input_formats=NATIVE_TIME_FORMATS,
+            widget=forms.TimeInput(attrs={"type": "time"}, format=NATIVE_TIME_FORMATS[0]),
+        )
+
+
+class DateTimeInputBlock(FormInputBlock):
+    def unlabelled_field(self, value: StructValue) -> forms.Field:
+        return forms.DateTimeField(
+            input_formats=NATIVE_DATETIME_FORMATS,
+            widget=forms.DateTimeInput(
+                attrs={"type": "datetime-local"}, format=NATIVE_DATETIME_FORMATS[0]
+            ),
+        )
 
 
 def choices_in(value: StructValue) -> list[str]:

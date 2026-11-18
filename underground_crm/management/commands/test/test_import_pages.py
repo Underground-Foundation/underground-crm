@@ -28,6 +28,7 @@ from underground_crm.management.commands.import_pages import (
     extract_host_attributes,
     extract_importable_html,
     extract_page_size,
+    form_input_block_value,
     get_event_detail_pairs,
     get_host_by_email_address,
     is_site_root,
@@ -402,6 +403,44 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
         """
         descriptions = [i.description for i in extract_form_inputs(self.form_tag)]
         self.assertNotIn("Optional email code", descriptions)
+
+
+class TestLegacyPlaceholderExtraction(unittest.TestCase):
+    """A legacy text input's placeholder attribute carries over to the input
+    block it becomes, while a checkbox (which has no placeholder) starts
+    unticked."""
+
+    suburb_question = "Which suburb do you live in?"
+    suburb_placeholder = "e.g. Brunswick"
+    updates_question = "Send me campaign updates"
+
+    def setUp(self):
+        form_html = f"""
+            <form>
+              <label for="signup_suburb">{self.suburb_question}</label>
+              <input type="text" id="signup_suburb" name="signup[suburb]"
+                     placeholder="{self.suburb_placeholder}">
+              <input type="checkbox" id="signup_updates" name="signup[updates]">
+              <label for="signup_updates">{self.updates_question}</label>
+            </form>
+        """
+        self.form_tag = BeautifulSoup(form_html, "html.parser").find("form")
+
+    def test_placeholder_becomes_the_input_blocks_placeholder(self):
+        suburb, updates = extract_form_inputs(self.form_tag)
+        self.assertEqual(
+            form_input_block_value(suburb),
+            {
+                "label": self.suburb_question,
+                "help_text": "",
+                "required": False,
+                "placeholder": self.suburb_placeholder,
+            },
+        )
+        self.assertEqual(
+            form_input_block_value(updates),
+            {"label": self.updates_question, "help_text": "", "required": False, "default": False},
+        )
 
 
 class TestBuildVolunteerSignupPage(django.test.TestCase):
