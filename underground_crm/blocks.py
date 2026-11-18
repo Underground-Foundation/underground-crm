@@ -394,10 +394,7 @@ class PlaceholderInputBlock(FormInputBlock):
     placeholder = CharBlock(
         required=False,
         label=_("Placeholder"),
-        help_text=_(
-            "Faint example text shown in the empty input, such as \u201cBrunswick\u201d. "
-            "It disappears as the visitor types, and is never submitted."
-        ),
+        help_text=_("Faint example text which disappears upon the user typing."),
     )
 
     def unlabelled_field(self, value: StructValue) -> forms.Field:
