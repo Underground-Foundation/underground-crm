@@ -10,6 +10,7 @@ from wagtail.models import Page
 
 from underground_crm.forms.event_guest import EventGuestForm
 from underground_crm.models.pages import EventGuest, EventPage
+from underground_crm.test.form_inputs import form_input
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,8 @@ class EventGuestFormTest(django.test.TestCase):
             slug="fundraising-dinner",
             start_time=event_start,
             end_time=event_start + timedelta(hours=3),
-            # A "Do you need a parking spot?" checkbox, staff-added via the CMS
-            body=[("checkbox", False)],
+            # A checkbox staff added via the CMS
+            body=[("checkbox", form_input("I need a parking spot", False))],
         )
         root.add_child(instance=self.event_page)
         self.event_page.refresh_from_db()

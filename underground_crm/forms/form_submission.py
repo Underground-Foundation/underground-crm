@@ -1,4 +1,3 @@
-import copy
 from typing import Any, Optional
 
 from django import forms
@@ -7,7 +6,7 @@ from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from wagtail.blocks.stream_block import StreamValue
 
-from ..blocks import PERSON_FIELD_AUTOCOMPLETE
+from ..blocks import CHOICE_SEPARATOR, PERSON_FIELD_AUTOCOMPLETE
 from ..models.form_submission import FormSubmission, SubmittedField
 
 Person = get_user_model()
@@ -189,18 +188,9 @@ class FormSubmissionForm(forms.Form):
 
     @staticmethod
     def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:
-        """
-        Every input block wraps a built-in Wagtail FieldBlock, and a FieldBlock
-        is itself defined by a Django form field — so reuse that field directly
-        rather than re-mapping block types by hand. Deep-copied because the
-        block definition (and its field) is module-level shared state, and the
-        editor-supplied block value becomes this visitor's pre-filled initial.
-        """
-        field = copy.deepcopy(input_block.block.field)
-        field.required = False
-        field.label = input_block.block.label
-        field.initial = input_block.value
-        return field
+        """Each input block (a FormInputBlock) builds its own visitor field from
+        the label, help text and so on that the editor gave it."""
+        return input_block.block.visitor_field(input_block.value)
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
@@ -257,6 +247,9 @@ class FormSubmissionForm(forms.Form):
                 # A checkbox's answer is has_value alone; str(True) in value
                 # would just duplicate it.
                 has_value, value = field_value, ""
+            elif isinstance(field_value, list):
+                # The choices ticked in a set of checkboxes.
+                has_value, value = bool(field_value), CHOICE_SEPARATOR.join(field_value)
             else:
                 has_value = field_value is not None and field_value != ""
                 value = str(field_value) if has_value else ""
@@ -264,7 +257,7 @@ class FormSubmissionForm(forms.Form):
                 submission=submission,
                 block_id=str(input_block.id),
                 name=input_block.block_type,
-                label=str(input_block.block.label),
+                label=input_block.value["label"],
                 has_value=has_value,
                 value=value,
             )

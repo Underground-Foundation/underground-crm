@@ -10,6 +10,13 @@ def is_checkbox(field: forms.BoundField) -> bool:
 
 
 @register.filter
+def is_option_group(field: forms.BoundField) -> bool:
+    """Whether the field is answered by picking from a group of radio buttons
+    or checkboxes (CheckboxSelectMultiple is a kind of RadioSelect)."""
+    return isinstance(field.field.widget, forms.RadioSelect)
+
+
+@register.filter
 def bootstrap_widget(field: forms.BoundField) -> SafeString:
     """
     Renders a bound field's widget with the Bootstrap classes that

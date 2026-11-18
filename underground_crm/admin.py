@@ -252,6 +252,7 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                 )
             },
         ),
+        (_("Membership"), {"fields": ("membership_number",)}),
         (
             _("Contact"),
             {
@@ -289,6 +290,17 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (
+            _("Preferences"),
+            {
+                "fields": (
+                    "do_not_call",
+                    "do_not_contact",
+                    "is_profile_published",
+                    "activity_is_private",
+                )
+            },
+        ),
+        (
             _("Donations"),
             {
                 "fields": (
@@ -298,17 +310,6 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
                     "donations_amount",
                     "first_donated_at",
                     "last_donated_at",
-                )
-            },
-        ),
-        (
-            _("Preferences"),
-            {
-                "fields": (
-                    "do_not_call",
-                    "do_not_contact",
-                    "is_profile_published",
-                    "activity_is_private",
                 )
             },
         ),
@@ -325,7 +326,6 @@ class PersonAdmin(SimpleHistoryAdmin, UserAdmin):
             },
         ),
         (_("Relationships"), {"fields": ("recruiter", "point_person")}),
-        (_("Membership"), {"fields": ("membership_number",)}),
         (_("Migration"), {"fields": ("legacy_id",)}),
         (
             _("System"),

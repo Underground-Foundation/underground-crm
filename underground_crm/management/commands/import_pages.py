@@ -1057,6 +1057,22 @@ def extract_form_inputs(form_tag: Tag) -> List[FormInput]:
     return inputs
 
 
+def form_input_block_value(form_input: FormInput) -> dict[str, Any]:
+    """
+    The StreamField value of the input block a legacy form field becomes: its
+    question as the label, and nothing pre-filled — even where the source
+    snapshot shows one already-signed-up member's answers (see
+    build_form_page). Nothing is marked required; editors can tick Required
+    on individual questions after the import.
+    """
+    return {
+        "label": form_input.description,
+        "help_text": "",
+        "required": False,
+        "default": False if form_input.input_type == "checkbox" else "",
+    }
+
+
 # Only "Volunteer Signup" submissions should tag the submitting Person as a
 # volunteer; "Feedback" and "Suggestion Box" are legacy types that share the
 # same <form>-extraction logic but must leave tags_to_apply empty.
@@ -1084,11 +1100,9 @@ def build_form_page(
     Build a FormPage from a legacy form-bearing page ("Volunteer Signup",
     "Feedback", or "Suggestion Box"). The <form>'s checkbox/text/textarea
     fields become "checkbox"/"text" input StreamField blocks (see
-    FORM_INPUT_BLOCKS in models/pages.py), each preceded by an "html" block
-    carrying the legacy question text, since a bare input block has no
-    per-question label of its own; everything else in #content becomes an
-    ordinary "html" block ahead of them, so the page's intro copy is
-    preserved.
+    FORM_INPUT_BLOCKS in models/pages.py), each labelled with the legacy
+    question text; everything else in #content becomes an ordinary "html"
+    block ahead of them, so the page's intro copy is preserved.
 
     The source page snapshot may reflect one already-signed-up member's
     current answers (checked boxes, filled-in text) — only the field
@@ -1116,11 +1130,10 @@ def build_form_page(
     if remaining_html.strip():
         body_blocks.append(("html", remaining_html))
     if form_tag is not None:
-        for form_input in extract_form_inputs(form_tag):
-            body_blocks.append(("html", f"<p>{html.escape(form_input.description)}</p>"))
-            body_blocks.append(
-                (form_input.input_type, False if form_input.input_type == "checkbox" else "")
-            )
+        body_blocks.extend(
+            (form_input.input_type, form_input_block_value(form_input))
+            for form_input in extract_form_inputs(form_tag)
+        )
 
     kwargs = get_page_args(
         document_soup=document_soup,
