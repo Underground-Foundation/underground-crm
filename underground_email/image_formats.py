@@ -11,10 +11,26 @@ logger = logging.getLogger(__name__)
 
 class IntrinsicFormat(Format):
     """Image format that renders at the image's natural dimensions, capped at the container
-    width via CSS min().  The filter spec should be 'original' so the file is never upscaled
-    server-side; the inline style prevents it from overflowing its container client-side.
+    width.  The filter spec should be 'original' so the file is never upscaled server-side;
+    the inline style prevents it from overflowing its container client-side.
 
-    Set centered=True to add display:block and auto side margins, centring the image within
+    The markup is written to survive mail clients as well as browsers, since the same rich
+    text is sent in email campaigns:
+
+    - The cap is expressed as `width: N%; max-width: <natural width>px` rather than with
+      CSS min(), which Outlook and many webmail sanitizers do not support, and which makes
+      them discard the whole declaration.
+    - `height: auto` is always set, and no `height` attribute is emitted.  Mail clients that
+      strip inline styles when quoting a message in a reply still shrink a wide image to
+      fit, and if a `height` attribute were left behind, the image would keep its full
+      height and be stretched vertically.
+    - The `width` attribute is the image's natural width.  Outlook for Windows ignores CSS
+      max-width and sizes the image from that attribute alone, so an email template should
+      cap it at the template's column width with the `cap_image_widths` filter (see
+      underground_email/templatetags/email_images.py).  Only the template knows how wide
+      its column is.
+
+    Set centered=True to add display:block and auto side margins, centering the image within
     its container.  Left- and right-aligned formats leave centering unset so that their CSS
     float classes take effect."""
 
@@ -39,15 +55,12 @@ class IntrinsicFormat(Format):
         if self.classname:
             extra_attributes["class"] = escape(self.classname)
         pct = int(self.width_fraction * 100)
-        style = f"max-width: min({pct}%, {rendition.width}px)"
+        style = f"width: {pct}%; max-width: {rendition.width}px; height: auto"
         if self.centered:
             style = f"display: block; margin: 0 auto; {style}"
         extra_attributes["style"] = style
-        if self.width_fraction < 1.0:
-            # Express width as a percentage so the image scales with the container.
-            # Drop the pixel height to avoid distorting the aspect ratio.
-            extra_attributes["width"] = f"{pct}%"
-            extra_attributes["height"] = None
+        extra_attributes["width"] = str(rendition.width)
+        extra_attributes["height"] = None
         logger.info(
             "%s shall be rendered at intrinsic width %s px", image.filename, rendition.width
         )
@@ -55,8 +68,8 @@ class IntrinsicFormat(Format):
 
 
 # Replace Wagtail's built-in formats (which use width-N and upscale small images).
-# IntrinsicFormat serves the original file and uses CSS min() to cap display width at
-# whichever is smaller: the intended fraction of the container, or the image's natural width.
+# IntrinsicFormat serves the original file and caps its display width at whichever is
+# smaller: the intended fraction of the container, or the image's natural width.
 unregister_image_format("fullwidth")
 unregister_image_format("left")
 unregister_image_format("right")
