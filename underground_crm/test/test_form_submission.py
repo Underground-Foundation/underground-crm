@@ -20,10 +20,15 @@ from underground_crm.forms.form_submission import (
 from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from underground_crm.models.form_submission import FormSubmission
+from underground_crm.test.form_inputs import form_input
 
 logger = logging.getLogger(__name__)
 
 Person = get_user_model()
+
+CALLING_MEMBERS_QUESTION = "I can phone members to remind them about events"
+VIDEOGRAPHY_QUESTION = "I can film speeches and rallies"
+AVAILABILITY_QUESTION = "When are you usually available?"
 
 
 class FormSubmissionValidationTest(django.test.TestCase):
@@ -60,9 +65,9 @@ class FormSubmissionFormTest(django.test.TestCase):
             title="Get involved",
             slug="get-involved",
             body=[
-                ("checkbox", False),
-                ("checkbox", False),
-                ("text", ""),
+                ("checkbox", form_input(CALLING_MEMBERS_QUESTION, False)),
+                ("checkbox", form_input(VIDEOGRAPHY_QUESTION, False)),
+                ("text", form_input(AVAILABILITY_QUESTION)),
             ],
         )
         root.add_child(instance=self.page)
@@ -120,8 +125,8 @@ class FormSubmissionFormTest(django.test.TestCase):
         self.assertEqual(availability_row.value, "Weekday evenings")
         self.assertEqual(
             (availability_row.name, availability_row.label),
-            ("text", "Text"),
-            msg="SubmittedField should snapshot the block's type name and visitor-facing label",
+            ("text", AVAILABILITY_QUESTION),
+            msg="SubmittedField should snapshot the block's type name and the question the editor wrote",
         )
 
         member_tag_names = set(member.tags.values_list("name", flat=True))
@@ -269,6 +274,81 @@ class FormSubmissionFormTest(django.test.TestCase):
         )
 
 
+class FormInputLabelTest(django.test.TestCase):
+    """
+    Each input block carries the question the editor wrote for it, plus
+    optional help text, whether it must be answered and a pre-filled value,
+    and the visitor's form field takes all four from the block.
+    """
+
+    consent_question = "I agree to be contacted about volunteering"
+    consent_help_text = "We will only contact you about the activities you tick on this form."
+    suburb_question = "Which suburb do you live in?"
+    suburb_prefilled = "Brunswick"
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        root = Page.objects.get(id=1)
+        self.page = FormPage(
+            title="Volunteer with us",
+            slug="volunteer-with-us",
+            body=[
+                (
+                    "checkbox",
+                    form_input(
+                        self.consent_question,
+                        False,
+                        help_text=self.consent_help_text,
+                        required=True,
+                    ),
+                ),
+                ("text", form_input(self.suburb_question, self.suburb_prefilled)),
+            ],
+        )
+        root.add_child(instance=self.page)
+        self.page.refresh_from_db()
+        self.consent, self.suburb = self.page.inputs
+        self.member = Person.objects.create_user(email="volunteer@example.com", password="password")
+
+    def _form(self, data=None) -> FormSubmissionForm:
+        request = self.factory.post("/volunteer-with-us/", data or {})
+        request.user = self.member
+        return FormSubmissionForm(data, request=request, page=self.page)
+
+    def test_visitor_sees_the_question_and_help_text_the_editor_wrote(self):
+        rendered = self._form().as_p()
+        self.assertIn(
+            self.consent_question,
+            rendered,
+            msg="The checkbox must be captioned with the editor's question, not its type name",
+        )
+        self.assertIn(self.consent_help_text, rendered)
+        self.assertIn(self.suburb_question, rendered)
+
+    def test_prefilled_value_becomes_the_initial_answer(self):
+        form = self._form()
+        self.assertEqual(form[f"input_{self.suburb.id}"].value(), self.suburb_prefilled)
+
+    def test_required_checkbox_must_be_ticked(self):
+        unticked = self._form({})
+        self.assertFalse(unticked.is_valid())
+        self.assertIn(
+            f"input_{self.consent.id}",
+            unticked.errors,
+            msg="The editor marked the consent checkbox as required, so leaving it unticked is an error",
+        )
+
+        ticked = self._form({f"input_{self.consent.id}": "on"})
+        self.assertTrue(ticked.is_valid(), msg=f"Form errors: {ticked.errors}")
+
+    def test_optional_input_may_be_left_blank(self):
+        form = self._form({f"input_{self.consent.id}": "on", f"input_{self.suburb.id}": ""})
+        self.assertTrue(
+            form.is_valid(),
+            msg=f"The suburb question is not marked as required, so a blank answer is accepted: {form.errors}",
+        )
+
+
 class GetVolunteersWithFieldCommandTest(django.test.TestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -276,7 +356,7 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
         self.page = FormPage(
             title="Get involved",
             slug="get-involved",
-            body=[("checkbox", False)],
+            body=[("checkbox", form_input(CALLING_MEMBERS_QUESTION, False))],
         )
         root.add_child(instance=self.page)
         self.page.refresh_from_db()
@@ -312,7 +392,7 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
             output_path = Path(tmp_dir) / "callers.csv"
             call_command(
                 "get_volunteers_with_field",
-                field="Checkbox",  # the label snapshotted from the block definition
+                field=CALLING_MEMBERS_QUESTION,  # the label snapshotted at submission time
                 output=str(output_path),
             )
             with open(output_path, newline="", encoding="utf-8") as csv_file:

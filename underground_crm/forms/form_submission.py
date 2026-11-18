@@ -190,16 +190,19 @@ class FormSubmissionForm(forms.Form):
     @staticmethod
     def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:
         """
-        Every input block wraps a built-in Wagtail FieldBlock, and a FieldBlock
-        is itself defined by a Django form field — so reuse that field directly
-        rather than re-mapping block types by hand. Deep-copied because the
-        block definition (and its field) is module-level shared state, and the
-        editor-supplied block value becomes this visitor's pre-filled initial.
+        Every input block's "default" child is a built-in Wagtail FieldBlock
+        (or this library's AddressBlock), and a FieldBlock is itself defined
+        by a Django form field — so reuse that field directly rather than
+        re-mapping block types by hand. Deep-copied because the block
+        definition (and its field) is module-level shared state, which this
+        visitor's question, help text and pre-filled value must not leak into.
         """
-        field = copy.deepcopy(input_block.block.field)
-        field.required = False
-        field.label = input_block.block.label
-        field.initial = input_block.value
+        default_block = input_block.block.child_blocks["default"]
+        field = copy.deepcopy(default_block.field)
+        field.required = input_block.value["required"]
+        field.label = input_block.value["label"]
+        field.help_text = input_block.value["help_text"]
+        field.initial = input_block.value["default"]
         return field
 
     def clean(self) -> dict[str, Any]:
@@ -264,7 +267,7 @@ class FormSubmissionForm(forms.Form):
                 submission=submission,
                 block_id=str(input_block.id),
                 name=input_block.block_type,
-                label=str(input_block.block.label),
+                label=input_block.value["label"],
                 has_value=has_value,
                 value=value,
             )

@@ -349,6 +349,8 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
 
     volunteer_html_file = Path(__file__).parent / "volunteer_sample.html"
     expected_checkbox_count = 17
+    # The <label> of one of volunteer_sample.html's checkboxes.
+    doorknocking_question = "Doorknocking"
 
     @classmethod
     def setUpClass(cls):
@@ -405,6 +407,8 @@ class TestVolunteerSignupExtraction(unittest.TestCase):
 class TestBuildVolunteerSignupPage(django.test.TestCase):
     volunteer_html_file = Path(__file__).parent / "volunteer_sample.html"
     expected_checkbox_count = 17
+    # The <label> of one of volunteer_sample.html's checkboxes.
+    doorknocking_question = "Doorknocking"
 
     def setUp(self):
         self.document_soup, self.importable_html = extract_importable_html(
@@ -442,13 +446,19 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
             self.expected_checkbox_count + 2,
             msg="Every checkbox plus the availability and comments fields should become an input block",
         )
+        labels = [block.value["label"] for block in page.inputs]
+        self.assertIn(
+            self.doorknocking_question,
+            labels,
+            msg="Each legacy question's text should become the label of its input block",
+        )
         question_html = " ".join(
             block.value for block in list(page.body) if block.block_type == "html"
         )
-        self.assertIn(
-            "Doorknocking",
+        self.assertNotIn(
+            self.doorknocking_question,
             question_html,
-            msg="Each legacy question's text should be kept as an html block beside its input block",
+            msg="The question is the input's label now, so it must not also be repeated as page content",
         )
 
     def test_form_html_is_removed_from_the_html_block(self):
@@ -478,8 +488,8 @@ class TestBuildVolunteerSignupPage(django.test.TestCase):
         second_page.refresh_from_db()
 
         self.assertEqual(
-            [block.block_type for block in first_page.inputs],
-            [block.block_type for block in second_page.inputs],
+            [(block.block_type, block.value["label"]) for block in first_page.inputs],
+            [(block.block_type, block.value["label"]) for block in second_page.inputs],
             msg="Re-running the importer against the same source page must extract identical inputs",
         )
 

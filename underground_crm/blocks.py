@@ -83,10 +83,17 @@ class AddressBlock(FieldBlock):
     Addressr formats it — the block does not create an Address record.
     """
 
-    def __init__(self, required: bool = True, max_length: int = 255, **kwargs):
+    def __init__(
+        self,
+        required: bool = True,
+        max_length: int = 255,
+        help_text: str = "",
+        **kwargs,
+    ):
         self.field = forms.CharField(
             required=required,
             max_length=max_length,
+            help_text=help_text,
             widget=AddressAutocompleteInput(),
         )
         super().__init__(**kwargs)
@@ -282,7 +289,7 @@ class PersonFieldBlock(StructBlock):
         label = _("Person field")
         group = _("Form inputs")
         # This template is empty, for the same reason as the generic
-        # form-input blocks built by _input_block_kwargs() in
+        # form-input blocks configured by _input_block_kwargs() in
         # models/pages.py: the block's stored value (the chosen Person
         # field and label override) must not print as inert text in the
         # page body — the actual <input> is rendered separately by

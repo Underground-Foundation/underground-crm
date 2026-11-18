@@ -25,6 +25,7 @@ from wagtail.blocks import (
     DateTimeBlock,
     DecimalBlock,
     EmailBlock,
+    FieldBlock,
     FloatBlock,
     IntegerBlock,
     RichTextBlock,
@@ -388,23 +389,75 @@ def _input_block_kwargs(**extra) -> dict:
     Shared Meta configuration for the visitor-input blocks below (checkbox,
     text, email, PersonFieldBlock, and so on).
 
-    required=False keeps both sides optional: the page editor may leave the
-    block's stored value (the input's pre-filled default) blank, and the
-    site visitor may leave the rendered form field blank.
-
     template points at underground_crm/blocks/input_block.html, which is
     empty. These blocks live in a page's body StreamField, and Wagtail would
-    otherwise render each one's stored value as plain, non-interactive text
-    wherever that body is displayed. The actual <input> element is rendered
-    separately by FormSubmissionForm (via form.as_p or similar), so the
-    StreamField's own rendering must stay empty to avoid printing the value
-    twice.
+    otherwise render each one's stored value (its label, pre-filled default
+    and so on) as plain, non-interactive text wherever that body is
+    displayed. The actual <input> element is rendered separately by
+    FormSubmissionForm (via form.as_p or similar), so the StreamField's own
+    rendering must stay empty to avoid printing the question twice.
     """
     return {
-        "required": False,
         "template": "underground_crm/blocks/input_block.html",
         "group": _("Form inputs"),
         **extra,
+    }
+
+
+# The longest label SubmittedField can record (see its label field), so that a
+# question accepted by the editor can always be snapshotted with its answer.
+FORM_INPUT_LABEL_MAX_LENGTH = 255
+
+
+def _form_input_block(default_block: FieldBlock, **meta) -> StructBlock:
+    """
+    A visitor input: the question the visitor sees (label), optional guidance
+    beneath it (help_text), whether it must be answered (required), and the
+    value it starts with (default). default_block decides what kind of input
+    the visitor gets — FormSubmissionForm builds the visitor's form field from
+    that block's own Django form field — and it is always optional, because
+    the pre-filled value is usually left blank.
+    """
+    return StructBlock(
+        [
+            (
+                "label",
+                CharBlock(
+                    max_length=FORM_INPUT_LABEL_MAX_LENGTH,
+                    label=_("Label"),
+                    help_text=_("The question shown to the visitor beside this input."),
+                ),
+            ),
+            (
+                "help_text",
+                CharBlock(
+                    required=False,
+                    label=_("Help text"),
+                    help_text=_("Optional guidance shown to the visitor beneath the input."),
+                ),
+            ),
+            (
+                "required",
+                BooleanBlock(
+                    required=False,
+                    label=_("Required"),
+                    help_text=_(
+                        "The visitor must answer before the form can be submitted. "
+                        "A required checkbox must be ticked."
+                    ),
+                ),
+            ),
+            ("default", default_block),
+        ],
+        **_input_block_kwargs(**meta),
+    )
+
+
+def _prefilled_value_kwargs() -> dict:
+    return {
+        "required": False,
+        "label": _("Pre-filled value"),
+        "help_text": _("Shown in the input before the visitor answers. Usually left blank."),
     }
 
 
@@ -417,18 +470,53 @@ def _input_block_kwargs(**extra) -> dict:
 # supplied in code, so they only appear on pages that define specific named
 # inputs (e.g. RegistrationPage's Person-field blocks).
 FORM_INPUT_BLOCKS = [
-    ("checkbox", BooleanBlock(**_input_block_kwargs(label=_("Checkbox"), icon="tick-inverse"))),
-    ("text", CharBlock(**_input_block_kwargs(label=_("Text"), icon="pilcrow"))),
-    ("multiline_text", TextBlock(**_input_block_kwargs(label=_("Multi-line text")))),
-    ("email", EmailBlock(**_input_block_kwargs(label=_("Email"), icon="mail"))),
-    ("address", AddressBlock(**_input_block_kwargs(label=_("Address"), icon="site"))),
-    ("integer", IntegerBlock(**_input_block_kwargs(label=_("Integer")))),
-    ("decimal", DecimalBlock(**_input_block_kwargs(label=_("Decimal")))),
-    ("float", FloatBlock(**_input_block_kwargs(label=_("Float")))),
-    ("url", URLBlock(**_input_block_kwargs(label=_("URL"), icon="link"))),
-    ("date", DateBlock(**_input_block_kwargs(label=_("Date"), icon="date"))),
-    ("time", TimeBlock(**_input_block_kwargs(label=_("Time"), icon="time"))),
-    ("datetime", DateTimeBlock(**_input_block_kwargs(label=_("Date and time"), icon="date"))),
+    (
+        "checkbox",
+        _form_input_block(
+            BooleanBlock(required=False, label=_("Ticked by default")),
+            label=_("Checkbox"),
+            icon="tick-inverse",
+        ),
+    ),
+    (
+        "text",
+        _form_input_block(CharBlock(**_prefilled_value_kwargs()), label=_("Text"), icon="pilcrow"),
+    ),
+    (
+        "multiline_text",
+        _form_input_block(TextBlock(**_prefilled_value_kwargs()), label=_("Multi-line text")),
+    ),
+    (
+        "email",
+        _form_input_block(EmailBlock(**_prefilled_value_kwargs()), label=_("Email"), icon="mail"),
+    ),
+    (
+        "address",
+        _form_input_block(
+            AddressBlock(**_prefilled_value_kwargs()), label=_("Address"), icon="site"
+        ),
+    ),
+    ("integer", _form_input_block(IntegerBlock(**_prefilled_value_kwargs()), label=_("Integer"))),
+    ("decimal", _form_input_block(DecimalBlock(**_prefilled_value_kwargs()), label=_("Decimal"))),
+    ("float", _form_input_block(FloatBlock(**_prefilled_value_kwargs()), label=_("Float"))),
+    (
+        "url",
+        _form_input_block(URLBlock(**_prefilled_value_kwargs()), label=_("URL"), icon="link"),
+    ),
+    (
+        "date",
+        _form_input_block(DateBlock(**_prefilled_value_kwargs()), label=_("Date"), icon="date"),
+    ),
+    (
+        "time",
+        _form_input_block(TimeBlock(**_prefilled_value_kwargs()), label=_("Time"), icon="time"),
+    ),
+    (
+        "datetime",
+        _form_input_block(
+            DateTimeBlock(**_prefilled_value_kwargs()), label=_("Date and time"), icon="date"
+        ),
+    ),
 ]
 
 FORM_INPUT_BLOCK_NAMES = frozenset(name for name, _block in FORM_INPUT_BLOCKS)
@@ -510,9 +598,9 @@ class FormPage(FormServingPage):
     A page built on StreamField that can host a form. Extends BasicPage's
     block set with one block per built-in Wagtail FieldBlock variation
     (checkbox, text, date, ...), so editors can interleave questions with
-    ordinary rich content. The value an editor types into an input block is
-    the pre-filled default shown to visitors (usually left blank); the
-    question text itself is authored as ordinary content around the input.
+    ordinary rich content. Each input block carries the question shown to
+    the visitor (its label), optional help text, whether it must be
+    answered, and a pre-filled default (usually left blank).
 
     Not a BasicPage subclass: BasicPage's body field is fixed to
     BASIC_PAGE_BLOCKS (see FormServingPage on why the block set is fixed per
