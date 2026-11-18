@@ -1,0 +1,13 @@
+{% extends "wagtailsnippets/snippets/edit.html" %}
+{% load static %}
+
+{% comment %}
+    Wagtail finds this template by the campaign's app label and model name, so
+    the wider form applies to email campaigns alone. The create template also
+    serves the copy view.
+{% endcomment %}
+
+{% block extra_css %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'underground_email/css/email_campaign_form.css' %}">
+{% endblock %}

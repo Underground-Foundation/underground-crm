@@ -1,0 +1,12 @@
+/*
+ * Wagtail caps every edit form at 840px (.w-form-width), which leaves half of a
+ * wide screen empty while an email is being written. Lifting the cap lets the
+ * fields, and the body's rich text editor in particular, use the whole page.
+ *
+ * This rule only replaces Wagtail's base cap. Its rules that narrow the form
+ * while a side panel or the minimap is open are more specific, so they still
+ * apply and keep the form clear of those panels.
+ */
+.w-form-width {
+    max-width: none;
+}

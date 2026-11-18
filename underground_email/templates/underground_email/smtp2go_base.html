@@ -1,4 +1,4 @@
-{% load wagtailcore_tags %}<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+{% load wagtailcore_tags email_images %}<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
@@ -170,10 +170,13 @@
                               {{ greeting }}
                             </p>
                           {% endif %}
-                          {% include_block body %}
-                          {% if signature %}
-                            {{ signature|richtext }}
-                          {% endif %}
+                          {# The column is 600px wide less this cell's 25px padding on either side. #}
+                          {% filter cap_image_widths:550 %}
+                            {% include_block body %}
+                            {% if signature %}
+                              {{ signature|richtext }}
+                            {% endif %}
+                          {% endfilter %}
                           <!--[if mso]></span><![endif]-->
                         </td>
                       </tr>
