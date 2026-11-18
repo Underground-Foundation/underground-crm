@@ -14,7 +14,7 @@ from wagtail.models import Page
 from underground_crm import addressr
 from underground_crm.forms.form_submission import FormSubmissionForm
 from underground_crm.models.pages import FormPage
-from underground_crm.test.form_inputs import form_input
+from underground_crm.test.form_inputs import typed_input
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ class AddressBlockRenderingTest(django.test.TestCase):
     def setUp(self):
         root = Page.objects.get(id=1)
         self.page = FormPage(title="Join the doorknocking team", slug="doorknocking")
-        self.page.body = [("address", form_input("Which street would you like to doorknock?"))]
+        self.page.body = [("address", typed_input("Which street would you like to doorknock?"))]
         root.add_child(instance=self.page)
 
         request = RequestFactory().get(self.page.url)

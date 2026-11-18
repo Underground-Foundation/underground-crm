@@ -1014,6 +1014,8 @@ class FormInput(NamedTuple):
     # The legacy record field this input writes to, parsed out of the input's
     # name attribute: "signup[mobile_number]" names "mobile_number".
     field_name: str
+    # The input's placeholder attribute: example text shown while it is empty.
+    placeholder: str = ""
 
 
 def _legacy_field_name(raw_name: str) -> str:
@@ -1053,24 +1055,36 @@ def extract_form_inputs(form_tag: Tag) -> List[FormInput]:
             continue
 
         input_type = "checkbox" if field_type == "checkbox" else "text"
-        inputs.append(FormInput(description, input_type, _legacy_field_name(raw_name)))
+        inputs.append(
+            FormInput(
+                description,
+                input_type,
+                _legacy_field_name(raw_name),
+                placeholder=field.get("placeholder", "").strip(),
+            )
+        )
     return inputs
 
 
 def form_input_block_value(form_input: FormInput) -> dict[str, Any]:
     """
     The StreamField value of the input block a legacy form field becomes: its
-    question as the label, and nothing pre-filled — even where the source
-    snapshot shows one already-signed-up member's answers (see
-    build_form_page). Nothing is marked required; editors can tick Required
-    on individual questions after the import.
+    question as the label, and for a text input, the legacy placeholder. A
+    checkbox starts unticked even where the source snapshot shows one
+    already-signed-up member's answers (see build_form_page). Nothing is
+    marked required; editors can tick Required on individual questions after
+    the import.
     """
-    return {
+    value: dict[str, Any] = {
         "label": form_input.description,
         "help_text": "",
         "required": False,
-        "default": False if form_input.input_type == "checkbox" else "",
     }
+    if form_input.input_type == "checkbox":
+        value["default"] = False
+    else:
+        value["placeholder"] = form_input.placeholder
+    return value
 
 
 # Only "Volunteer Signup" submissions should tag the submitting Person as a

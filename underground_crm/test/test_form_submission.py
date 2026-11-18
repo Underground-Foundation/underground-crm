@@ -1,4 +1,5 @@
 import csv
+import datetime
 import logging
 import tempfile
 from pathlib import Path
@@ -11,6 +12,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.template.loader import render_to_string
 from django.test import RequestFactory
+from django.utils import timezone
 from wagtail.models import Page
 
 from underground_crm.forms.form_submission import (
@@ -22,7 +24,7 @@ from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.blocks import CHOICE_SEPARATOR
-from underground_crm.test.form_inputs import choice_input, form_input
+from underground_crm.test.form_inputs import checkbox_input, choice_input, picker_input, typed_input
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +69,9 @@ class FormSubmissionFormTest(django.test.TestCase):
             title="Get involved",
             slug="get-involved",
             body=[
-                ("checkbox", form_input(CALLING_MEMBERS_QUESTION, False)),
-                ("checkbox", form_input(VIDEOGRAPHY_QUESTION, False)),
-                ("text", form_input(AVAILABILITY_QUESTION)),
+                ("checkbox", checkbox_input(CALLING_MEMBERS_QUESTION)),
+                ("checkbox", checkbox_input(VIDEOGRAPHY_QUESTION)),
+                ("text", typed_input(AVAILABILITY_QUESTION)),
             ],
         )
         root.add_child(instance=self.page)
@@ -279,14 +281,15 @@ class FormSubmissionFormTest(django.test.TestCase):
 class FormInputLabelTest(django.test.TestCase):
     """
     Each input block carries the question the editor wrote for it, plus
-    optional help text, whether it must be answered and a pre-filled value,
-    and the visitor's form field takes all four from the block.
+    optional help text and whether it must be answered, and the visitor's
+    form field takes all three from the block, along with a typed input's
+    placeholder text.
     """
 
     consent_question = "I agree to be contacted about volunteering"
     consent_help_text = "We will only contact you about the activities you tick on this form."
     suburb_question = "Which suburb do you live in?"
-    suburb_prefilled = "Brunswick"
+    suburb_placeholder = "e.g. Brunswick"
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -297,14 +300,13 @@ class FormInputLabelTest(django.test.TestCase):
             body=[
                 (
                     "checkbox",
-                    form_input(
+                    checkbox_input(
                         self.consent_question,
-                        False,
                         help_text=self.consent_help_text,
                         required=True,
                     ),
                 ),
-                ("text", form_input(self.suburb_question, self.suburb_prefilled)),
+                ("text", typed_input(self.suburb_question, placeholder=self.suburb_placeholder)),
             ],
         )
         root.add_child(instance=self.page)
@@ -327,9 +329,13 @@ class FormInputLabelTest(django.test.TestCase):
         self.assertIn(self.consent_help_text, rendered)
         self.assertIn(self.suburb_question, rendered)
 
-    def test_prefilled_value_becomes_the_initial_answer(self):
-        form = self._form()
-        self.assertEqual(form[f"input_{self.suburb.id}"].value(), self.suburb_prefilled)
+    def test_placeholder_is_shown_but_never_submitted(self):
+        suburb_field = self._form()[f"input_{self.suburb.id}"]
+        self.assertIn(f'placeholder="{self.suburb_placeholder}"', str(suburb_field))
+        self.assertIsNone(
+            suburb_field.value(),
+            msg="A placeholder is only an example, so the input itself must start empty",
+        )
 
     def test_required_checkbox_must_be_ticked(self):
         unticked = self._form({})
@@ -484,6 +490,80 @@ class ChoiceInputTest(django.test.TestCase):
                 self.assertIn(f">{choice}</label>", field_html)
 
 
+class DateAndTimeInputTest(django.test.TestCase):
+    """
+    The date, time and datetime blocks use the browser's own pickers, which
+    exchange values with the server in fixed ISO formats whatever they display,
+    rather than Wagtail's CMS widgets, whose JavaScript a public page never
+    loads.
+    """
+
+    start_question = "Which day could you start?"
+    arrival_question = "What time could you arrive at the booth?"
+    callback_question = "When should we call you back?"
+    start_day = datetime.date(2026, 8, 15)
+    arrival_time = datetime.time(7, 30)
+    callback_time = datetime.datetime(2026, 8, 12, 18, 45)
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        root = Page.objects.get(id=1)
+        self.page = FormPage(
+            title="Booth roster",
+            slug="booth-roster",
+            body=[
+                ("date", picker_input(self.start_question)),
+                ("time", picker_input(self.arrival_question)),
+                ("datetime", picker_input(self.callback_question)),
+            ],
+        )
+        root.add_child(instance=self.page)
+        self.page.refresh_from_db()
+        self.start, self.arrival, self.callback = self.page.inputs
+        self.member = Person.objects.create_user(
+            email="booth-worker@example.com", password="password"
+        )
+
+    def _form(self, data=None) -> FormSubmissionForm:
+        request = self.factory.post("/booth-roster/", data or {})
+        request.user = self.member
+        return FormSubmissionForm(data, request=request, page=self.page)
+
+    def test_inputs_render_as_native_pickers(self):
+        form = self._form()
+        for input_block, input_type in [
+            (self.start, "date"),
+            (self.arrival, "time"),
+            (self.callback, "datetime-local"),
+        ]:
+            input_html = str(form[f"input_{input_block.id}"])
+            self.assertIn(f'type="{input_type}"', input_html)
+            self.assertNotIn(
+                "<script",
+                input_html,
+                msg="Wagtail's CMS date widgets append a script that fails on a public page",
+            )
+
+    def test_values_in_the_pickers_formats_are_accepted(self):
+        form = self._form(
+            {
+                f"input_{self.start.id}": self.start_day.isoformat(),
+                # A time picker sends hours and minutes, without seconds.
+                f"input_{self.arrival.id}": self.arrival_time.strftime("%H:%M"),
+                # A datetime-local picker sends the same, joined by a "T".
+                f"input_{self.callback.id}": self.callback_time.strftime("%Y-%m-%dT%H:%M"),
+            }
+        )
+        self.assertTrue(form.is_valid(), msg=f"Form errors: {form.errors}")
+        self.assertEqual(form.cleaned_data[f"input_{self.start.id}"], self.start_day)
+        self.assertEqual(form.cleaned_data[f"input_{self.arrival.id}"], self.arrival_time)
+        self.assertEqual(
+            form.cleaned_data[f"input_{self.callback.id}"],
+            timezone.make_aware(self.callback_time),
+            msg="The picker sends local time, which is read in the site's own time zone",
+        )
+
+
 class GetVolunteersWithFieldCommandTest(django.test.TestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -491,7 +571,7 @@ class GetVolunteersWithFieldCommandTest(django.test.TestCase):
         self.page = FormPage(
             title="Get involved",
             slug="get-involved",
-            body=[("checkbox", form_input(CALLING_MEMBERS_QUESTION, False))],
+            body=[("checkbox", checkbox_input(CALLING_MEMBERS_QUESTION))],
         )
         root.add_child(instance=self.page)
         self.page.refresh_from_db()
