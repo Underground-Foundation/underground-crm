@@ -1,6 +1,9 @@
 {% extends "underground_crm/form_page.html" %}
 {% load i18n static %}
 
+{# The memberships block below already tells an anonymous visitor that they are not logged in. #}
+{% block login_notice %}{% endblock %}
+
 {% block form_fields %}
   {# The name is a grid; block.super lays the remaining fields out one per row. #}
   {% include "underground_crm/includes/person_naming.html" %}
