@@ -20,6 +20,7 @@ from underground_crm.legacy_html import (
     recompose_legacy_content,
     do_blocks_have_visible_content,
     is_hidden,
+    count_content_containers,
     get_body_soup,
     remove_duplicated_intro,
     strip_presentational_markup,
@@ -340,6 +341,29 @@ class TestGetBodySoup(unittest.TestCase):
             "Narrowing the extracted region must find the same article as narrowing the document.",
         )
         self.assertEqual(get_body_soup(content_element).get("class"), ["content"])
+
+    def test_sibling_containers_are_counted(self):
+        soup = parse(
+            '<main id="content">'
+            '<div class="container"><p>First</p></div>'
+            '<div id="people" class="w-100 container-fluid"><img src="a.webp"></div>'
+            '<div class="container"><p>Third</p></div>'
+            "</main>"
+        )
+        self.assertEqual(count_content_containers(soup), 3)
+        self.assertEqual(count_content_containers(soup.find(id="content")), 3)
+
+    def test_nested_containers_are_not_counted(self):
+        soup = parse(
+            '<main id="content"><div class="container">'
+            '<div class="container"><p>Body</p></div>'
+            "</div></main>"
+        )
+        self.assertEqual(count_content_containers(soup), 1)
+
+    def test_a_page_without_a_content_region_has_no_containers(self):
+        soup = parse("<html><body><p>Body</p></body></html>")
+        self.assertEqual(count_content_containers(soup), 0)
 
     def test_a_page_without_a_content_region_has_no_body(self):
         soup = parse("<html><body><nav>Menu</nav><footer>Contact us</footer></body></html>")

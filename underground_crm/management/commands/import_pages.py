@@ -70,6 +70,7 @@ from underground_crm.legacy_html import (
     RAW_HTML_BLOCK,
     ExtraReconstructor,
     ImageResolver,
+    count_content_containers,
     do_blocks_have_visible_content,
     recompose_legacy_content,
     get_body_soup,
@@ -476,6 +477,7 @@ def extract_event_population(soup: BeautifulSoup):
 def build_body_blocks(
     document_soup: BeautifulSoup,
     importable_html: str,
+    slug: str,
     image_resolver: Optional[ImageResolver] = None,
     extra_reconstructor: Optional[ExtraReconstructor] = None,
 ) -> List[dict]:
@@ -483,7 +485,20 @@ def build_body_blocks(
     Reconstructs the page's content as StreamField blocks. Without an
     `image_resolver`, every image is left in a Raw HTML block. A theme's
     `extra_reconstructor` function can create custom blocks (not just StreamField).
+
+    The reconstruction keeps one section of the ``id="content"`` region (see
+    get_body_soup). When the region holds several, a warning names the page
+    (`slug`) so that the rest can be reconstructed by hand.
     """
+    container_count = count_content_containers(document_soup)
+    if container_count > 1:
+        logger.warning(
+            "[content] '%s' has %d sections (container or container-fluid) in its "
+            'id="content" region, but only one of them is being imported. Reconstruction '
+            "of the rest will need to be done more manually.",
+            slug,
+            container_count,
+        )
     content_element = document_soup.find(id="content")
     blocks = (
         recompose_legacy_content(
@@ -546,7 +561,7 @@ def get_page_args(
             body_blocks
             if body_blocks is not None
             else build_body_blocks(
-                document_soup, importable_html, image_resolver, extra_reconstructor
+                document_soup, importable_html, slug, image_resolver, extra_reconstructor
             )
         ),
         "show_toc": should_show_toc(document_soup),
@@ -847,7 +862,7 @@ def build_blog_post(
     theme has its own blocks for (see build_body_blocks).
     """
     body_blocks = build_body_blocks(
-        document_soup, importable_html, image_resolver, extra_reconstructor
+        document_soup, importable_html, slug, image_resolver, extra_reconstructor
     )
     if existing_intro is not None:
         body_blocks, duplicated = remove_duplicated_intro(body_blocks, existing_intro)
