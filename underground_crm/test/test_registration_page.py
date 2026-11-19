@@ -988,3 +988,67 @@ class RegistrationPageResponseTest(django.test.TestCase):
         self.assertNotContains(
             response, "Your existing answers are missing because you are not logged in."
         )
+
+
+NAME_HEADING = "About you"
+ADDRESS_HEADING = "Where can we reach you?"
+
+
+class RegistrationPageLayoutTest(django.test.TestCase):
+    """
+    A RegistrationPage draws each question where the editor placed it among the
+    body's content blocks: the naming grid where the first naming block sits,
+    and each "same as home address" checkbox directly before the address it
+    governs.
+    """
+
+    def setUp(self) -> None:
+        self.page = RegistrationPage(title="Your details", slug="your-details")
+        self.page.body = [
+            ("rich_text", f"<h3>{NAME_HEADING}</h3>"),
+            ("person_field", {"field": "first_name", "label_override": ""}),
+            ("person_field", {"field": "last_name", "label_override": ""}),
+            ("rich_text", f"<h3>{ADDRESS_HEADING}</h3>"),
+            ("person_field", {"field": "home_address", "label_override": ""}),
+            ("person_field", {"field": "mailing_address", "label_override": ""}),
+        ]
+        Site.objects.get(is_default_site=True).root_page.add_child(instance=self.page)
+        self.page.refresh_from_db()
+        self.client.force_login(
+            Person.objects.create_user(
+                email="priya.sharma@example.com",
+                password="correct-horse-battery",
+            )
+        )
+
+    def _input_named(self, person_field: str) -> str:
+        """The start of the name attribute of the input(s) a Person-field block
+        produced; an address's component inputs all share it as a prefix."""
+        block = next(block for block in self.page.inputs if block.value["field"] == person_field)
+        return f'name="{_field_name(block)}'
+
+    def test_questions_are_drawn_where_the_editor_placed_them(self) -> None:
+        html = self.client.get(self.page.url).content.decode()
+        mailing_block = next(
+            block for block in self.page.inputs if block.value["field"] == "mailing_address"
+        )
+        fragments = [
+            NAME_HEADING,
+            self._input_named("first_name"),
+            self._input_named("last_name"),
+            ADDRESS_HEADING,
+            self._input_named("home_address"),
+            f'name="{_companion_name(mailing_block)}"',
+            self._input_named("mailing_address"),
+        ]
+        for fragment in fragments:
+            self.assertIn(fragment, html, f"{fragment!r} is missing from the page entirely.")
+        positions = [html.index(fragment) for fragment in fragments]
+
+        self.assertEqual(
+            positions,
+            sorted(positions),
+            "The name must be asked for under its heading and the addresses under "
+            'theirs, with the mailing address\'s "same as home address" checkbox '
+            "directly before the address it collapses.",
+        )

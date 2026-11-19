@@ -1,9 +1,15 @@
 {% extends "underground_crm/basic_page.html" %}
-{% load i18n %}
+{% load i18n wagtailcore_tags %}
 
-{% block extra_body_content %}
+{% comment %}
+  The page body is drawn inside the <form> below rather than by
+  basic_page.html, so that each question appears where the editor placed it
+  among the body's headings and paragraphs.
+{% endcomment %}
+
+{% block stream_content %}
   {% block toast %}{% endblock %}
-  <div class="form-page-form my-4">
+  <div class="form-page-form">
     {% if submitted %}
       <p class="alert alert-success" role="status">
         {% trans "Thanks — your response has been recorded." %}
@@ -24,21 +30,32 @@
           <p class="alert alert-secondary" role="note">{% trans "You are not logged in." %}</p>
         {% endif %}
       {% endblock %}
-      {% comment %}
-        form.layout_fields is the form's visible fields minus any that a
-        subclass lays out in a grid of its own — see RegistrationForm, whose
-        naming fields are rendered by person_naming.html instead, and which
-        would otherwise appear twice.
-      {% endcomment %}
       {% block form_fields %}
-        {% for field in form.layout_fields %}
-          <div class="form-group{% with classes=field.css_classes %}{% if classes %} {{ classes }}{% endif %}{% endwith %}">
-            {% include "underground_crm/includes/form_field.html" with field=field %}
-          </div>
+        {% comment %}
+          form.body_parts is every block of the body in the editor's order,
+          each with the fields drawn where it sits. An input block draws
+          nothing itself (see blocks/input_block.html), so its question is
+          drawn from part.fields instead; a content block carries no fields.
+        {% endcomment %}
+        {% for part in form.body_parts %}
+          {% include_block part.block %}
+          {% block body_part_fields %}
+            {% for field in part.fields %}
+              {% include "underground_crm/includes/form_group.html" with field=field %}
+            {% endfor %}
+          {% endblock %}
+        {% endfor %}
+        {% block after_body %}{% endblock %}
+        {% comment %}
+          form.trailing_fields are those no body block accounts for, such as
+          the email address and name of an anonymous visitor.
+        {% endcomment %}
+        {% for field in form.trailing_fields %}
+          {% include "underground_crm/includes/form_group.html" with field=field %}
         {% endfor %}
       {% endblock %}
       {% for field in form.hidden_fields %}{{ field }}{% endfor %}
-      <button type="submit" class="btn btn-primary">{% trans "Submit" %}</button>
+      <button type="submit" class="btn {% block submit_button_class %}btn-primary{% endblock %}">{% trans "Submit" %}</button>
     </form>
     {# Widget assets, e.g. the address autocomplete script. #}
     {{ form.media }}

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 from django import forms
@@ -18,7 +19,7 @@ from ..widgets import (
     SameAsHomeAddressCheckbox,
     StructuredAddressWidget,
 )
-from .form_submission import FormSubmissionForm, _field_name
+from .form_submission import BodyPart, FormSubmissionForm, _field_name
 
 Person = get_user_model()
 
@@ -47,6 +48,14 @@ class NamingCell(NamedTuple):
 
     field: forms.BoundField
     column_class: str
+
+
+@dataclass(frozen=True)
+class RegistrationBodyPart(BodyPart):
+    """A BodyPart that also says whether the naming grid (person_naming.html)
+    is drawn at this block."""
+
+    shows_naming_grid: bool = False
 
 
 def _companion_name(input_block: StreamValue.StreamChild) -> str:
@@ -272,15 +281,35 @@ class RegistrationForm(FormSubmissionForm):
             for field_name, column_class in self._naming_columns.items()
         ]
 
-    @property
-    def layout_fields(self) -> list[forms.BoundField]:
-        """Everything the naming grid does not already render, laid out one
-        field per row by form_page.html."""
-        return [
-            bound_field
-            for bound_field in self.visible_fields()
-            if bound_field.name not in self._naming_columns
-        ]
+    def _field_names_at(self, block: StreamValue.StreamChild) -> list[str]:
+        """
+        As the parent's, except that a naming block's field is drawn by the
+        naming grid instead (see _body_part), and a non-home address block is
+        preceded by its "same as home address" checkbox, which governs it.
+        """
+        field_name = _field_name(block)
+        if field_name in self._naming_columns:
+            return []
+        return [name for name in (_companion_name(block), field_name) if name in self.fields]
+
+    def _field_names_laid_out_in_body(self) -> set[str]:
+        return super()._field_names_laid_out_in_body() | set(self._naming_columns)
+
+    def _body_part(self, block: StreamValue.StreamChild) -> "RegistrationBodyPart":
+        """The naming grid is drawn once, where the first of the page's naming
+        blocks sits, so the name is asked for where the editor put it."""
+        part = super()._body_part(block)
+        first_naming_block = next(
+            (
+                input_block
+                for input_block in self.page.inputs
+                if _field_name(input_block) in self._naming_columns
+            ),
+            None,
+        )
+        return RegistrationBodyPart(
+            part.block, part.fields, shows_naming_grid=block is first_naming_block
+        )
 
     def _same_as_home_initially(self, person_field_name: str) -> bool:
         """

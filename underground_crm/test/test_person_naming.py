@@ -112,20 +112,36 @@ class PersonNamingGridTest(django.test.TestCase):
 
     def test_naming_fields_are_withheld_from_the_ordinary_field_layout(self) -> None:
         form = self._form()
-        layout_names = [bound_field.name for bound_field in form.layout_fields]
+        one_per_row_names = [
+            bound_field.name for part in form.body_parts for bound_field in part.fields
+        ] + [bound_field.name for bound_field in form.trailing_fields]
 
         for person_field in NAMING_FIELDS_ON_PAGE:
             self.assertNotIn(
                 self._form_field_name(person_field),
-                layout_names,
-                f"{person_field!r} is rendered by the naming grid, so leaving it in "
-                "layout_fields as well would render it on the page twice.",
+                one_per_row_names,
+                f"{person_field!r} is rendered by the naming grid, so laying it out "
+                "one per row as well would render it on the page twice.",
             )
         self.assertIn(
             self._form_field_name(NON_NAMING_FIELD),
-            layout_names,
+            one_per_row_names,
             f"{NON_NAMING_FIELD!r} is no part of a person's name, so the grid does not "
             "render it and the ordinary field layout must.",
+        )
+
+    def test_grid_is_drawn_once_where_the_first_naming_block_sits(self) -> None:
+        parts_with_grid = [part for part in self._form().body_parts if part.shows_naming_grid]
+        first_naming_block = next(
+            block for block in self.page.inputs if block.value["field"] in NAMING_FIELDS_ON_PAGE
+        )
+
+        self.assertEqual(
+            [part.block for part in parts_with_grid],
+            [first_naming_block],
+            "The naming grid holds every part of the name, so it must be drawn exactly "
+            "once, at the first naming block in the editor's order — the place where "
+            "the editor chose to start asking for the visitor's name.",
         )
 
     def test_grid_renders_one_bootstrap_column_per_naming_field(self) -> None:
