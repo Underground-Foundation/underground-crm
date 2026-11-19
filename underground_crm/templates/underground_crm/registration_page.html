@@ -19,7 +19,7 @@
       <form class="my-4" method="post" action="{% url 'underground_crm:add_membership' page_id=page.pk %}">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.path }}">
-        <button type="submit" class="btn btn-primary">
+        <button type="submit" class="btn {% block membership_button_class %}btn-primary{% endblock %}">
           {% blocktrans with membership_type=page.membership.name %}Add {{ membership_type }} membership{% endblocktrans %}
         </button>
       </form>
