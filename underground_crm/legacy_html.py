@@ -307,6 +307,34 @@ def strip_presentational_markup(root: Tag) -> None:
             changed = True
 
 
+_CONTAINER_CLASSES = frozenset({"container", "container-fluid"})
+
+
+def _find_content_region(document_or_content: Tag) -> Optional[Tag]:
+    """The ``id="content"`` element, as described by get_body_soup."""
+    if document_or_content.get("id") == "content":
+        return document_or_content
+    return document_or_content.find(id="content")
+
+
+def count_content_containers(document_or_content: Tag) -> int:
+    """
+    Count the direct children of the ``id="content"`` region that carry the
+    class ``container`` or ``container-fluid``.
+
+    get_body_soup keeps at most one of them, so a count above 1 means that the
+    rest of the page's sections are left out of the import.
+    """
+    content = _find_content_region(document_or_content)
+    if content is None:
+        return 0
+    return sum(
+        1
+        for child in content.find_all(True, recursive=False)
+        if _CONTAINER_CLASSES & set(_classes(child))
+    )
+
+
 def get_body_soup(document_or_content: Tag) -> Optional[Tag]:
     """
     Narrow a legacy page down to the element that holds its article.
@@ -325,10 +353,7 @@ def get_body_soup(document_or_content: Tag) -> Optional[Tag]:
     relies on the same nesting), although it can still hold them. Then comes
     any ``div.container``, and finally the ``id="content"`` region itself.
     """
-    if document_or_content.get("id") == "content":
-        content = document_or_content
-    else:
-        content = document_or_content.find(id="content")
+    content = _find_content_region(document_or_content)
     if content is None:
         return None
     return (
