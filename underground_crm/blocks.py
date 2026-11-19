@@ -542,6 +542,21 @@ class CheckboxesInputBlock(ChoiceInputBlock):
         )
 
 
+def button_background_class(color: str) -> str:
+    """
+    The CSS class for a button whose background is `color`: `bg-<label>` for
+    the entry of UNDERGROUND_BUTTON_BACKGROUND_PALETTE that has that hex value,
+    or an arbitrary-value class `bg-[<color>]` for a color outside the palette.
+    """
+    from django.conf import settings
+
+    palette = getattr(settings, "UNDERGROUND_BUTTON_BACKGROUND_PALETTE", None) or []
+    return next(
+        (f"bg-{label.lower()}" for hex_val, label in palette if hex_val.lower() == color.lower()),
+        f"bg-[{color}]",
+    )
+
+
 class ButtonBlock(StructBlock):
     text = CharBlock(label="Button text")
     url = PageURLBlock(label="Button URL")
@@ -581,20 +596,8 @@ class ButtonBlock(StructBlock):
         )
 
     def get_context(self, value, parent_context=None):
-        from django.conf import settings
-
         context = super().get_context(value, parent_context=parent_context)
-        palette = getattr(settings, "UNDERGROUND_BUTTON_BACKGROUND_PALETTE", None) or []
-        bg_color: str = value.get("background_color", "")
-        bg_class = next(
-            (
-                f"bg-{label.lower()}"
-                for hex_val, label in palette
-                if hex_val.lower() == bg_color.lower()
-            ),
-            f"bg-[{bg_color}]",
-        )
-        context["background_class"] = bg_class
+        context["background_class"] = button_background_class(value.get("background_color", ""))
         return context
 
     class Meta:

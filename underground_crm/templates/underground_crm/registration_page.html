@@ -3,10 +3,11 @@
 
 {# The memberships block below already tells an anonymous visitor that they are not logged in. #}
 {% block login_notice %}{% endblock %}
-
-{% block form_fields %}
-  {# The name is a grid; block.super lays the remaining fields out one per row. #}
-  {% include "underground_crm/includes/person_naming.html" %}
+{% block body_part_fields %}
+  {# The name is a grid, drawn where the first naming block sits; block.super draws this block's other fields one per row. #}
+  {% if part.shows_naming_grid %}
+    {% include "underground_crm/includes/person_naming.html" %}
+  {% endif %}
   {{ block.super }}
 {% endblock %}
 

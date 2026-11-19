@@ -13,7 +13,7 @@ from django.core.management.base import CommandError
 from django.template.loader import render_to_string
 from django.test import RequestFactory
 from django.utils import timezone
-from wagtail.models import Page
+from wagtail.models import Page, Site
 
 from underground_crm.forms.form_submission import (
     FormSubmissionForm,
@@ -689,4 +689,107 @@ class FindIdentityConflictTest(django.test.TestCase):
             person.is_supporter,
             "The newsletter signup creates people through this function, and they must "
             "match the “Emailable living supporters” filter.",
+        )
+
+
+INTERESTS_HEADING = "How would you like to help?"
+AVAILABILITY_HEADING = "Availability and other ideas"
+DOORKNOCKING_CHOICE = "Doorknocking"
+BLOG_WRITING_CHOICE = "Blog writing"
+INTERESTS_QUESTION = "Select as many activities as interest you"
+COMMENTS_QUESTION = "Other ways you could help, or any comments"
+
+
+class FormPageLayoutTest(django.test.TestCase):
+    """
+    The questions of a FormPage are drawn where the editor placed them among
+    the body's content blocks, rather than all gathered up after the body. The
+    page below is the shape of a real volunteering page: a heading, a set of
+    checkboxes, a second heading, then two text questions.
+    """
+
+    def setUp(self) -> None:
+        self.page = FormPage(
+            title="Volunteer",
+            slug="volunteer",
+            body=[
+                ("rich_text", f"<h3>{INTERESTS_HEADING}</h3>"),
+                (
+                    "checkboxes",
+                    choice_input(INTERESTS_QUESTION, [DOORKNOCKING_CHOICE, BLOG_WRITING_CHOICE]),
+                ),
+                ("rich_text", f"<h3>{AVAILABILITY_HEADING}</h3>"),
+                ("text", typed_input(AVAILABILITY_QUESTION)),
+                ("text", typed_input(COMMENTS_QUESTION)),
+            ],
+        )
+        Site.objects.get(is_default_site=True).root_page.add_child(instance=self.page)
+
+    def _positions(self, html: str, *fragments: str) -> list[int]:
+        for fragment in fragments:
+            self.assertIn(fragment, html, f"{fragment!r} is missing from the page entirely.")
+        return [html.index(fragment) for fragment in fragments]
+
+    def test_questions_are_drawn_between_the_headings_that_introduce_them(self) -> None:
+        html = self.client.get(self.page.url).content.decode()
+
+        positions = self._positions(
+            html,
+            INTERESTS_HEADING,
+            INTERESTS_QUESTION,
+            AVAILABILITY_HEADING,
+            AVAILABILITY_QUESTION,
+            COMMENTS_QUESTION,
+        )
+        self.assertEqual(
+            positions,
+            sorted(positions),
+            "Each question must follow the heading the editor put above it and come "
+            "before the next heading; otherwise both headings end up stacked together "
+            "above a form that holds every question.",
+        )
+
+    def test_headings_and_questions_are_all_inside_the_form(self) -> None:
+        html = self.client.get(self.page.url).content.decode()
+
+        form_start, first_heading, last_question, form_end = self._positions(
+            html, "<form", INTERESTS_HEADING, COMMENTS_QUESTION, "</form>"
+        )
+        self.assertLess(
+            form_start,
+            first_heading,
+            "The body is drawn inside the form so that its questions can sit among "
+            "its content blocks and still be submitted with it.",
+        )
+        self.assertLess(last_question, form_end, "Every question must be submitted with the form.")
+
+    def test_anonymous_visitor_identifies_themself_after_the_questions(self) -> None:
+        html = self.client.get(self.page.url).content.decode()
+        request = RequestFactory().get(self.page.url)
+        request.user = AnonymousUser()
+        form = FormSubmissionForm(request=request, page=self.page)
+
+        last_question, email_label = self._positions(
+            html, COMMENTS_QUESTION, str(form.fields["email"].label)
+        )
+        self.assertLess(
+            last_question,
+            email_label,
+            "The email address belongs to no body block, so it is drawn after the "
+            "body rather than above the page's opening heading.",
+        )
+
+    def test_every_field_is_drawn_exactly_once(self) -> None:
+        request = RequestFactory().get(self.page.url)
+        request.user = AnonymousUser()
+        form = FormSubmissionForm(request=request, page=self.page)
+
+        drawn = [field.name for part in form.body_parts for field in part.fields] + [
+            field.name for field in form.trailing_fields
+        ]
+        self.assertCountEqual(
+            drawn,
+            [field.name for field in form.visible_fields()],
+            "A field missing from the layout could never be answered, and one drawn "
+            "twice would submit two competing answers.",
         )

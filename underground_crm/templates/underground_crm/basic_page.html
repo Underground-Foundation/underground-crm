@@ -16,9 +16,11 @@
                       {% include_block block %}
                     {% endfor %}
                     {% endblock %}
+                    {% block stream_content %}
                     {% for block in page.body %}
                       {% include_block block %}
                     {% endfor %}
+                    {% endblock %}
                   {% endblock %}
                   {% block extra_body_content %}{% endblock %}
                 </div>

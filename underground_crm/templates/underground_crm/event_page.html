@@ -1,11 +1,15 @@
 {% extends "underground_crm/form_page.html" %}
 {% load i18n %}
 
-{% block extra_body_content %}
+{% comment %}
+  The event's details follow the page body, as they did before the body moved
+  inside the form, and precede the RSVP fields that are not part of the body
+  (the visitor's name and email address, and how many guests are coming).
+{% endcomment %}
+{% block after_body %}
   <div class="event-details my-4">
     {% if page.start_time %}<p>{% trans "Starts" %}: {{ page.start_time }}</p>{% endif %}
     {% if page.end_time %}<p>{% trans "Ends" %}: {{ page.end_time }}</p>{% endif %}
     {% if page.venue %}<p>{% trans "Venue" %}: {{ page.venue }}</p>{% endif %}
   </div>
-  {{ block.super }}
 {% endblock %}

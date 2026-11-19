@@ -1,0 +1,7 @@
+{% comment %}
+    One form field on a row of its own, as form_page.html lays out both the
+    fields drawn among the page body's blocks and those drawn after it.
+{% endcomment %}
+<div class="form-group{% with classes=field.css_classes %}{% if classes %} {{ classes }}{% endif %}{% endwith %}">
+  {% include "underground_crm/includes/form_field.html" with field=field %}
+</div>

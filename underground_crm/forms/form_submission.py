@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from django import forms
@@ -16,6 +17,19 @@ def _field_name(input_block: StreamValue.StreamChild) -> str:
     # Keyed by the stream child's UUID, which is stable across reordering and
     # editing of the page body — the same key SubmittedField.block_id records.
     return f"input_{input_block.id}"
+
+
+@dataclass(frozen=True)
+class BodyPart:
+    """
+    One block of a form-serving page's body, together with the form fields that
+    are drawn where it sits. A content block (a heading, a paragraph, an image)
+    carries no fields and draws its own content; an input block draws nothing
+    of its own (see blocks/input_block.html) and carries the field it produced.
+    """
+
+    block: StreamValue.StreamChild
+    fields: list[forms.BoundField]
 
 
 def apply_bootstrap_classes(widget: forms.Widget) -> None:
@@ -175,16 +189,48 @@ class FormSubmissionForm(forms.Form):
         for field in self.fields.values():
             apply_bootstrap_classes(field.widget)
 
+    def _field_names_at(self, block: StreamValue.StreamChild) -> list[str]:
+        """
+        The names of the form fields drawn where the given body block sits: the
+        field an input block produced, or nothing for a content block (and for
+        an input block that produced no field, such as a Person-field block the
+        whitelist no longer allows). Subclasses that draw a block's field
+        somewhere else, or draw a companion field beside it, override this.
+        """
+        field_name = _field_name(block)
+        return [field_name] if field_name in self.fields else []
+
+    def _body_part(self, block: StreamValue.StreamChild) -> "BodyPart":
+        """One entry of body_parts. Overridable so that a subclass can attach
+        whatever else its template draws at a block (see RegistrationBodyPart)."""
+        return BodyPart(block, [self[name] for name in self._field_names_at(block)])
+
+    def _field_names_laid_out_in_body(self) -> set[str]:
+        """The names of the fields drawn among the body's blocks, which
+        trailing_fields must therefore leave out."""
+        return {name for block in self.page.body for name in self._field_names_at(block)}
+
     @property
-    def layout_fields(self) -> list[forms.BoundField]:
+    def body_parts(self) -> list["BodyPart"]:
         """
-        The fields form_page.html lays out one per row. Subclasses that gather
-        some of their fields into a grid of their own (see
-        RegistrationForm.naming_fields) drop those fields from here, so that a
-        field rendered by the grid is not also rendered a second time by the
-        ordinary loop.
+        Every block of the page body, in the editor's order, each with the form
+        fields drawn where it sits. form_page.html draws the body inside the
+        <form> from this list, so that a question appears where the editor put
+        it among the page's headings and paragraphs, instead of every question
+        being gathered up after all of them.
         """
-        return list(self.visible_fields())
+        return [self._body_part(block) for block in self.page.body]
+
+    @property
+    def trailing_fields(self) -> list[forms.BoundField]:
+        """
+        The visible fields that no body block accounts for, drawn one per row
+        after the body: the email and name an anonymous visitor identifies
+        themself with, and any field a subclass declares outright (such as
+        EventGuestForm.extra_guests).
+        """
+        laid_out = self._field_names_laid_out_in_body()
+        return [field for field in self.visible_fields() if field.name not in laid_out]
 
     @staticmethod
     def _field_for_input(input_block: StreamValue.StreamChild) -> forms.Field:
