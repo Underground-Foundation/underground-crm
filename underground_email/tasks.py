@@ -369,10 +369,11 @@ def process_email_rejection(
             continue
         processed_count += 1
     logger.info("Processed %s / %s email events", processed_count, len(events))
+    # Both counts are null until a campaign's results have first been collected.
     if spam_count:
-        campaign.spam_count += spam_count
+        campaign.spam_count = (campaign.spam_count or 0) + spam_count
     if unsubscription_count:
-        campaign.unsubscription_count += unsubscription_count
+        campaign.unsubscription_count = (campaign.unsubscription_count or 0) + unsubscription_count
     return spam_count, unsubscription_count
 
 

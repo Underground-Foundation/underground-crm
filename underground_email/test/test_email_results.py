@@ -21,6 +21,7 @@ from underground_email.tasks import (
     EMAIL_RESULTS_DELAY,
     get_email_results,
     process_email_engagements,
+    process_email_rejection,
     schedule_email_results,
 )
 
@@ -88,3 +89,39 @@ class EmailEngagementTest(django.test.TestCase):
             len(self.readers),
             "Repeated opens must not produce duplicate engagements.",
         )
+
+
+class EmailRejectionCountTest(django.test.TestCase):
+    def test_counts_start_from_nothing_on_a_campaign_without_results(self):
+        """A campaign's spam and unsubscription counts are null until its results
+        are first collected, and the first collection must not fail on that."""
+        campaign = EmailCampaign(
+            utm_id=generate_base64_id(),
+            subject="Help us door-knock in Ballarat",
+            preview_text="An hour of your Sunday could make the difference.",
+        )
+        self.assertIsNone(campaign.spam_count, "No results have been collected yet.")
+        self.assertIsNone(campaign.unsubscription_count, "No results have been collected yet.")
+        reporter, leaver = (
+            Person.objects.create_user(
+                email=email, password="correct horse battery staple", email_opt_in=True
+            )
+            for email in ("chen.wei@example.com", "aisha.mohamed@example.com")
+        )
+        events: list[SMTPEvent] = [
+            {"recipient": reporter.email, "event": SMTP2GoEventType.SPAM},
+            {"recipient": leaver.email, "event": SMTP2GoEventType.UNSUBSCRIBED},
+        ]
+        expected_spam = sum(event["event"] == SMTP2GoEventType.SPAM for event in events)
+        expected_unsubscriptions = sum(
+            event["event"] == SMTP2GoEventType.UNSUBSCRIBED for event in events
+        )
+
+        process_email_rejection(
+            campaign,
+            recipients={reporter.email: reporter, leaver.email: leaver},
+            events=events,
+        )
+
+        self.assertEqual(campaign.spam_count, expected_spam)
+        self.assertEqual(campaign.unsubscription_count, expected_unsubscriptions)
