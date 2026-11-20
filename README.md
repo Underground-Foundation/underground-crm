@@ -185,14 +185,18 @@ database on each run, which makes subsequent runs faster.
 
 ### Translations
 
-User-facing strings are collected into `underground_crm/locale/en/LC_MESSAGES/django.po`.
-After adding or changing one, regenerate the catalog and compile it. Both files are
-committed, because the site displays the compiled `django.mo`. These commands need GNU
-gettext (`sudo apt-get install gettext`).
+User-facing strings are collected into one catalog per app:
+`underground_crm/locale/en/LC_MESSAGES/django.po` and
+`underground_email/locale/en/LC_MESSAGES/django.po`. After adding or changing one,
+regenerate the catalogs and compile them. The `.po` and `.mo` files are both
+committed, because the site displays the compiled `django.mo`. These commands need
+GNU gettext (`sudo apt-get install gettext`).
 
 ```shell
-# Run from inside the app directory, not from the repository root
+# Run from inside each app directory, not from the repository root
 cd underground_crm
+python ../manage.py makemessages -l en
+cd ../underground_email
 python ../manage.py makemessages -l en
 cd ..
 bash compile_translations.sh

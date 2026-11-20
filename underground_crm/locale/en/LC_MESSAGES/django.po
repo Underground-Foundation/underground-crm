@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 21:59+1100\n"
+"POT-Creation-Date: 2026-11-20 14:19+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -28,46 +28,46 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: admin.py:242 models/form_submission.py:117
+#: admin.py:242 models/form_submission.py:120
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:33
 msgid "Name"
 msgstr ""
 
-#: admin.py:256
+#: admin.py:255 models/filter.py:89 models/pages.py:607
+msgid "Membership"
+msgstr ""
+
+#: admin.py:257
 msgid "Contact"
 msgstr ""
 
-#: admin.py:270 forms/registration.py:321 models/pages.py:424
+#: admin.py:271 forms/registration.py:350 models/pages.py:405
 msgid "Address"
 msgstr ""
 
-#: admin.py:272
+#: admin.py:273
 msgid "Biographical"
 msgstr ""
 
-#: admin.py:276
+#: admin.py:277
 msgid "Engagement"
 msgstr ""
 
-#: admin.py:292 templates/admin/underground_crm/peoplefilter/evaluate.html:36
+#: admin.py:293
+msgid "Preferences"
+msgstr ""
+
+#: admin.py:304 templates/admin/underground_crm/peoplefilter/evaluate.html:36
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:101
 msgid "Donations"
 msgstr ""
 
-#: admin.py:305
-msgid "Preferences"
-msgstr ""
-
-#: admin.py:316
+#: admin.py:317
 msgid "Electoral"
 msgstr ""
 
-#: admin.py:327
+#: admin.py:328
 msgid "Relationships"
-msgstr ""
-
-#: admin.py:328 models/filter.py:90 models/pages.py:625
-msgid "Membership"
 msgstr ""
 
 #: admin.py:329
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Last interaction"
 msgstr ""
 
-#: admin.py:368 models/pages.py:423
+#: admin.py:368 models/pages.py:404
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:34
 msgid "Email"
 msgstr ""
@@ -104,24 +104,89 @@ msgstr ""
 msgid "Map: %(filter_name)s"
 msgstr ""
 
-#: blocks.py:271 blocks.py:282
+#: api/serializers.py:140 views/membership.py:75
+#, python-format
+msgid "You already hold a %(membership_type)s membership."
+msgstr ""
+
+#: blocks.py:291 blocks.py:302
 msgid "Person field"
 msgstr ""
 
-#: blocks.py:272
+#: blocks.py:292
 msgid "Which detail of the visitor's record this input reads and updates."
 msgstr ""
 
-#: blocks.py:276
+#: blocks.py:296
 msgid "Label override"
 msgstr ""
 
-#: blocks.py:277
+#: blocks.py:297
 msgid "Shown to the visitor instead of the field's default label."
 msgstr ""
 
-#: blocks.py:283 models/pages.py:406
+#: blocks.py:303 blocks.py:343
 msgid "Form inputs"
+msgstr ""
+
+#: blocks.py:328 models/form_submission.py:127
+msgid "Label"
+msgstr ""
+
+#: blocks.py:329
+msgid "The question shown to the visitor beside this input."
+msgstr ""
+
+#: blocks.py:333
+msgid "Help text"
+msgstr ""
+
+#: blocks.py:334
+msgid "Optional guidance shown to the visitor beneath the input."
+msgstr ""
+
+#: blocks.py:338 blocks.py:369
+msgid "Required"
+msgstr ""
+
+#: blocks.py:339
+msgid "The visitor must answer before the form can be submitted."
+msgstr ""
+
+#: blocks.py:375
+msgid "The visitor must tick the box."
+msgstr ""
+
+#: blocks.py:376
+msgid "Ticked by default"
+msgstr ""
+
+#: blocks.py:396
+msgid "Placeholder"
+msgstr ""
+
+#: blocks.py:397
+msgid "Faint example text which disappears upon the user typing."
+msgstr ""
+
+#: blocks.py:502
+msgid "Choices"
+msgstr ""
+
+#: blocks.py:503
+msgid "One choice per line, in the order the visitor should see them."
+msgstr ""
+
+#: blocks.py:513 blocks.py:522
+msgid "The visitor must pick one of the choices."
+msgstr ""
+
+#: blocks.py:529
+msgid "Choose one"
+msgstr ""
+
+#: blocks.py:537
+msgid "The visitor must tick at least one of the boxes."
 msgstr ""
 
 #: contactability.py:22
@@ -156,30 +221,30 @@ msgstr ""
 msgid "This account has been deactivated."
 msgstr ""
 
-#: forms/event_guest.py:21 models/pages.py:1124
+#: forms/event_guest.py:21 models/pages.py:1107
 msgid "How many guests will be accompanying you?"
 msgstr ""
 
-#: forms/form_submission.py:83
+#: forms/form_submission.py:96
 msgid ""
 "An account already exists for this email address. Please log in to continue."
 msgstr ""
 
-#: forms/form_submission.py:147 models/form_submission.py:26
+#: forms/form_submission.py:160 models/form_submission.py:26
 #: models/person.py:86
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:17
 msgid "Email address"
 msgstr ""
 
-#: forms/form_submission.py:153
+#: forms/form_submission.py:166
 msgid "First name"
 msgstr ""
 
-#: forms/form_submission.py:159 models/person.py:117
+#: forms/form_submission.py:172 models/person.py:117
 msgid "Last name"
 msgstr ""
 
-#: forms/form_submission.py:212 forms/registration.py:357
+#: forms/form_submission.py:248 forms/registration.py:386
 #: views/subscribe.py:107
 msgid "Email address is required."
 msgstr ""
@@ -218,25 +283,25 @@ msgid ""
 "before its start date."
 msgstr ""
 
-#: forms/registration.py:252 models/filter.py:77 models/person.py:144
+#: forms/registration.py:261 models/filter.py:76 models/person.py:144
 msgid "Phone number"
 msgstr ""
 
-#: forms/registration.py:253
+#: forms/registration.py:262
 msgid "A mobile or a landline number."
 msgstr ""
 
-#: forms/registration.py:364
+#: forms/registration.py:393
 msgid ""
 "An account already exists for this email address. Please log in to update "
 "your details."
 msgstr ""
 
-#: forms/registration.py:382
+#: forms/registration.py:411
 msgid "Please give a phone number we can reach you on."
 msgstr ""
 
-#: forms/registration.py:394
+#: forms/registration.py:423
 msgid "This phone number is already taken."
 msgstr ""
 
@@ -331,27 +396,27 @@ msgstr ""
 msgid "feed subscriptions"
 msgstr ""
 
-#: models/filter.py:78 models/person.py:153
+#: models/filter.py:77 models/person.py:153
 msgid "Mobile number"
 msgstr ""
 
-#: models/filter.py:79 models/person.py:158
+#: models/filter.py:78 models/person.py:158
 msgid "Mobile opt-in"
 msgstr ""
 
-#: models/filter.py:80 models/person.py:163
+#: models/filter.py:79 models/person.py:163
 msgid "Mobile number is bad"
 msgstr ""
 
-#: models/filter.py:91
+#: models/filter.py:90
 msgid "Interaction"
 msgstr ""
 
-#: models/filter.py:110
+#: models/filter.py:109
 msgid "is empty"
 msgstr ""
 
-#: models/filter.py:111
+#: models/filter.py:110
 msgid "is not empty"
 msgstr ""
 
@@ -371,28 +436,24 @@ msgstr ""
 msgid "has active membership that started by"
 msgstr ""
 
-#: models/filter.py:148
-msgid "has approved active membership"
-msgstr ""
-
-#: models/filter.py:151
+#: models/filter.py:150
 msgid "has active membership awaiting approval"
 msgstr ""
 
-#: models/filter.py:157
+#: models/filter.py:156
 msgid "had an interaction on or after"
 msgstr ""
 
-#: models/filter.py:158
+#: models/filter.py:157
 msgid "had an interaction between"
 msgstr ""
 
-#: models/filter.py:319
+#: models/filter.py:318
 #: templates/admin/underground_crm/peoplefilter/evaluate.html:11
 msgid "Evaluate"
 msgstr ""
 
-#: models/filter.py:323
+#: models/filter.py:322
 #: templates/admin/underground_crm/peoplefilter/map.html:11
 msgid "Map"
 msgstr ""
@@ -405,7 +466,7 @@ msgstr ""
 msgid "Only required for unauthenticated submissions."
 msgstr ""
 
-#: models/form_submission.py:41 models/membership.py:45 models/person.py:73
+#: models/form_submission.py:41 models/membership.py:56 models/person.py:73
 msgid "Person"
 msgstr ""
 
@@ -457,150 +518,146 @@ msgstr ""
 msgid "anonymous"
 msgstr ""
 
-#: models/form_submission.py:112
+#: models/form_submission.py:115
 msgid "Block ID"
 msgstr ""
 
-#: models/form_submission.py:113
+#: models/form_submission.py:116
 msgid "UUID of the input block within the page body's StreamField."
 msgstr ""
 
-#: models/form_submission.py:118
+#: models/form_submission.py:121
 msgid "The input block's type name at submission time, e.g. \"checkbox\"."
 msgstr ""
 
-#: models/form_submission.py:124
-msgid "Label"
-msgstr ""
-
-#: models/form_submission.py:125
+#: models/form_submission.py:128
 msgid "The label shown to the visitor at submission time."
 msgstr ""
 
-#: models/form_submission.py:127
+#: models/form_submission.py:130
 msgid "Has value"
 msgstr ""
 
-#: models/form_submission.py:128
+#: models/form_submission.py:131
 msgid "Value"
 msgstr ""
 
-#: models/form_submission.py:131
+#: models/form_submission.py:134
 msgid "Submitted field"
 msgstr ""
 
-#: models/form_submission.py:132
+#: models/form_submission.py:135
 msgid "Submitted fields"
 msgstr ""
 
-#: models/membership.py:41 models/person.py:82
+#: models/membership.py:52 models/person.py:82
 msgid "id"
 msgstr ""
 
-#: models/membership.py:51
+#: models/membership.py:62
 msgid "Membership type"
 msgstr ""
 
-#: models/membership.py:55
+#: models/membership.py:66
 msgid "Start date"
 msgstr ""
 
-#: models/membership.py:56
+#: models/membership.py:67
 msgid "Expiration date"
 msgstr ""
 
-#: models/membership.py:57
+#: models/membership.py:68
 msgid "Suspension date"
 msgstr ""
 
-#: models/membership.py:63
+#: models/membership.py:74
 msgid "Is approved"
 msgstr ""
 
-#: models/membership.py:64
+#: models/membership.py:75
 msgid "Whether staff have approved this membership."
 msgstr ""
 
-#: models/pages.py:67
+#: models/pages.py:71
 msgid "Full width"
 msgstr ""
 
-#: models/pages.py:68
+#: models/pages.py:72
 msgid "Left aligned"
 msgstr ""
 
-#: models/pages.py:69
+#: models/pages.py:73
 msgid "Right aligned"
 msgstr ""
 
-#: models/pages.py:70
+#: models/pages.py:74
 msgid "Half width"
 msgstr ""
 
-#: models/pages.py:115
+#: models/pages.py:119
 msgid "Search image"
 msgstr ""
 
-#: models/pages.py:126
+#: models/pages.py:130
 msgid "Open Graph type override"
 msgstr ""
 
-#: models/pages.py:128
+#: models/pages.py:132
 msgid ""
 "Override the 'og:type' meta value (see https://ogp.me/#types for valid "
 "values). Leave blank to use this page type's default."
 msgstr ""
 
-#: models/pages.py:140
+#: models/pages.py:144
 msgid "Cache TTL override (seconds)"
 msgstr ""
 
-#: models/pages.py:142
+#: models/pages.py:146
 msgid ""
 "Override the automatically calculated cache duration in seconds. Setting "
 "this to 0 will disable caching entirely. Leave blank to use the calculated "
 "value."
 msgstr ""
 
-#: models/pages.py:232
+#: models/pages.py:236
 msgid "Publication time"
 msgstr ""
 
-#: models/pages.py:233
+#: models/pages.py:237
 msgid "Expiration time"
 msgstr ""
 
-#: models/pages.py:235
+#: models/pages.py:239
 msgid "Calculated cache time (seconds)"
 msgstr ""
 
-#: models/pages.py:261
+#: models/pages.py:265
 msgid "Rich Text"
 msgstr ""
 
-#: models/pages.py:267
+#: models/pages.py:271
 msgid "Raw HTML"
 msgstr ""
 
-#: models/pages.py:269
+#: models/pages.py:273
 msgid ""
 "Paste raw HTML directly. Useful for migrating existing content or embedding "
 "custom markup."
 msgstr ""
 
-#: models/pages.py:289
+#: models/pages.py:293
 msgid "Image"
 msgstr ""
 
-#: models/pages.py:293
+#: models/pages.py:297
 msgid "Blockquote"
 msgstr ""
 
-#: models/pages.py:320
+#: models/pages.py:324
 msgid "Show slug as breadcrumb"
 msgstr ""
 
-#: models/pages.py:322
+#: models/pages.py:326
 msgid ""
 "If disabled (the default), the pages beneath this one are addressed directly "
 "beneath this page's own parent, so their URLs omit this page's slug — the "
@@ -608,148 +665,160 @@ msgid ""
 "beneath this page's own URL as usual."
 msgstr ""
 
-#: models/pages.py:340 models/pages.py:550 models/pages.py:644
-#: models/pages.py:727 models/pages.py:871 models/pages.py:997
-#: models/pages.py:1058
+#: models/pages.py:344 models/pages.py:532 models/pages.py:626
+#: models/pages.py:710 models/pages.py:854 models/pages.py:980
+#: models/pages.py:1041
 msgid "Content"
 msgstr ""
 
-#: models/pages.py:341 models/pages.py:551 models/pages.py:645
-#: models/pages.py:728 models/pages.py:872 models/pages.py:998
-#: models/pages.py:1059
+#: models/pages.py:345 models/pages.py:533 models/pages.py:627
+#: models/pages.py:711 models/pages.py:855 models/pages.py:981
+#: models/pages.py:1042
 msgid "Metadata"
 msgstr ""
 
-#: models/pages.py:342 models/pages.py:552 models/pages.py:646
-#: models/pages.py:729 models/pages.py:873 models/pages.py:999
-#: models/pages.py:1060
+#: models/pages.py:346 models/pages.py:534 models/pages.py:628
+#: models/pages.py:712 models/pages.py:856 models/pages.py:982
+#: models/pages.py:1043
 msgid "Visibility"
 msgstr ""
 
-#: models/pages.py:347 models/pages.py:734
+#: models/pages.py:351 models/pages.py:717
 msgid "Basic Page"
 msgstr ""
 
-#: models/pages.py:420
+#: models/pages.py:398
 msgid "Checkbox"
 msgstr ""
 
-#: models/pages.py:421
+#: models/pages.py:399
+msgid "Checkboxes"
+msgstr ""
+
+#: models/pages.py:400
+msgid "Radio buttons"
+msgstr ""
+
+#: models/pages.py:401
+msgid "Drop-down list"
+msgstr ""
+
+#: models/pages.py:402
 msgid "Text"
 msgstr ""
 
-#: models/pages.py:422
+#: models/pages.py:403
 msgid "Multi-line text"
 msgstr ""
 
-#: models/pages.py:425
+#: models/pages.py:406
 msgid "Integer"
 msgstr ""
 
-#: models/pages.py:426
+#: models/pages.py:407
 msgid "Decimal"
 msgstr ""
 
-#: models/pages.py:427
+#: models/pages.py:408
 msgid "Float"
 msgstr ""
 
-#: models/pages.py:428
+#: models/pages.py:409
 msgid "URL"
 msgstr ""
 
-#: models/pages.py:429
+#: models/pages.py:410
 msgid "Date"
 msgstr ""
 
-#: models/pages.py:430
+#: models/pages.py:411
 msgid "Time"
 msgstr ""
 
-#: models/pages.py:431
+#: models/pages.py:412
 msgid "Date and time"
 msgstr ""
 
-#: models/pages.py:539
+#: models/pages.py:521
 msgid "Tags to apply on submission"
 msgstr ""
 
-#: models/pages.py:540
+#: models/pages.py:522
 msgid ""
 "Applied to the submitting Person's record. Authenticated submissions only."
 msgstr ""
 
-#: models/pages.py:557
+#: models/pages.py:539
 msgid "Form Page"
 msgstr ""
 
-#: models/pages.py:620
+#: models/pages.py:602
 msgid "Tags to apply on registration"
 msgstr ""
 
-#: models/pages.py:621
+#: models/pages.py:603
 msgid "Applied to the registering Person's record."
 msgstr ""
 
-#: models/pages.py:631
+#: models/pages.py:613
 msgid ""
 "Granted to the registering Person on submission, unless they already hold "
 "one of this type (active or not)."
 msgstr ""
 
-#: models/pages.py:651
+#: models/pages.py:633
 msgid "Registration Page"
 msgstr ""
 
-#: models/pages.py:716
+#: models/pages.py:699
 msgid "Show the table-of-contents sidebar for this page."
 msgstr ""
 
-#: models/pages.py:717
+#: models/pages.py:700
 msgid "Show table of contents"
 msgstr ""
 
-#: models/pages.py:839
+#: models/pages.py:822
 msgid "Newest first (blog)"
 msgstr ""
 
-#: models/pages.py:840
+#: models/pages.py:823
 msgid "Soonest first, upcoming only (events)"
 msgstr ""
 
-#: models/pages.py:847
+#: models/pages.py:830
 msgid "Number of items to display per page."
 msgstr ""
 
-#: models/pages.py:854
+#: models/pages.py:837
 msgid ""
 "Newest first lists items by publication date, like a blog. Soonest first "
 "lists only items dated in the future, like an events calendar."
 msgstr ""
 
-#: models/pages.py:864
+#: models/pages.py:847
 msgid "External feed subscriptions"
 msgstr ""
 
-#: models/pages.py:865
+#: models/pages.py:848
 msgid "Subscription"
 msgstr ""
 
-#: models/pages.py:878
+#: models/pages.py:861
 msgid "Feed Page"
 msgstr ""
 
-#: models/pages.py:981 models/pages.py:992
+#: models/pages.py:964 models/pages.py:975
 msgid "Author"
 msgstr ""
 
-#: models/pages.py:1045
+#: models/pages.py:1028
 msgid ""
 "This is updated automatically. It is only defined as a field so we can "
 "migrate legacy events seamlessly."
 msgstr ""
 
-#: models/pages.py:1123
+#: models/pages.py:1106
 msgid "Extra guests"
 msgstr ""
 
@@ -1175,23 +1244,23 @@ msgid ""
 "than an anonymous form submission."
 msgstr ""
 
-#: settings.py:495
+#: settings.py:497
 msgid "Street map (Esri)"
 msgstr ""
 
-#: settings.py:505
+#: settings.py:507
 msgid "Street map (OpenStreetMap)"
 msgstr ""
 
-#: settings.py:512
+#: settings.py:514
 msgid "Satellite imagery (Esri)"
 msgstr ""
 
-#: settings.py:522
+#: settings.py:524
 msgid "Cycling map (CyclOSM)"
 msgstr ""
 
-#: settings.py:533
+#: settings.py:535
 msgid "Historical style (Thunderforest Pioneer)"
 msgstr ""
 
@@ -1423,7 +1492,7 @@ msgstr ""
 #: templates/underground_crm/auth/signup.html:4
 #: templates/underground_crm/auth/signup_with_oauth_or_form.html:6
 #: templates/underground_crm/auth/signup_with_oauth_or_form.html:61
-#: templates/underground_crm/registration_page.html:28
+#: templates/underground_crm/registration_page.html:32
 msgid "Sign up"
 msgstr ""
 
@@ -1457,7 +1526,7 @@ msgstr ""
 #: templates/underground_crm/auth/login.html:4
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:6
 #: templates/underground_crm/auth/login_with_oauth_or_form.html:62
-#: templates/underground_crm/registration_page.html:27
+#: templates/underground_crm/registration_page.html:31
 msgid "Log in"
 msgstr ""
 
@@ -1502,15 +1571,15 @@ msgstr ""
 msgid "Already have an account? Log in"
 msgstr ""
 
-#: templates/underground_crm/event_page.html:6
+#: templates/underground_crm/event_page.html:11
 msgid "Starts"
 msgstr ""
 
-#: templates/underground_crm/event_page.html:7
+#: templates/underground_crm/event_page.html:12
 msgid "Ends"
 msgstr ""
 
-#: templates/underground_crm/event_page.html:8
+#: templates/underground_crm/event_page.html:13
 msgid "Venue"
 msgstr ""
 
@@ -1559,51 +1628,59 @@ msgstr ""
 msgid "Next page"
 msgstr ""
 
-#: templates/underground_crm/form_page.html:9
+#: templates/underground_crm/form_page.html:16
 msgid "Thanks — your response has been recorded."
 msgstr ""
 
-#: templates/underground_crm/form_page.html:31
+#: templates/underground_crm/form_page.html:33
+msgid "You are not logged in."
+msgstr ""
+
+#: templates/underground_crm/form_page.html:65
 msgid "Submit"
 msgstr ""
 
-#: templates/underground_crm/includes/memberships.html:9
 #: templates/underground_crm/includes/memberships.html:10
+#: templates/underground_crm/includes/memberships.html:11
 msgid "Your memberships"
 msgstr ""
 
-#: templates/underground_crm/includes/memberships.html:17
+#: templates/underground_crm/includes/memberships.html:18
 msgid "not active"
 msgstr ""
 
-#: templates/underground_crm/includes/memberships.html:19
+#: templates/underground_crm/includes/memberships.html:20
+msgid "awaiting approval"
+msgstr ""
+
+#: templates/underground_crm/includes/memberships.html:22
 #, python-format
 msgid "expires %(expires_on)s"
 msgstr ""
 
-#: templates/underground_crm/includes/memberships.html:27
+#: templates/underground_crm/includes/memberships.html:30
 msgid "Cancel membership"
 msgstr ""
 
-#: templates/underground_crm/registration_page.html:19
+#: templates/underground_crm/includes/toast_notifications.html:9
+msgid "Dismiss"
+msgstr ""
+
+#: templates/underground_crm/registration_page.html:23
 #, python-format
 msgid "Add %(membership_type)s membership"
 msgstr ""
 
-#: templates/underground_crm/registration_page.html:24
+#: templates/underground_crm/registration_page.html:28
 msgid "Log in or sign up"
 msgstr ""
 
-#: templates/underground_crm/registration_page.html:25
+#: templates/underground_crm/registration_page.html:29
 msgid "Your existing answers are missing because you are not logged in."
 msgstr ""
 
-#: templates/underground_crm/registration_page.html:26
+#: templates/underground_crm/registration_page.html:30
 msgid "Please log in or sign up"
-msgstr ""
-
-#: templates/underground_crm/registration_page.html:40
-msgid "Dismiss"
 msgstr ""
 
 #: templates/underground_crm/widgets/same_as_home_checkbox.html:12
@@ -1668,17 +1745,14 @@ msgstr "Please type the same password each time."
 msgid "You must type the same email each time."
 msgstr "Please type the same email address each time."
 
-#: views/membership.py:54
+#: views/membership.py:67
 #, python-format
-msgid "Welcome! You now hold a %(membership_type)s membership."
+msgid ""
+"Thank you for applying for a %(membership_type)s membership. It will become "
+"active once our staff have approved it."
 msgstr ""
 
-#: views/membership.py:60
-#, python-format
-msgid "You already hold an active %(membership_type)s membership."
-msgstr ""
-
-#: views/membership.py:81
+#: views/membership.py:95
 #, python-format
 msgid "Your %(membership_type)s membership has been cancelled."
 msgstr ""

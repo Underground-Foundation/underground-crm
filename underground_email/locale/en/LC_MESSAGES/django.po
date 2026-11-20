@@ -1,0 +1,322 @@
+# The strings of the underground_email app. Regenerate as described under
+# "Translations" in the README, running makemessages inside underground_email.
+msgid ""
+msgstr ""
+"Project-Id-Version: underground-crm\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-20 14:19+1100\n"
+"PO-Revision-Date: 2026-11-20 00:00+1100\n"
+"Last-Translator: Underground CRM Contributors\n"
+"Language-Team: English <LL@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: models.py:50
+msgid "Attributed sender"
+msgstr ""
+
+#: models.py:52
+msgid ""
+"Emails will be sent from this user's email address. This assumes the domain "
+"has been registered with SMTP2Go. Choose someone who is a staff member or "
+"who has an email address at one of the domains specified in "
+"DJANGO_ALLOWED_HOSTS."
+msgstr ""
+
+#: models.py:60
+msgid "Sending permission group"
+msgstr ""
+
+#: models.py:61
+msgid "Who can send emails attributed to this identity?"
+msgstr ""
+
+#: models.py:66
+msgid "Signature"
+msgstr ""
+
+#: models.py:67
+msgid "This editing view looks slightly different to the final version"
+msgstr ""
+
+#: models.py:91 models.py:155
+msgid "greeting"
+msgstr ""
+
+#: models.py:94
+msgid ""
+"Use {{ first_name }}, {{ preferred_or_first_name }}, {{ last_name }}, or "
+"{{ full_name }}, along with a greeting. This will be included in every email."
+msgstr ""
+
+#: models.py:108
+msgid "Draft"
+msgstr ""
+
+#: models.py:109
+msgid "Scheduled"
+msgstr ""
+
+#: models.py:110
+msgid "Sent"
+msgstr ""
+
+#: models.py:125
+msgid "UTM identifier"
+msgstr ""
+
+#: models.py:126
+msgid "A unique identifier for the Urchin Traffic Module to track conversions"
+msgstr ""
+
+#: models.py:132
+msgid "subject"
+msgstr ""
+
+#: models.py:134
+msgid "The campaign's subject line, as you'd like it to be seen by the public"
+msgstr ""
+
+#: models.py:137
+msgid "preview text"
+msgstr ""
+
+#: models.py:141
+msgid "Short summary shown by email clients after the subject line"
+msgstr ""
+
+#: models.py:143
+msgid "sender"
+msgstr ""
+
+#: models.py:148
+msgid "site"
+msgstr ""
+
+#: models.py:149
+msgid "This will be used when generating URLs in the email body"
+msgstr ""
+
+#: models.py:159
+msgid "template"
+msgstr ""
+
+#: models.py:161
+msgid "The Django template used to render this email"
+msgstr ""
+
+#: models.py:168
+msgid "people filter"
+msgstr ""
+
+#: models.py:169
+msgid "This must be specified before sending"
+msgstr ""
+
+#: models.py:177
+msgid "Unsubscription tag"
+msgstr ""
+
+#: models.py:179
+msgid ""
+"Which tag should be removed if the recipient clicks to unsubscribe? If not "
+"set, such recipients will be converted to tombstones (losing their "
+"membership)."
+msgstr ""
+
+#: models.py:186
+msgid ""
+"To actually send the email campaign, please run the action from the previous "
+"menu"
+msgstr ""
+
+#: models.py:192
+msgid "sending date"
+msgstr ""
+
+#: models.py:193
+msgid "Leave this blank to send immediately"
+msgstr ""
+
+#: models.py:195
+msgid "sent count"
+msgstr ""
+
+#: models.py:197
+msgid "clicked count"
+msgstr ""
+
+#: models.py:198
+msgid "A count of how many users clicked links from this email"
+msgstr ""
+
+#: models.py:203
+msgid "opened count"
+msgstr ""
+
+#: models.py:207
+msgid ""
+"Google and Apple have measures preventing us from measuring this, so it "
+"should not be trusted"
+msgstr ""
+
+#: models.py:211
+msgid "spam count"
+msgstr ""
+
+#: models.py:212
+msgid ""
+"A count of how many recipients marked this as spam or rejected the message"
+msgstr ""
+
+#: models.py:217
+msgid "unsubscription count"
+msgstr ""
+
+#: models.py:220
+msgid "smtp2go template ID"
+msgstr ""
+
+#: models.py:356
+msgid "Unsubscription Page"
+msgstr ""
+
+#: templates/underground_email/bulk_actions/confirm_cancel.html:7
+#, python-format
+msgid "Cancel sending for %(count)s email campaign?"
+msgid_plural "Cancel sending for %(count)s email campaigns?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/underground_email/bulk_actions/confirm_cancel.html:15
+msgid ""
+"The task will be removed from the queue and the campaign state will revert "
+"to Draft."
+msgstr ""
+
+#: templates/underground_email/bulk_actions/confirm_cancel.html:18
+msgid ""
+"Only Scheduled campaigns can be cancelled. Campaigns already in the Sent "
+"state cannot be recalled."
+msgstr ""
+
+#: templates/underground_email/bulk_actions/confirm_schedule.html:7
+#, python-format
+msgid "Schedule %(count)s email campaign for sending?"
+msgid_plural "Schedule %(count)s email campaigns for sending?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/underground_email/bulk_actions/confirm_schedule.html:15
+msgid ""
+"Each campaign will be queued for sending at its configured sending date, or "
+"immediately if no date is set. The campaign state will change to Scheduled."
+msgstr ""
+
+#: templates/underground_email/bulk_actions/confirm_schedule.html:18
+msgid ""
+"Only Draft campaigns with a people filter assigned will be scheduled. Others "
+"will be skipped."
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:27
+msgid ""
+"This unsubscription link is not valid. Please follow the link in one of our "
+"emails again, or log in."
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:31
+#: templates/underground_email/pages/unsubscription_page.html:33
+msgid "Log in"
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:32
+msgid ""
+"Please follow the unsubscription link in one of our emails, or log in, to "
+"see your memberships and subscriptions."
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:40
+#: unsubscription_form.py:77
+msgid "Your memberships"
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:44
+msgid "You are not a member."
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:47
+#: unsubscription_form.py:83
+msgid "Your subscriptions"
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:51
+msgid "You are not subscribed to the newsletter."
+msgstr ""
+
+#: templates/underground_email/pages/unsubscription_page.html:58
+msgid "Unsubscribe"
+msgstr ""
+
+#: templates/wagtailsnippets/bulk_actions/confirm_bulk_action.html:20
+msgid "Confirm"
+msgstr ""
+
+#: templates/wagtailsnippets/bulk_actions/confirm_bulk_action.html:21
+msgid "Go back"
+msgstr ""
+
+#: unsubscription_form.py:47
+#, python-format
+msgid "%(membership_type)s (awaiting approval)"
+msgstr ""
+
+#: unsubscription_form.py:158
+msgid ""
+"Please follow the unsubscription link in one of our emails, or log in, to "
+"manage your memberships and subscriptions."
+msgstr ""
+
+#: unsubscription_form.py:197
+#, python-format
+msgid "Your %(membership_type)s membership has been cancelled."
+msgstr ""
+
+#: unsubscription_form.py:203
+#, python-format
+msgid "You will no longer receive %(tag)s emails."
+msgstr ""
+
+#: wagtail_hooks.py:51
+msgid "State"
+msgstr ""
+
+#: wagtail_hooks.py:66
+msgid "Email"
+msgstr ""
+
+#: wagtail_hooks.py:100
+msgid "Send at scheduled time"
+msgstr ""
+
+#: wagtail_hooks.py:102
+msgid "Schedule selected email campaigns for sending"
+msgstr ""
+
+#: wagtail_hooks.py:181
+#, python-format
+msgid "%(count)d email campaign has been scheduled for sending."
+msgid_plural "%(count)d email campaigns have been scheduled for sending."
+msgstr[0] ""
+msgstr[1] ""
+
+#: wagtail_hooks.py:188
+msgid "Cancel sending"
+msgstr ""
+
+#: wagtail_hooks.py:190
+msgid "Cancel scheduled sending for selected email campaigns"
+msgstr ""

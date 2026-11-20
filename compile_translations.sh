@@ -7,6 +7,6 @@ while read -r po_file; do
         echo "Error: Failed to compile $po_file" >&2
         exit 1
     fi
-done < <(find underground_crm/locale -name "*.po")
+done < <(find underground_crm/locale underground_email/locale -name "*.po")
 
 echo "Finished compiling translation files"
