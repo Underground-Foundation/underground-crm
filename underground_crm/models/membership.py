@@ -93,6 +93,20 @@ class Membership(models.Model):
             return False
         return True
 
+    def cancel(self, today: datetime.date | None = None) -> None:
+        """
+        Cancel the membership by bringing its expiry forward to the day before
+        ``today`` (the current date in the site's time zone by default). A
+        membership lasts through the whole of its expiry date, so an expiry of
+        today would leave it current until midnight. The row is kept as a
+        record of the term, which is also why a person who cancels can be
+        offered the same membership type again later (see
+        RegistrationPage.offers_membership_to).
+        """
+        today = today or timezone.localdate()
+        self.expires_on = today - datetime.timedelta(days=1)
+        self.save(update_fields=["expires_on"])
+
     @property
     def is_active(self) -> bool:
         """Whether the membership is current and staff have approved it. See

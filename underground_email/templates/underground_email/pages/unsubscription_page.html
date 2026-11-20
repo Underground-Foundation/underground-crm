@@ -1,0 +1,78 @@
+{% extends "underground_crm/form_page.html" %}
+{% load i18n %}
+
+{% comment %}
+  Served at /unsubscribe by unsubscription_view, which works out whom the page
+  is about (`visitor`): the person named by the signed token in an email's
+  link, or else the person who is logged in. The buttons post back to the full
+  path, so that the token in the query string identifies the visitor again.
+{% endcomment %}
+
+{% block toast %}
+  {% include "underground_crm/includes/toast_notifications.html" %}
+{% endblock %}
+
+{# A visitor known by the link in their email need not log in, and the memberships block below speaks to anybody else. #}
+{% block login_notice %}{% endblock %}
+
+{% block memberships %}
+  {% if visitor %}
+    <section class="memberships my-4" aria-label="{% trans 'Your memberships' %}">
+      <h2 class="h5">{% trans "Your memberships" %}</h2>
+      {% if memberships %}
+        <ul class="list-unstyled">
+          {% for membership in memberships %}
+            <li class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
+              <span>
+                {{ membership.type.name }}
+                {% if not membership.is_approved %}
+                  <span class="text-muted">— {% trans "awaiting approval" %}</span>
+                {% elif membership.expires_on %}
+                  <span class="text-muted">— {% blocktrans with expires_on=membership.expires_on %}expires {{ expires_on }}{% endblocktrans %}</span>
+                {% endif %}
+              </span>
+              <form method="post" action="{{ request.get_full_path }}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="{{ page.CANCEL_MEMBERSHIP_ACTION }}">
+                <input type="hidden" name="membership_id" value="{{ membership.pk }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  {% trans "Cancel membership" %}
+                </button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="alert alert-info" role="status">{% trans "You are not a member." %}</p>
+      {% endif %}
+    </section>
+
+    <section class="subscriptions my-4" aria-label="{% trans 'Your subscriptions' %}">
+      <h2 class="h5">{% trans "Your subscriptions" %}</h2>
+      {% if subscribed_tags %}
+        <ul class="list-unstyled">
+          {% for tag in subscribed_tags %}
+            <li class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
+              <span>{{ tag.name }}</span>
+              <form method="post" action="{{ request.get_full_path }}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="{{ page.REMOVE_TAG_ACTION }}">
+                <input type="hidden" name="tag_id" value="{{ tag.pk }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  {% trans "Unsubscribe" %}
+                </button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="alert alert-info" role="status">{% trans "You are not subscribed to the newsletter." %}</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="alert alert-info my-4" aria-label="{% trans 'Log in' %}">
+      <p>{% trans "Please follow the unsubscription link in one of our emails, or log in, to see your memberships and subscriptions." %}</p>
+      <a class="btn btn-primary" href="{% url 'underground_crm:login' %}?next={{ request.get_full_path|urlencode }}">{% trans "Log in" %}</a>
+    </section>
+  {% endif %}
+{% endblock %}

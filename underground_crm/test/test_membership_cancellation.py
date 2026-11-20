@@ -42,16 +42,15 @@ class CancelMembershipViewTest(django.test.TestCase):
             "underground_crm:cancel_membership", kwargs={"membership_id": self.membership.pk}
         )
 
-    def test_cancel_sets_expiry_to_today(self):
+    def test_cancel_ends_the_membership_at_once(self):
         self.client.force_login(self.member)
         self.client.post(self.url)
 
         self.membership.refresh_from_db()
-        self.assertEqual(
-            self.membership.expires_on,
-            timezone.now().date(),
-            "Cancelling a membership must bring its expiry forward to today, "
-            "rather than leaving the future expiry date in place.",
+        self.assertFalse(
+            self.membership.is_current,
+            "Cancelling a membership must end it straight away, rather than leaving "
+            f"it current until its expiry date ({self.membership.expires_on}).",
         )
 
     def test_success_message_names_the_membership_type(self):

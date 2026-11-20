@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Optional
 
 from django.conf import settings
@@ -7,7 +8,8 @@ from django.core import signing
 from django.utils import timezone
 
 from underground_crm.models import Engagement
-from underground_crm.models.person import PersonTag
+from underground_crm.models.membership import Membership
+from underground_crm.models.person import PersonTag, Tag
 from underground_email import app_settings
 from underground_email.models import EmailCampaign
 from django.utils.translation import gettext_lazy as _
@@ -89,7 +91,9 @@ def unsubscribe_from_tag_via_email_campaign(
 
     if campaign.unsubscription_tag:
         try:
-            person_tag = PersonTag.objects.get(tag=campaign.unsubscription_tag, person_id=person.id)
+            person_tag = PersonTag.objects.get(
+                tag=campaign.unsubscription_tag, content_object=person
+            )
         except PersonTag.DoesNotExist:
             logger.info(
                 "%s was not tagged with '%s'; unsubscription is already effective.",
@@ -112,3 +116,69 @@ def unsubscribe_from_tag_via_email_campaign(
         person.is_active = False  # Party members are required to receive some emails
         person.save(update_fields=["unsubscribed_at", "is_supporter", "is_prospect", "is_active"])
     return None
+
+
+def remove_self_queryable_tag(
+    person: settings.AUTH_USER_MODEL, tag_id: str, page_title: str
+) -> Optional[Tag]:
+    """Remove one of the SELF_QUERYABLE_TAGS from the person, at their own request.
+
+    Only those tags may be removed this way, because they are the only ones a
+    person is ever shown (see the API's tag query); the rest of a person's tags
+    are for staff. The removal is logged as an "unsubscribed" Engagement.
+
+    Returns the removed tag, or None if the person does not hold such a tag.
+    """
+    try:
+        tag_id = uuid.UUID(tag_id)
+    except ValueError:
+        return None
+    person_tag = (
+        PersonTag.objects.select_related("tag")
+        .filter(
+            content_object=person,
+            tag_id=tag_id,
+            tag__name__in=settings.SELF_QUERYABLE_TAGS,
+        )
+        .first()
+    )
+    if person_tag is None:
+        return None
+    tag = person_tag.tag
+    person_tag.delete()
+    Engagement(
+        person=person,
+        action_type=Engagement.UNSUBSCRIBED,
+        page_title=page_title,
+        metadata={"tag": tag.name},
+    ).save()
+    logger.info("%s has unsubscribed from tag '%s'", person, tag)
+    return tag
+
+
+def cancel_own_membership(
+    person: settings.AUTH_USER_MODEL, membership_id: str
+) -> Optional[Membership]:
+    """Cancel one of the person's current memberships, at their own request.
+
+    Keyed on the person as well as the membership ID, so that a membership ID
+    alone is never enough to cancel somebody else's membership.
+
+    Returns the cancelled membership, or None if the person holds no such
+    current membership.
+    """
+    try:
+        membership_id = uuid.UUID(membership_id)
+    except ValueError:
+        return None
+    membership = (
+        Membership.objects.current()
+        .select_related("type")
+        .filter(person=person, pk=membership_id)
+        .first()
+    )
+    if membership is None:
+        return None
+    membership.cancel()
+    logger.info("%s has cancelled their %s membership", person, membership.type)
+    return membership
