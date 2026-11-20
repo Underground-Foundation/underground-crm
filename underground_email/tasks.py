@@ -1,7 +1,7 @@
 import logging
 import os
 import datetime
-from typing import Dict, cast, List, Union, Tuple, Optional
+from typing import TYPE_CHECKING, Dict, cast, List, Union, Tuple, Optional
 
 import requests
 from cachetools import cached
@@ -25,6 +25,9 @@ from underground_email.api import (
 from underground_email.models import EmailCampaign
 from underground_email.unsubscription import make_unsubscription_url
 
+if TYPE_CHECKING:
+    from django_q.models import Schedule
+
 logger = logging.getLogger(__name__)
 _ACTIVITY_BATCH_SIZE = 1_000  # https://developers.SMTP2Go.com/reference/activity-search
 
@@ -42,6 +45,10 @@ _ACTIVITY_BATCH_SIZE = 1_000  # https://developers.SMTP2Go.com/reference/activit
 # The real fix is to chunk the send across several tasks so each is short and resumable;
 # until then this keeps a legitimately long send from being cut off mid-flight.
 CAMPAIGN_SEND_TIMEOUT_SECONDS = 3_600
+
+# How long after sending a campaign we wait before collecting its results from SMTP2Go,
+# by which time most of the recipients who will ever open it have done so.
+EMAIL_RESULTS_DELAY = datetime.timedelta(hours=24)
 
 
 @cached({})
@@ -165,17 +172,65 @@ def send_emails(campaign_utm_id: str) -> None:
     campaign.save(update_fields=updated)
     logger.info("Campaign %s sent to %d recipients.", campaign_utm_id, sent_count)
 
-    # Schedule a results check 24 hours after sending completes.
+    schedule_email_results(campaign_utm_id)
+
+
+def schedule_email_results(
+    campaign_utm_id: str, now: Optional[datetime.datetime] = None
+) -> "Schedule":
+    """Schedule get_email_results to update a campaign's statistics once
+    EMAIL_RESULTS_DELAY has passed since it was sent."""
     from django_q.models import Schedule
     from django_q.tasks import schedule as q_schedule
 
-    q_schedule(
-        "underground_email.tasks.get_email_results",
+    return q_schedule(
+        # Derived from the function itself rather than spelt out, because django-q only
+        # resolves the name when the schedule fires, a day later: a misspelt name used to
+        # fail then, quietly, and the campaign's statistics were never updated.
+        f"{get_email_results.__module__}.{get_email_results.__qualname__}",
         campaign_utm_id,
+        # This names the task that the schedule starts, not the schedule itself.
         task_name=f"email_results_{campaign_utm_id}",
         schedule_type=Schedule.ONCE,
-        next_run=timezone.now() + datetime.timedelta(hours=24),
+        next_run=(now or timezone.now()) + EMAIL_RESULTS_DELAY,
     )
+
+
+# Every kind of event whose results are recorded against a campaign. SMTP2Go's activity
+# search is queried for one type at a time, so that each query pages independently.
+PROCESSABLE_EVENT_TYPES: Tuple[SMTP2GoEventType, ...] = (
+    SMTP2GoEventType.OPENED,
+    SMTP2GoEventType.CLICKED,
+    SMTP2GoEventType.SOFT_BOUNCED,
+    SMTP2GoEventType.HARD_BOUNCED,
+    SMTP2GoEventType.REJECTED,
+    SMTP2GoEventType.SPAM,
+    SMTP2GoEventType.UNSUBSCRIBED,
+)
+
+
+def get_email_results(campaign_utm_id: str) -> None:
+    """
+    The task that send_emails schedules for 24 hours after a campaign has been sent,
+    which updates the campaign's statistics from SMTP2Go. Each type of event is
+    processed independently, so that a failure fetching one (an SMTP2Go outage, say)
+    does not discard the others; the task still fails afterwards, so that django-q
+    records the failure rather than reporting success.
+    """
+    failed_event_types = []
+    for event_type in PROCESSABLE_EVENT_TYPES:
+        try:
+            get_email_results_and_save_engagements(campaign_utm_id, event_type)
+        except Exception:
+            logger.exception(
+                "Campaign %s: unable to process %s events.", campaign_utm_id, event_type
+            )
+            failed_event_types.append(event_type)
+    if failed_event_types:
+        raise RuntimeError(
+            f"Campaign {campaign_utm_id}: unable to process "
+            f"{', '.join(failed_event_types)} events."
+        )
 
 
 def process_email_engagements(
@@ -203,6 +258,7 @@ def process_email_engagements(
         )
 
         new_engagements = []
+        newly_engaged: set = set()
         for event in events:
             if event["event"] != event_type.value:
                 continue
@@ -217,7 +273,10 @@ def process_email_engagements(
                 continue
             if person.pk in already_engaged:
                 recognized_engagement_count += 1
-            else:
+            elif person.pk not in newly_engaged:
+                # A person who opens an email several times produces several events in
+                # the same batch, but let's only save it as one engagement.
+                newly_engaged.add(person.pk)
                 new_engagements.append(
                     Engagement(
                         person=person,
@@ -227,15 +286,15 @@ def process_email_engagements(
                     )
                 )
 
-            if new_engagements:
-                if persist:
-                    Engagement.objects.bulk_create(new_engagements)
-                logger.info(
-                    "%d new %s engagements for campaign %s.",
-                    len(new_engagements),
-                    event_type,
-                    campaign.utm_id,
-                )
+        if new_engagements:
+            if persist:
+                Engagement.objects.bulk_create(new_engagements)
+            logger.info(
+                "%d new %s engagements for campaign %s.",
+                len(new_engagements),
+                event_type,
+                campaign.utm_id,
+            )
 
         if action_type == Engagement.EMAIL_OPENED:
             campaign.opened_count = (campaign.opened_count or 0) + len(new_engagements)
@@ -270,7 +329,7 @@ def process_email_rejection(
     recipients: Dict[str, settings.AUTH_USER_MODEL],
     events: List[SMTPEvent],
     persist=True,
-) -> int:
+) -> Tuple[int, int]:
     processed_count = 0
     spam_count, unsubscription_count = 0, 0
     for event in events:
@@ -310,10 +369,11 @@ def process_email_rejection(
             continue
         processed_count += 1
     logger.info("Processed %s / %s email events", processed_count, len(events))
+    # Both counts are null until a campaign's results have first been collected.
     if spam_count:
-        campaign.spam_count += spam_count
+        campaign.spam_count = (campaign.spam_count or 0) + spam_count
     if unsubscription_count:
-        campaign.unsubscription_count += unsubscription_count
+        campaign.unsubscription_count = (campaign.unsubscription_count or 0) + unsubscription_count
     return spam_count, unsubscription_count
 
 
@@ -324,15 +384,14 @@ def _get_email_campaign(campaign_utm_id: str):
 
 
 def get_email_campaign_and_results(
-    campaign_utm_id: str, event_types: List[SMTP2GoEventType], continue_token: Optional[str] = None
+    campaign_utm_id: str, event_type: SMTP2GoEventType, continue_token: Optional[str] = None
 ) -> Tuple[EmailCampaign, SMTPActivityResponse]:
     campaign = _get_email_campaign(campaign_utm_id)
     body = {
         "api_key": _api_key(),
         "limit": _ACTIVITY_BATCH_SIZE,
         "search_subject": campaign.subject,
-        "event_types": [event_types],
-        "continue_token": continue_token,
+        "event_types": [event_type],
     }
     if continue_token:
         body["continue_token"] = continue_token
@@ -345,7 +404,7 @@ def get_email_campaign_and_results(
     )
     if not resp.ok:
         logger.error("Error calling %s: %s", resp.url, resp.text)
-        raise RuntimeError(f"Unable to fetch {event_types} events for {campaign}")
+        raise RuntimeError(f"Unable to fetch {event_type} events for {campaign}")
     return campaign, cast(SMTPActivityResponse, resp.json())
 
 
@@ -358,33 +417,34 @@ def _get_people_by_email_address_from_events(
 
 
 def get_email_results_and_save_engagements(
-    campaign_utm_id: str, event_types: List[SMTP2GoEventType], persist=True
+    campaign_utm_id: str, event_type: SMTP2GoEventType, persist=True
 ) -> None:
     """
-    Poll the SMTP2Go activity search endpoint for opens on this campaign,
-    then record an Engagement.EMAIL_OPENED entry for each person found to have
-    opened the email. Records are bulk-created and deduplicated against any
-    existing entries for the same campaign, so this task is safe to run more
-    than once.
+    Poll the SMTP2Go activity search endpoint for one type of event on this campaign,
+    and record what it finds: an Engagement for each person who opened or clicked, and
+    the consequences of a bounce, rejection, spam report or unsubscription. Engagements
+    are deduplicated against any existing entries for the same campaign, so this task
+    is safe to run more than once.
     """
     continue_token = None
     new_opens, new_clicks = 0, 0
     new_spam, new_unsubscriptions = 0, 0
     while True:
         campaign, smtp_response = get_email_campaign_and_results(
-            campaign_utm_id, event_types, continue_token=continue_token
+            campaign_utm_id, event_type, continue_token=continue_token
         )
-        events: List[SMTPEvent] = smtp_response.get("data", {}).get("events", [])
+        data = smtp_response.get("data", {})
+        events: List[SMTPEvent] = data.get("events", [])
         if not events:
             if not continue_token:
                 logger.info(
-                    "No events of type %s found for campaign %s.", event_types, campaign_utm_id
+                    "No events of type %s found for campaign %s.", event_type, campaign_utm_id
                 )
             break
 
         people_by_email = _get_people_by_email_address_from_events(events)
-        seen_event_types = set([event["event"] for event in events]).union(set(event_types))
-        if seen_event_types.union(POSITIVE_ENGAGEMENT_OUTCOMES):
+        seen_event_types = {event["event"] for event in events}
+        if seen_event_types & POSITIVE_ENGAGEMENT_OUTCOMES:
             recognized_engagements, opens, clicks = process_email_engagements(
                 campaign, recipients=people_by_email, events=events, persist=persist
             )
@@ -393,17 +453,18 @@ def get_email_results_and_save_engagements(
         else:
             recognized_engagements = 0
 
-        if seen_event_types.union(BAD_OUTCOMES):
+        if seen_event_types & BAD_OUTCOMES:
             spam, unsubscriptions = process_email_rejection(
                 campaign, recipients=people_by_email, events=events, persist=persist
             )
             new_spam += spam
             new_unsubscriptions += unsubscriptions
-        else:
-            logger.error("No handler is defined for %s events", event_types)
         if recognized_engagements or len(events) < _ACTIVITY_BATCH_SIZE:
             # The events returned from SMTP2Go are ordered by time, recent first. Recognizing an event therefore
             # means all the events in subsequent calls shall therefore be recognized events too.
+            break
+        continue_token = data.get("continue_token")
+        if not continue_token:
             break
     if (new_opens or new_clicks or new_spam or new_unsubscriptions) and persist:
         updated = []
