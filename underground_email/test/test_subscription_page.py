@@ -1,5 +1,5 @@
 """
-Tests for the SubscriptionPage served at /unsubscribe.
+Tests for the SubscriptionPage, which migration 0018 puts at /unsubscribe/.
 
 The page is about whoever is logged in, or else whoever the signed token in an
 email's unsubscription link names. Its form lists their current memberships,
@@ -19,6 +19,7 @@ translated.
 """
 
 import datetime
+from http import HTTPStatus
 
 import django.test
 from django.contrib.auth import get_user_model
@@ -40,7 +41,11 @@ from underground_email.models import (
     SubscriptionPage,
     SubscriptionPageSubmission,
 )
-from underground_email.unsubscription import generate_unsubscription_signature
+from underground_email.unsubscription import (
+    generate_unsubscription_signature,
+    make_unsubscription_url,
+    subscription_page_url,
+)
 from underground_email.subscription_form import TOKEN_FIELD_NAME
 
 Person = get_user_model()
@@ -57,6 +62,8 @@ MEMBERSHIP_TYPE_NAME = "Pirate Party"
 FUTURE_EXPIRY = timezone.localdate() + datetime.timedelta(days=365)
 PAST_EXPIRY = timezone.localdate() - datetime.timedelta(days=30)
 
+# Where migration 0018 puts the page, beneath the default site's root page.
+UNSUBSCRIPTION_PATH = "/unsubscribe/"
 NOT_A_MEMBER_TEXT = "You are not a member."
 NOT_SUBSCRIBED_TEXT = "You are not subscribed to the newsletter."
 INVALID_LINK_TEXT = "This unsubscription link is not valid."
@@ -70,7 +77,7 @@ DEPARTURE_NOTES_PROMPT = "Sorry to see you go. Feel free to leave any notes abou
 @override_settings(SELF_QUERYABLE_TAGS=SELF_QUERYABLE_TAG_NAMES)
 class SubscriptionPageTestCase(django.test.TestCase):
     def setUp(self) -> None:
-        self.url = reverse("unsubscribe")
+        self.url = SubscriptionPage.objects.get().url
         self.newsletter = Tag.objects.create(name=NEWSLETTER_TAG_NAME)
         self.press_releases = Tag.objects.create(name=PRESS_RELEASES_TAG_NAME)
         self.staff_only_tag = Tag.objects.create(name=STAFF_ONLY_TAG_NAME)
@@ -128,13 +135,34 @@ class MigrationTests(SubscriptionPageTestCase):
         problems = Page.find_problems()
         self.assertFalse(any(problems), f"Treebeard found problems in the page tree: {problems}")
 
-    def test_the_page_s_place_in_the_tree_redirects_to_the_subscriptions_url(self) -> None:
-        page = SubscriptionPage.objects.get()
-        query_string = f"{TOKEN_FIELD_NAME}=signed-token"
+    def test_the_page_is_at_unsubscribe_beneath_the_site_root(self) -> None:
+        self.assertEqual(self.url, UNSUBSCRIPTION_PATH)
 
-        response = self.client.get(f"{page.url}?{query_string}")
+    def test_old_links_without_the_slash_keep_their_token(self) -> None:
+        # Emails sent before the page existed link to /unsubscribe, which
+        # Django's APPEND_SLASH redirects to the page.
+        token = self.token_for(self.make_campaign())
+        query_string = f"{TOKEN_FIELD_NAME}={token}"
 
-        self.assertRedirects(response, f"{self.url}?{query_string}", fetch_redirect_response=False)
+        response = self.client.get(f"{UNSUBSCRIPTION_PATH.rstrip('/')}?{query_string}")
+
+        self.assertRedirects(
+            response,
+            f"{UNSUBSCRIPTION_PATH}?{query_string}",
+            status_code=HTTPStatus.MOVED_PERMANENTLY,  # APPEND_SLASH's redirect is permanent
+            fetch_redirect_response=False,
+        )
+
+    def test_an_email_links_to_the_page(self) -> None:
+        campaign = self.make_campaign()
+        site = Site.objects.get(is_default_site=True)
+
+        link = make_unsubscription_url(self.member, campaign.utm_id, subscription_page_url(site))
+
+        self.assertTrue(
+            link.startswith(f"{site.root_url}{UNSUBSCRIPTION_PATH}?"),
+            f"The link should lead to the page that migration 0018 created: {link}",
+        )
 
 
 class ListingTests(SubscriptionPageTestCase):
@@ -283,7 +311,7 @@ class EmailLinkTests(SubscriptionPageTestCase):
         )
 
     def test_the_token_in_the_hidden_field_is_enough_to_identify_the_recipient(self) -> None:
-        # Posting to /unsubscribe without the query string shows that the
+        # Posting to /unsubscribe/ without the query string shows that the
         # hidden field, not the address of the page, carries the token.
         membership = self.give_membership()
         token = self.token_for(self.make_campaign())

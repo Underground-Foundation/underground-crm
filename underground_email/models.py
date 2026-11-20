@@ -6,9 +6,6 @@ from typing import Optional
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import models
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
-from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from wagtail.admin.panels import FieldPanel, HelpPanel, MultiFieldPanel, ObjectList, TabbedInterface
 from wagtail.fields import RichTextField, StreamField
@@ -346,11 +343,12 @@ class SubscriptionPage(FormPage):
     email address and name typed into the form, which would let anybody manage
     anybody else's subscriptions; hence should_request_signup_fields is off.
 
-    Every site is given one of these pages by migration 0018, and it is always
-    served at /unsubscribe (by underground_email.views.email_click_handler.
-    subscriptions_view), wherever it sits in the page tree, because that is the
-    address that the links in our emails have always pointed to. A request that
-    reaches the page through its place in the tree is redirected there.
+    Every site is given one of these pages by migration 0018, at /unsubscribe/
+    beneath its root page. Wagtail serves it from its place in the tree, like
+    any other page, and each email's link is built from wherever the page is
+    (see for_site and underground_email.unsubscription.subscription_page_url).
+    Links in emails sent before the page existed lead to /unsubscribe, which
+    Django's APPEND_SLASH redirects to /unsubscribe/, query string and all.
     """
 
     is_creatable = True
@@ -361,14 +359,17 @@ class SubscriptionPage(FormPage):
     class Meta:
         verbose_name = _("Subscription Page")
 
-    def serve(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        unsubscription_path = reverse("unsubscribe")
-        if request.path != unsubscription_path:
-            query_string = request.META.get("QUERY_STRING", "")
-            return redirect(
-                f"{unsubscription_path}?{query_string}" if query_string else unsubscription_path
-            )
-        return super().serve(request, *args, **kwargs)
+    @classmethod
+    def for_site(cls, site: Optional[Site]) -> Optional["SubscriptionPage"]:
+        """The live SubscriptionPage beneath the site's root page, or else any
+        live one, for a site added after migration 0018 gave each site its own.
+        None if there is no live SubscriptionPage at all."""
+        pages = cls.objects.live().order_by("path")
+        if site is not None:
+            page = pages.descendant_of(site.root_page, inclusive=True).first()
+            if page is not None:
+                return page
+        return pages.first()
 
     def get_submission_form_class(self):
         from underground_email.subscription_form import SubscriptionForm

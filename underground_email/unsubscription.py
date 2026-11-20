@@ -1,7 +1,7 @@
 """
 Unsubscription from our emails.
 
-Each campaign email carries a link to the SubscriptionPage at /unsubscribe,
+Each campaign email carries a link to the site's SubscriptionPage,
 with a signed token naming its recipient (see make_unsubscription_url). We have
 that page, rather than unsubscribing people as soon as they follow the link, to
 get around over-eager email clients and security scanners, which follow the
@@ -17,12 +17,14 @@ from typing import Optional
 from django.conf import settings
 from django.core import signing
 from django.db.models import QuerySet
-from django.urls import reverse
+from django.core.exceptions import ImproperlyConfigured
+from wagtail.models import Site
 
 from underground_crm.models import Engagement
 from underground_crm.models.membership import Membership
 from underground_crm.models.person import PersonTag, Tag
 from underground_email import app_settings
+from underground_email.models import SubscriptionPage
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +58,40 @@ def decode_unsubscription_token(token: str) -> tuple[str, str]:
     return data["e"], data["c"]
 
 
-def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, root_url: str) -> str:
-    """Build the absolute URL of the unsubscription page to embed in an outgoing email.
+def subscription_page_url(site: Site) -> str:
+    """The absolute URL of the SubscriptionPage that emails from the site link to.
+
+    Raises ImproperlyConfigured if there is no live SubscriptionPage to link
+    to, rather than letting emails go out without a working unsubscription
+    link. Migration 0018 gives every site one.
+    """
+    page = SubscriptionPage.for_site(site)
+    if page is None:
+        raise ImproperlyConfigured(
+            f"There is no live SubscriptionPage for the unsubscription links in emails from {site}."
+        )
+    root = site.root_page
+    if page.path.startswith(root.path):
+        # Wagtail routes a site's requests from its root page, so a page
+        # beneath it is served on that site at its path relative to the root,
+        # even when Wagtail would attribute the page to another site whose
+        # root lies deeper (and so give its URL on that one).
+        return f"{site.root_url.rstrip('/')}/{page.url_path[len(root.url_path):]}"
+    # Found beneath another site's root (see SubscriptionPage.for_site).
+    url = page.get_full_url()
+    if url is None:
+        raise ImproperlyConfigured(f"{page} is not served by any site.")
+    return url
+
+
+def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, page_url: str) -> str:
+    """Build the link to embed in an outgoing email: the subscription page's
+    URL (see subscription_page_url), with a signed token naming the recipient.
 
     Following it changes nothing by itself (see this module's docstring).
     """
     signature = generate_unsubscription_signature(email_address=person.email, utm_id=utm_id)
-    return f"{root_url}{reverse('unsubscribe')}?utm_campaign={utm_id}&address={signature}"
+    return f"{page_url}?utm_campaign={utm_id}&address={signature}"
 
 
 def self_queryable_tags() -> QuerySet[Tag]:

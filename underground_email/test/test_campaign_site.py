@@ -12,11 +12,10 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.urls import reverse
 from wagtail.models import Page, Site
 
 from underground_crm.models import PeopleFilter
-from underground_email.models import EmailCampaign, EmailSender
+from underground_email.models import EmailCampaign, EmailSender, SubscriptionPage
 from underground_email.tasks import _render_email_html, send_emails
 
 STATE_BRANCH_ROOT_URL = "https://vic.fusionparty.org.au"
@@ -50,6 +49,15 @@ class CampaignSiteTests(TestCase):
             people_filter=everyone,
         )
 
+    def unsubscription_page_url(self) -> str:
+        """Where the campaign site serves the subscription page that migration
+        0018 created beneath the default site's root page. This site's root is
+        the top of the page tree, so the page's path on it starts with the
+        default site's root page."""
+        page = SubscriptionPage.objects.get()
+        default_root = Site.objects.get(is_default_site=True).root_page
+        return f"{STATE_BRANCH_ROOT_URL}/{default_root.slug}/{page.slug}/"
+
     def test_a_new_campaign_starts_on_the_default_site(self) -> None:
         default_site = Site.objects.get(is_default_site=True)
 
@@ -61,7 +69,7 @@ class CampaignSiteTests(TestCase):
 
         html = _render_email_html(self.campaign, self.recipient)
 
-        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}{reverse("unsubscribe")}?', html)
+        self.assertIn(f'href="{self.unsubscription_page_url()}?', html)
         self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}/supporter_portal/memberships"', html)
         self.assertNotIn(ADMIN_ROOT_URL, html)
 
@@ -84,5 +92,5 @@ class CampaignSiteTests(TestCase):
         self.assertEqual(
             sent_email["recipients"], [f"{self.recipient.full_name} <{self.recipient.email}>"]
         )
-        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}{reverse("unsubscribe")}?', sent_email["html"])
+        self.assertIn(f'href="{self.unsubscription_page_url()}?', sent_email["html"])
         self.assertNotIn(ADMIN_ROOT_URL, sent_email["html"])

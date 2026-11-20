@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 14:38+1100\n"
+"POT-Creation-Date: 2026-11-20 16:20+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -1632,15 +1632,15 @@ msgstr ""
 msgid "Next page"
 msgstr ""
 
-#: templates/underground_crm/form_page.html:16
+#: templates/underground_crm/form_page.html:24
 msgid "Thanks — your response has been recorded."
 msgstr ""
 
-#: templates/underground_crm/form_page.html:33
+#: templates/underground_crm/form_page.html:41
 msgid "You are not logged in."
 msgstr ""
 
-#: templates/underground_crm/form_page.html:65
+#: templates/underground_crm/form_page.html:73
 msgid "Submit"
 msgstr ""
 
