@@ -13,21 +13,13 @@ more than once — all writes are deduplicated against existing records.
 
 from django.core.management.base import BaseCommand, CommandError
 
-from underground_email.api import SMTP2GoEventType
 from underground_email.models import EMAIL_STATES, EmailCampaign
-from underground_email.tasks import get_email_results_and_save_engagements
+from underground_email.tasks import (
+    PROCESSABLE_EVENT_TYPES,
+    get_email_results_and_save_engagements,
+)
 
 _STATE_LABELS: dict[int, str] = dict(EMAIL_STATES)
-
-_PROCESSABLE_EVENT_TYPES = [
-    SMTP2GoEventType.OPENED,
-    SMTP2GoEventType.CLICKED,
-    SMTP2GoEventType.SOFT_BOUNCED,
-    SMTP2GoEventType.HARD_BOUNCED,
-    SMTP2GoEventType.REJECTED,
-    SMTP2GoEventType.SPAM,
-    SMTP2GoEventType.UNSUBSCRIBED,
-]
 
 # (header text, model attribute, column width)
 _COLUMNS = [
@@ -131,12 +123,12 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Processing results for '{campaign.subject}' ({utm_id}).")
 
-        for event_type in _PROCESSABLE_EVENT_TYPES:
+        for event_type in PROCESSABLE_EVENT_TYPES:
             self.stdout.write(f"Fetching {event_type.value} events…")
             try:
                 get_email_results_and_save_engagements(
                     campaign_utm_id=utm_id,
-                    event_types=event_type,
+                    event_type=event_type,
                     persist=not dry_run,
                 )
             except Exception as exc:
