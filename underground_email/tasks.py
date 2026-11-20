@@ -275,7 +275,7 @@ def process_email_engagements(
                 recognized_engagement_count += 1
             elif person.pk not in newly_engaged:
                 # A person who opens an email several times produces several events in
-                # the same batch, but they are only one engagement.
+                # the same batch, but let's only save it as one engagement.
                 newly_engaged.add(person.pk)
                 new_engagements.append(
                     Engagement(
