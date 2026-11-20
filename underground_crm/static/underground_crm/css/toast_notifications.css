@@ -5,7 +5,7 @@
 
 .toast-notification-container {
   position: fixed;
-  top: 2rem;
+  top: 6rem; // Assume there is a nav bar here
   right: 1rem;
   z-index: 1080;
   max-width: 22rem;
