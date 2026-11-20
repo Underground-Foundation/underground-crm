@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 14:38+1100\n"
+"POT-Creation-Date: 2026-11-20 14:42+1100\n"
 "PO-Revision-Date: 2026-11-20 00:00+1100\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -201,7 +201,7 @@ msgstr ""
 
 #: subscription_form.py:163
 msgid ""
-"Please follow the unsubscription link in one of our emails, or log in, to "
+"Please log in or follow the unsubscription link from your email in order to "
 "manage your memberships and subscriptions."
 msgstr ""
 
