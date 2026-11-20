@@ -46,7 +46,7 @@ def subscription_view(request):
     Subscribe the visitor to a mailing list by applying a Tag to their Person
     record. JSON body:
 
-        tag             str   Slug of the Tag to apply
+        tag_name        str   Name (not slug) of the Tag to apply
         page_id         int   The page hosting the subscription block
         email           str   Required for unauthenticated requests
         first_name      str   Identity guard for unauthenticated requests

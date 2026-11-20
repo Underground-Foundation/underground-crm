@@ -107,7 +107,9 @@ def record_rsvp_engagement(event_guest_id: str) -> None:
     Engagement.objects.create(
         person=person,
         action_type=Engagement.RSVP,
-        page_url=event_guest.page.slug,
+        # get_full_url() is None for a page that no Site routes to; such a page has no
+        # address that a visitor could have used, so the field is left blank.
+        page_url=event_guest.page.get_full_url() or "",
         page_title=event_guest.page.title,
     )
 

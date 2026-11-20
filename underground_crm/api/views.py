@@ -143,10 +143,12 @@ def me(request):
 
     if request.GET.get("context") == "billing":
         billing = user.billing_address
+        phone_number = user.mobile_number or user.phone_number
         data.update(
             {
                 "middle_name": user.middle_name,
-                "phone": str(user.mobile_number or user.phone_number),
+                # str(None) would hand the donation form the literal text "None".
+                "phone": str(phone_number) if phone_number else None,
                 "billing_address": UnverifiedAddressSerializer(billing).data if billing else None,
             }
         )

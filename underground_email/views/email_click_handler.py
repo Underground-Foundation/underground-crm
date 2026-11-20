@@ -5,6 +5,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
+from underground_email.models import EmailCampaign
 from underground_email.unsubscription import (
     decode_unsubscription_token,
     unsubscribe_from_tag_via_email_campaign,
@@ -28,7 +29,17 @@ def unsubscription_view(request: HttpRequest) -> HttpResponse:
         logger.warning("Invalid unsubscription token received from %s: %s", request.user, token)
         return render(request, "underground_email/unsubscribe_invalid.html", status=400)
 
-    campaign_title = unsubscribe_from_tag_via_email_campaign(utm_id, email)
+    try:
+        campaign_title = unsubscribe_from_tag_via_email_campaign(utm_id, email)
+    except (ValueError, EmailCampaign.DoesNotExist):
+        # The signature is genuine, but the person or the campaign it names has since
+        # been deleted, so there is nothing left for this link to act upon.
+        logger.warning(
+            "Unsubscription link for %s from campaign %s no longer matches our records",
+            email,
+            utm_id,
+        )
+        return render(request, "underground_email/unsubscribe_invalid.html", status=400)
     return render(
         request,
         "underground_email/unsubscribe_confirmed.html",

@@ -6,7 +6,7 @@ import django.test
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
-from wagtail.models import Page
+from wagtail.models import Page, Site
 
 from underground_crm.forms.event_guest import EventGuestForm
 from underground_crm.models.pages import EventGuest, EventPage
@@ -137,6 +137,38 @@ class RecordRsvpEngagementTest(django.test.TestCase):
 
         engagement = Engagement.objects.get(person=member, action_type=Engagement.RSVP)
         self.assertEqual(engagement.page_title, self.event_page.title)
+
+    def test_engagement_records_the_full_url_of_the_event(self):
+        """
+        Like every other Engagement, an RSVP records the address the visitor was on,
+        not merely the page's slug, which says nothing about which site or section the
+        event sits in.
+        """
+        from underground_crm.models import Engagement
+        from underground_crm.tasks import record_rsvp_engagement
+
+        site = Site.objects.get(is_default_site=True)
+        event_start = datetime(2026, 10, 3, 18, 30, tzinfo=ZoneInfo("Australia/Melbourne"))
+        routable_event = EventPage(
+            title="Spring fundraising dinner",
+            slug="spring-fundraising-dinner",
+            start_time=event_start,
+            end_time=event_start + timedelta(hours=3),
+        )
+        site.root_page.add_child(instance=routable_event)
+        member = Person.objects.create_user(email="dinner.guest@example.com", password="password")
+        event_guest = EventGuest.objects.create(
+            is_authenticated=True, person=member, page=routable_event
+        )
+
+        record_rsvp_engagement(str(event_guest.pk))
+
+        engagement = Engagement.objects.get(person=member, action_type=Engagement.RSVP)
+        self.assertEqual(engagement.page_url, routable_event.get_full_url())
+        self.assertTrue(
+            engagement.page_url.startswith(site.root_url),
+            "The URL should be absolute, rooted at the site the event belongs to.",
+        )
 
     def test_anonymous_rsvp_still_records_engagement_for_the_resolved_person(self):
         """

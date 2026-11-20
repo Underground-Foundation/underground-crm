@@ -89,7 +89,9 @@ def unsubscribe_from_tag_via_email_campaign(
 
     if campaign.unsubscription_tag:
         try:
-            person_tag = PersonTag.objects.get(tag=campaign.unsubscription_tag, person_id=person.id)
+            person_tag = PersonTag.objects.get(
+                tag=campaign.unsubscription_tag, content_object=person
+            )
         except PersonTag.DoesNotExist:
             logger.info(
                 "%s was not tagged with '%s'; unsubscription is already effective.",

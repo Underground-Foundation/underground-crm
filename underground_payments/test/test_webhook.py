@@ -19,13 +19,14 @@ from unittest import mock
 
 import stripe
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django_q.conf import Conf
 from djmoney.money import Money
 from wagtail.models import Page
 
-from underground_crm.models import Donation, Engagement
+from underground_crm.models import Donation, Engagement, Tag
 from underground_payments.models import PaymentPage
 
 WEBHOOK_SECRET = "whsec_test_fusion_party_webhook_signing_secret"
@@ -35,6 +36,16 @@ TEST_CARD = "pm_card_visa"
 # How long to wait for Stripe to make an event it raised available through its API.
 EVENT_WAIT_SECONDS = 30
 EVENT_POLL_INTERVAL_SECONDS = 1
+MIDDLE_NAME = "Louise"
+# Numbers from the ranges that the Australian Communications and Media Authority reserves
+# for fiction and drama, typed as a donor might type them.
+MOBILE_NUMBER_AS_TYPED = "0491 570 156"
+MOBILE_NUMBER_E164 = "+61491570156"
+OLD_MOBILE_E164 = "+61491570110"
+LANDLINE_AS_TYPED = "(03) 5550 1234"
+LANDLINE_E164 = "+61355501234"
+# Too few digits to be any Australian number.
+INVALID_PHONE_NUMBER = "0491 57"
 
 
 def signature_header(payload: str, secret: str = WEBHOOK_SECRET) -> str:
@@ -128,6 +139,82 @@ class OneOffDonationWebhookTests(WebhookTestCase):
                 person=donation.person, action_type=Engagement.DONATED
             ).exists()
         )
+
+    def test_applies_the_pages_donor_tag(self):
+        donor_tag = Tag.objects.create(name="2026 election donor")
+        self.page.donor_tag = donor_tag
+        self.page.save()
+
+        payment_intent = self.payment_intent()
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertTrue(donor.tags.filter(pk=donor_tag.pk).exists())
+
+    def test_saves_the_donors_middle_name_and_mobile_number(self):
+        payment_intent = self.payment_intent()
+        payment_intent["metadata"].update(
+            {"donor_middle_name": MIDDLE_NAME, "donor_phone": MOBILE_NUMBER_AS_TYPED}
+        )
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertEqual(donor.middle_name, MIDDLE_NAME)
+        self.assertEqual(donor.mobile_number.as_e164, MOBILE_NUMBER_E164)
+        self.assertIsNone(donor.phone_number, "A mobile number does not belong in the landline.")
+
+    def test_a_landline_is_saved_as_the_phone_number(self):
+        payment_intent = self.payment_intent()
+        payment_intent["metadata"]["donor_phone"] = LANDLINE_AS_TYPED
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertEqual(donor.phone_number.as_e164, LANDLINE_E164)
+        self.assertIsNone(donor.mobile_number, "A landline does not belong in the mobile number.")
+
+    def test_blank_details_do_not_erase_what_we_already_hold(self):
+        get_user_model().objects.create_user(
+            email=DONOR_EMAIL,
+            first_name="Kerryn",
+            middle_name=MIDDLE_NAME,
+            last_name="Abbott",
+            mobile_number=MOBILE_NUMBER_E164,
+        )
+        payment_intent = self.payment_intent()
+        payment_intent["metadata"].update({"donor_middle_name": "", "donor_phone": ""})
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertEqual(donor.middle_name, MIDDLE_NAME)
+        self.assertEqual(donor.mobile_number.as_e164, MOBILE_NUMBER_E164)
+
+    def test_a_newly_typed_mobile_number_replaces_the_old_one(self):
+        get_user_model().objects.create_user(
+            email=DONOR_EMAIL,
+            first_name="Kerryn",
+            last_name="Abbott",
+            mobile_number=OLD_MOBILE_E164,
+        )
+        payment_intent = self.payment_intent()
+        payment_intent["metadata"]["donor_phone"] = MOBILE_NUMBER_AS_TYPED
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertEqual(donor.mobile_number.as_e164, MOBILE_NUMBER_E164)
+
+    def test_an_invalid_phone_number_does_not_replace_a_working_one(self):
+        get_user_model().objects.create_user(
+            email=DONOR_EMAIL,
+            first_name="Kerryn",
+            last_name="Abbott",
+            mobile_number=OLD_MOBILE_E164,
+        )
+        payment_intent = self.payment_intent()
+        payment_intent["metadata"]["donor_phone"] = INVALID_PHONE_NUMBER
+        self.post_event(payment_intent_succeeded_event(payment_intent))
+
+        donor = Donation.objects.get(stripe_payment_id=payment_intent["id"]).person
+        self.assertEqual(donor.mobile_number.as_e164, OLD_MOBILE_E164)
 
     def test_redelivered_event_is_recorded_once(self):
         payload = payment_intent_succeeded_event(self.payment_intent())

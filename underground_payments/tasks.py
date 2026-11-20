@@ -101,6 +101,8 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
                 setattr(person, k, v)
             person.save(update_fields=list(fill.keys()))
 
+    _save_donor_contact_details(person, middle_name=middle_name, phone=phone)
+
     # Store or update billing address if the donation supplied one.
     if address_line1 or city or state or postcode:
         if person.billing_address_id:
@@ -181,7 +183,7 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
     )
 
     if page.donor_tag_id:
-        PersonTag.objects.get_or_create(person=person, tag_id=page.donor_tag_id)
+        PersonTag.objects.get_or_create(content_object=person, tag_id=page.donor_tag_id)
         logger.info("Applied tag %s to %s", page.donor_tag_id, donor_email)
 
     if page.success_email_id:
@@ -192,6 +194,51 @@ def handle_successful_payment(payment_intent_id: str, amount_cents: int, metadat
         )
         if page.email_every_time or is_first:
             _send_success_email(page.success_email, person)
+
+
+def _save_donor_contact_details(person, middle_name: str, phone: str) -> None:
+    """
+    Record the middle name and phone number that a donor typed into the donation form.
+
+    A field the donor left blank tells us nothing, so it never replaces what we already
+    hold; a value they did supply replaces the old one, which the person's history keeps.
+    The phone number goes to Person.mobile_number or Person.phone_number according to its
+    type (see underground_crm.contactability.is_mobile_number). A number that is not
+    valid, or that is of a type no contact record should hold, is logged and left out
+    rather than stored, so that it cannot displace a working number.
+    """
+    import phonenumbers
+
+    from underground_crm.contactability import (
+        InvalidPhoneNumberError,
+        is_forbidden_phone_number,
+        is_mobile_number,
+        parse_verified_phone_number,
+    )
+
+    update_fields: list[str] = []
+    if middle_name and middle_name != person.middle_name:
+        person.middle_name = middle_name
+        update_fields.append("middle_name")
+
+    try:
+        phone_number = parse_verified_phone_number(phone)
+    except InvalidPhoneNumberError:
+        logger.warning("Not saving the invalid phone number %r for donor %s", phone, person)
+        phone_number = None
+    if phone_number is not None and is_forbidden_phone_number(phone_number):
+        logger.warning("Not saving the phone number %r of a forbidden type for %s", phone, person)
+        phone_number = None
+    if phone_number is not None:
+        field = "mobile_number" if is_mobile_number(phone_number) else "phone_number"
+        e164 = phonenumbers.format_number(phone_number, phonenumbers.PhoneNumberFormat.E164)
+        current = getattr(person, field)
+        if not current or current.as_e164 != e164:
+            setattr(person, field, e164)
+            update_fields.append(field)
+
+    if update_fields:
+        person.save(update_fields=update_fields)
 
 
 def handle_successful_subscription_renewal(
