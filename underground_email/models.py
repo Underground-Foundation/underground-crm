@@ -325,7 +325,7 @@ class EmailCampaign(PreviewableMixin, models.Model):
 
 class SubscriptionPage(FormPage):
     """
-    The page on which a person manages what they receive from us. Its form
+    The page allowing a person to manage their memberships and email tags. Its form
     (see underground_email.subscription_form.SubscriptionForm) lists their
     current memberships, each with a ticked checkbox, and every tag named in
     SELF_QUERYABLE_TAGS, ticked if they hold it. Unticking a membership cancels
@@ -363,8 +363,27 @@ class SubscriptionPage(FormPage):
     def for_site(cls, site: Optional[Site]) -> Optional["SubscriptionPage"]:
         """The live SubscriptionPage beneath the site's root page, or else any
         live one, for a site added after migration 0018 gave each site its own.
-        None if there is no live SubscriptionPage at all."""
-        pages = cls.objects.live().order_by("path")
+        None if there is no live SubscriptionPage at all.
+
+        Where several qualify, a page whose title starts with "unsubscribe" is
+        preferred, then one whose title starts with "subscri" (as in
+        "Subscriptions" or "Subscribe"), ignoring case. Between equally
+        preferred pages, the oldest wins. Wagtail records no creation time for
+        a page (first_published_at is null for pages that migrations create),
+        so the oldest is taken to be the one with the lowest ID, which
+        increases in the order that pages are created."""
+        pages = (
+            cls.objects.live()
+            .annotate(
+                title_preference=models.Case(
+                    models.When(title__istartswith="unsubscribe", then=models.Value(0)),
+                    models.When(title__istartswith="subscri", then=models.Value(1)),
+                    default=models.Value(2),
+                    output_field=models.IntegerField(),
+                )
+            )
+            .order_by("title_preference", "id")
+        )
         if site is not None:
             page = pages.descendant_of(site.root_page, inclusive=True).first()
             if page is not None:

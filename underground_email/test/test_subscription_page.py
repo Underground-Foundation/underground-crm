@@ -537,6 +537,69 @@ class SignupFieldTests(SubscriptionPageTestCase):
         self.assertFalse(SubscriptionPage.should_request_signup_fields)
 
 
+class ChoosingAmongSeveralPagesTests(SubscriptionPageTestCase):
+    """SubscriptionPage.for_site, when an editor has added more subscription
+    pages beside the one that migration 0018 created."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.site = Site.objects.get(is_default_site=True)
+        self.migrated_page = SubscriptionPage.objects.get()
+
+    def add_page(self, title: str, slug: str) -> SubscriptionPage:
+        page = SubscriptionPage(title=title, slug=slug)
+        self.site.root_page.add_child(instance=page)
+        return page
+
+    def rename_migrated_page(self, title: str) -> None:
+        self.migrated_page.title = title
+        self.migrated_page.save()
+
+    def test_a_page_titled_unsubscribe_is_preferred_to_older_pages(self) -> None:
+        self.rename_migrated_page("Manage your subscriptions")
+        unsubscription_page = self.add_page("Unsubscribe from Fusion emails", "leave")
+
+        self.assertEqual(SubscriptionPage.for_site(self.site), unsubscription_page)
+
+    def test_the_title_is_matched_regardless_of_case(self) -> None:
+        self.rename_migrated_page("Email preferences")
+        unsubscription_page = self.add_page("UNSUBSCRIBE", "leave")
+
+        self.assertEqual(SubscriptionPage.for_site(self.site), unsubscription_page)
+
+    def test_a_page_titled_subscriptions_is_preferred_to_one_titled_otherwise(self) -> None:
+        self.rename_migrated_page("Email preferences")
+        subscriptions_page = self.add_page("Subscriptions", "subscriptions")
+
+        self.assertEqual(SubscriptionPage.for_site(self.site), subscriptions_page)
+
+    def test_a_page_titled_unsubscribe_is_preferred_to_one_titled_subscriptions(self) -> None:
+        self.rename_migrated_page("Subscriptions")
+        unsubscription_page = self.add_page("Unsubscribe", "leave")
+
+        self.assertEqual(SubscriptionPage.for_site(self.site), unsubscription_page)
+
+    def test_among_equally_titled_pages_the_oldest_is_chosen(self) -> None:
+        self.rename_migrated_page("Unsubscribe")
+        self.add_page("Unsubscribe from the newsletter", "leave")
+
+        self.assertEqual(
+            SubscriptionPage.for_site(self.site),
+            self.migrated_page,
+            "Both titles start with 'Unsubscribe', so the page created first should win.",
+        )
+
+    def test_among_pages_titled_otherwise_the_oldest_is_chosen(self) -> None:
+        self.rename_migrated_page("Email preferences")
+        self.add_page("Stop hearing from us", "stop")
+
+        self.assertEqual(
+            SubscriptionPage.for_site(self.site),
+            self.migrated_page,
+            "Neither title is preferred, so the page created first should win.",
+        )
+
+
 class DepartureNotesTests(SubscriptionPageTestCase):
     def test_the_notes_box_is_offered_beneath_its_prompt(self) -> None:
         self.give_membership()
