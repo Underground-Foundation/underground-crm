@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     "phonenumber_field",
     # https://django-q2.readthedocs.io/en/master/install.html
     "django_q",
+    # The /health/ endpoint: https://codingjoe.dev/django-health-check/
+    "health_check",
     # Django REST framework
     "rest_framework",
     "rest_framework_simplejwt",

@@ -98,3 +98,11 @@ class PaymentPage(BasicPage):
         context["supported_countries"] = SUPPORTED_COUNTRIES
         context["redirect_url"] = self.redirect_to.url if self.redirect_to_id else ""
         return context
+
+    def _calculated_cache_time(self) -> int:
+        """Never cache by default, because the page differs per visitor: its
+        form carries a CSRF token, which is valid only alongside the cookie of
+        the visitor that it was issued to, and it pre-fills a logged-in
+        visitor's email address. A cached copy would serve one visitor's page
+        to the next. Editors can still set cache_ttl_override."""
+        return 0

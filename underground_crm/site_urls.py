@@ -14,9 +14,12 @@ from wagtail.contrib.sitemaps.views import sitemap
 from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
+from underground_crm.views.health import health_check_view
 from underground_crm.views.robots_txt import robots_txt_view
 
 urlpatterns = [
+    # django-health-check's management command finds the endpoint by reversing this name.
+    path("health/", health_check_view, name="health_check"),
     # robots.txt advertises the sitemap by reversing this name (ROBOTS_SITEMAP_VIEW_NAME).
     path("sitemap.xml", sitemap, name="sitemap"),
     path("robots.txt", robots_txt_view, name="robots_rule_list"),
