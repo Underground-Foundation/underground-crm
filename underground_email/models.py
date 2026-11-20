@@ -395,12 +395,6 @@ class SubscriptionPage(FormPage):
 
         return SubscriptionForm
 
-    def _calculated_cache_time(self) -> int:
-        """Never cache by default, because the page lists the visitor's own
-        memberships and subscriptions. Editors can still set
-        cache_ttl_override."""
-        return 0
-
 
 class SubscriptionPageSubmission(FormSubmission):
     """

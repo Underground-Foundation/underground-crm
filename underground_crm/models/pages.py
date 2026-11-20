@@ -485,6 +485,17 @@ class FormServingPage(PageWithMetadata):
         context["submitted"] = submitted
         return context
 
+    def _calculated_cache_time(self) -> int:
+        """Never cache by default, because the page differs per visitor. Its
+        form carries a CSRF token, which is valid only alongside the cookie of
+        the visitor that it was issued to; an anonymous visitor is asked for
+        their name and email address, which a logged-in visitor is not; and
+        subclasses add more of the visitor's own details (a RegistrationPage
+        pre-fills their answers, a SubscriptionPage lists their memberships and
+        subscriptions). A cached copy would serve one visitor's page to the
+        next. Editors can still set cache_ttl_override."""
+        return 0
+
 
 class FormPage(FormServingPage):
     """
@@ -673,13 +684,6 @@ class RegistrationPage(FormServingPage):
         context = super().get_context(request, *args, **kwargs)
         context["offers_membership"] = self.offers_membership_to(request.user)
         return context
-
-    def _calculated_cache_time(self) -> int:
-        """Never cache by default, because the page differs per visitor: a
-        logged-in visitor sees their own answers pre-filled, and an anonymous
-        one is prompted to log in. A cached copy would show one visitor's
-        details to the next. Editors can still set cache_ttl_override."""
-        return 0
 
 
 class RegistrationPageTag(TaggedItemBase):

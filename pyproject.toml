@@ -25,6 +25,9 @@ dependencies = [
     # silent degradation exactly when a failure is being investigated. A major-version bump
     # should be a deliberate step that re-runs test_error_reporting.py's canary.
     "django-q2>=1.10,<2",
+    # The /health/ endpoint. 4.x replaced settings-based configuration with arguments to
+    # HealthCheckView, which underground_crm/views/health.py subclasses.
+    "django-health-check>=4.8,<5",
     "django-phonenumber-field[phonenumbers]",
     # underground_crm/management/commands/import_pages.py and legacy_html.py parse
     # legacy CMS HTML with this unconditionally at import time, so it has to be a
