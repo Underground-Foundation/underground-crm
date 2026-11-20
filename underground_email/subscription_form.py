@@ -160,8 +160,8 @@ class SubscriptionForm(FormSubmissionForm):
             # subscriptions.
             raise forms.ValidationError(
                 _(
-                    "Please follow the unsubscription link in one of our emails, or log in, "
-                    "to manage your memberships and subscriptions."
+                    "Please log in or follow the unsubscription link from your email in order to manage your "
+                    "memberships and subscriptions."
                 )
             )
         if not self.is_identified_by_token:
