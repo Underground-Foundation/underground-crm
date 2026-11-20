@@ -1,8 +1,8 @@
 """
-Give every site an UnsubscriptionPage, beneath its root page.
+Give every site a SubscriptionPage, beneath its root page.
 
 Every installation needs one, because the link at the foot of each campaign
-email leads to it (at /unsubscribe). We have such a page, rather than
+email leads to it (at /subscriptions). We have such a page, rather than
 unsubscribing people as soon as they follow that link, to get around
 over-eager email clients and security scanners, which follow the links in a
 message before its recipient has read it.
@@ -19,8 +19,8 @@ from django.utils import timezone
 PATH_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 PATH_STEP_LENGTH = 4
 
-PAGE_TITLE = "Unsubscribe"
-PAGE_SLUG = "unsubscribe"
+PAGE_TITLE = "Subscriptions"
+PAGE_SLUG = "subscriptions"
 
 
 def _encode_path_step(number: int) -> str:
@@ -64,14 +64,14 @@ def _free_slug(Page, parent) -> str:
     return slug
 
 
-def create_unsubscription_pages(apps, schema_editor) -> None:
+def create_subscription_pages(apps, schema_editor) -> None:
     ContentType = apps.get_model("contenttypes", "ContentType")
     Page = apps.get_model("wagtailcore", "Page")
     Site = apps.get_model("wagtailcore", "Site")
-    UnsubscriptionPage = apps.get_model("underground_email", "UnsubscriptionPage")
+    SubscriptionPage = apps.get_model("underground_email", "SubscriptionPage")
 
     content_type, _created = ContentType.objects.get_or_create(
-        app_label="underground_email", model="unsubscriptionpage"
+        app_label="underground_email", model="subscriptionpage"
     )
     now = timezone.now()
     for site in Site.objects.select_related("root_page"):
@@ -82,7 +82,7 @@ def create_unsubscription_pages(apps, schema_editor) -> None:
         if already_has_one:
             continue
         slug = _free_slug(Page, root)
-        UnsubscriptionPage.objects.create(
+        SubscriptionPage.objects.create(
             title=PAGE_TITLE,
             draft_title=PAGE_TITLE,
             seo_title=PAGE_TITLE,
@@ -102,10 +102,10 @@ def create_unsubscription_pages(apps, schema_editor) -> None:
         Page.objects.filter(pk=root.pk).update(numchild=root.numchild + 1)
 
 
-def delete_unsubscription_pages(apps, schema_editor) -> None:
+def delete_subscription_pages(apps, schema_editor) -> None:
     Page = apps.get_model("wagtailcore", "Page")
-    UnsubscriptionPage = apps.get_model("underground_email", "UnsubscriptionPage")
-    for page in UnsubscriptionPage.objects.all():
+    SubscriptionPage = apps.get_model("underground_email", "SubscriptionPage")
+    for page in SubscriptionPage.objects.all():
         parent_path = page.path[:-PATH_STEP_LENGTH]
         # Deleting the page deletes the rows of its FormPage and Page ancestors too.
         page.delete()
@@ -120,9 +120,9 @@ class Migration(migrations.Migration):
         # The default site and its root page are created by 0002; pages have
         # had a required locale since 0057.
         ("wagtailcore", "0057_page_locale_fields_notnull"),
-        ("underground_email", "0017_unsubscription_page"),
+        ("underground_email", "0017_subscription_page"),
     ]
 
     operations = [
-        migrations.RunPython(create_unsubscription_pages, delete_unsubscription_pages),
+        migrations.RunPython(create_subscription_pages, delete_subscription_pages),
     ]

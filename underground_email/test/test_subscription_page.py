@@ -54,7 +54,7 @@ NOT_A_MEMBER_TEXT = "You are not a member."
 NOT_SUBSCRIBED_TEXT = "You are not subscribed to the newsletter."
 INVALID_LINK_TEXT = "This unsubscription link is not valid."
 SUBMIT_BUTTON_TEXT = "Update subscriptions"
-# Where links in emails sent before the page was renamed lead.
+# Where links in emails sent before the page existed lead.
 OLD_UNSUBSCRIPTION_PATH = "/unsubscribe"
 
 

@@ -1,7 +1,7 @@
 """
-Redirect /unsubscribe, the address of the subscription page before it was
-renamed (and of the view that preceded the page), to /subscriptions, so that
-the links in emails already sent still lead somewhere. The redirect applies to
+Redirect /unsubscribe, the address of the view that preceded the subscription
+page, to /subscriptions, so that the links in emails already sent still lead
+somewhere. The redirect applies to
 every site, and is permanent.
 
 Wagtail's RedirectMiddleware only acts on requests that would otherwise be
@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("wagtailredirects", "0006_redirect_increase_max_length"),
-        ("underground_email", "0019_rename_unsubscriptionpage_subscriptionpage"),
+        ("underground_email", "0018_create_subscription_pages"),
     ]
 
     operations = [
