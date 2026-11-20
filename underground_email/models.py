@@ -327,62 +327,47 @@ class EmailCampaign(PreviewableMixin, models.Model):
 
 class UnsubscriptionPage(FormPage):
     """
-    The page on which a person manages what they receive from us: it lists
-    their current memberships and those of their tags named in
-    SELF_QUERYABLE_TAGS, each with a button to cancel or remove it. Being a
-    FormPage, it may also ask questions (such as why they are leaving).
+    The page on which a person unsubscribes from what we send them. Its form
+    (see underground_email.unsubscription_form.UnsubscriptionForm) lists their
+    current memberships and their tags named in SELF_QUERYABLE_TAGS, each with a
+    ticked checkbox; unticking a box and pressing "Unsubscribe" cancels that
+    membership or removes that tag. Being a FormPage, it may also ask questions
+    (such as why they are leaving).
 
-    The page is always served at /unsubscribe, by
-    underground_email.views.email_click_handler.unsubscription_view, wherever it
-    sits in the page tree, because that is the address that the links in our
-    emails point to. That view also works out whom the page is about — the
-    person named by the signed token in an email's link, or else the person who
-    is logged in — and passes them to serve() as `visitor`. A request that
-    reaches the page through its place in the tree is redirected to /unsubscribe.
+    The page exists, rather than people being unsubscribed as soon as they
+    follow the link at the foot of an email, to get around over-eager email
+    clients and security scanners, which follow the links in a message before
+    its recipient has read it. Following the link only shows this page, with the
+    link's signed token carried in a hidden field of the form; nothing changes
+    until somebody submits it.
+
+    Every site is given one of these pages by migration 0018, and it is always
+    served at /unsubscribe (by underground_email.views.email_click_handler.
+    unsubscription_view), wherever it sits in the page tree, because that is
+    the address that the links in our emails point to. A request that reaches
+    the page through its place in the tree is redirected there.
     """
 
     is_creatable = True
     subpage_types: list[str] = []
     template = "underground_email/pages/unsubscription_page.html"
 
-    # The value of the "action" field of the page's own buttons. A POST
-    # carrying one of these is a button press, not an answer to the page's form.
-    REMOVE_TAG_ACTION = "remove_tag"
-    CANCEL_MEMBERSHIP_ACTION = "cancel_membership"
-    ACTIONS = (REMOVE_TAG_ACTION, CANCEL_MEMBERSHIP_ACTION)
-
     class Meta:
         verbose_name = _("Unsubscription Page")
 
-    def serve(self, request: HttpRequest, *args, visitor=None, **kwargs) -> HttpResponse:
+    def serve(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
         unsubscription_path = reverse("unsubscribe")
         if request.path != unsubscription_path:
             query_string = request.META.get("QUERY_STRING", "")
             return redirect(
                 f"{unsubscription_path}?{query_string}" if query_string else unsubscription_path
             )
-        return super().serve(request, *args, visitor=visitor, **kwargs)
+        return super().serve(request, *args, **kwargs)
 
-    def get_preview_context(self, request: HttpRequest, mode_name: str) -> dict:
-        # An editor previewing the page sees it as it would appear to them.
-        return self.get_context(request, visitor=request.user)
+    def get_submission_form_class(self):
+        from underground_email.unsubscription_form import UnsubscriptionForm
 
-    def is_form_submission(self, request: HttpRequest) -> bool:
-        return (
-            super().is_form_submission(request) and request.POST.get("action") not in self.ACTIONS
-        )
-
-    def get_context(self, request: HttpRequest, *args, visitor=None, **kwargs) -> dict:
-        context = super().get_context(request, *args, **kwargs)
-        context["visitor"] = visitor
-        if visitor is not None:
-            context["memberships"] = list(
-                visitor.memberships.current().select_related("type").order_by("type__name")
-            )
-            context["subscribed_tags"] = list(
-                visitor.tags.filter(name__in=settings.SELF_QUERYABLE_TAGS).order_by("name")
-            )
-        return context
+        return UnsubscriptionForm
 
     def _calculated_cache_time(self) -> int:
         """Never cache by default, because the page lists the visitor's own

@@ -468,18 +468,12 @@ class FormServingPage(PageWithMetadata):
 
         return FormSubmissionForm
 
-    def is_form_submission(self, request: HttpRequest) -> bool:
-        """Whether the request submits this page's form. Overridable so that a
-        page can carry other POST forms of its own (e.g. UnsubscriptionPage's
-        buttons) without their requests being validated as answers."""
-        return request.method == "POST"
-
     def get_context(self, request, *args, **kwargs):
         form_class = self.get_submission_form_class()
 
         context = super().get_context(request, *args, **kwargs)
         submitted = False
-        if self.is_form_submission(request):
+        if request.method == "POST":
             form = form_class(request.POST, request=request, page=self)
             if form.is_valid():
                 form.save()

@@ -13,3 +13,9 @@ class UndergroundCrmConfig(AppConfig):
         )  # pylint: disable=import-outside-toplevel
 
         patch_page_routing()
+
+        from underground_crm.fixture_locale import (  # pylint: disable=import-outside-toplevel
+            narrow_wagtail_locale_receiver,
+        )
+
+        narrow_wagtail_locale_receiver()

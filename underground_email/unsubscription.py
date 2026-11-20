@@ -1,18 +1,27 @@
+"""
+Unsubscription from our emails.
+
+Each campaign email carries a link to the UnsubscriptionPage at /unsubscribe,
+with a signed token naming its recipient (see make_unsubscription_url). We have
+an unsubscription page, rather than unsubscribing people as soon as they follow
+that link, to get around over-eager email clients and security scanners, which
+follow the links in a message before its recipient has read it. Following the
+link only shows the page; people unsubscribe by submitting its form (see
+underground_email.unsubscription_form), which uses the functions below.
+"""
+
 import logging
 import uuid
 from typing import Optional
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.core import signing
-from django.utils import timezone
+from django.db.models import QuerySet
 
 from underground_crm.models import Engagement
 from underground_crm.models.membership import Membership
 from underground_crm.models.person import PersonTag, Tag
 from underground_email import app_settings
-from underground_email.models import EmailCampaign
-from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +47,7 @@ def generate_unsubscription_signature(email_address: str, utm_id: str) -> str:
 
 
 def decode_unsubscription_token(token: str) -> tuple[str, str]:
-    """Decode and verify a signed token produced by make_unsubscribe_token.
+    """Decode and verify a signed token produced by generate_unsubscription_signature.
 
     Returns (email, utm_id). Raises signing.BadSignature if the token's signature doesn't match.
     """
@@ -47,75 +56,18 @@ def decode_unsubscription_token(token: str) -> tuple[str, str]:
 
 
 def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, root_url: str) -> str:
-    """Build the absolute unsubscribe URL to embed in an outgoing email."""
+    """Build the absolute URL of the unsubscription page to embed in an outgoing email.
+
+    Following it changes nothing by itself (see this module's docstring).
+    """
     signature = generate_unsubscription_signature(email_address=person.email, utm_id=utm_id)
     return f"{root_url}/unsubscribe?utm_campaign={utm_id}&address={signature}"
 
 
-def unsubscribe_from_tag_via_email_campaign(
-    utm_campaign_id: str, email_address: str
-) -> Optional[str]:
-    """Record the unsubscription for the person with the given email address.
-
-    If the campaign has an unsubscription tag, only that tag is removed from the
-    person's profile. Without one, the person is marked as fully unsubscribed
-    from all email (a much more drastic action, logged accordingly).
-
-    Returns the tag for which users shall no longer receive emails (or None, if they have subscribed from all emails)
-    """
-    User = get_user_model()
-    try:
-        person = User.objects.get(email=email_address)
-    except User.DoesNotExist:
-        logger.warning("Unsubscription failed for %s", email_address)
-        raise ValueError(
-            _("No current user found with email address %(email)s") % {"email": email_address}
-        )
-    if person.unsubscribed_at:
-        logger.info("%s has already unsubscribed", email_address)
-        return None
-
-    campaign = EmailCampaign.objects.select_related("unsubscription_tag").get(
-        utm_id=utm_campaign_id
-    )
-    # Maybe we should reject the unsubscription request if it comes from a very old email.
-
-    Engagement(
-        person=person,
-        action_type=Engagement.UNSUBSCRIBED,
-        page_title=campaign.subject,
-        metadata={"campaign_utm_id": utm_campaign_id},
-    ).save()
-    campaign.unsubscription_count = (campaign.unsubscription_count or 0) + 1
-    campaign.save(update_fields=["unsubscription_count"])
-
-    if campaign.unsubscription_tag:
-        try:
-            person_tag = PersonTag.objects.get(
-                tag=campaign.unsubscription_tag, content_object=person
-            )
-        except PersonTag.DoesNotExist:
-            logger.info(
-                "%s was not tagged with '%s'; unsubscription is already effective.",
-                person,
-                campaign.unsubscription_tag,
-            )
-        else:
-            person_tag.delete()
-        return campaign.unsubscription_tag.name
-    else:
-        logger.warning(
-            "%s is unsubscribing from all future emails after receiving campaign %s (%s).",
-            person,
-            utm_campaign_id,
-            campaign.subject,
-        )
-        person.unsubscribed_at = timezone.now()
-        person.is_supporter = False
-        person.is_prospect = False
-        person.is_active = False  # Party members are required to receive some emails
-        person.save(update_fields=["unsubscribed_at", "is_supporter", "is_prospect", "is_active"])
-    return None
+def self_queryable_tags_of(person: settings.AUTH_USER_MODEL) -> QuerySet[Tag]:
+    """The person's tags that are named in SELF_QUERYABLE_TAGS, which are the
+    only ones a person is ever shown; the rest are for staff."""
+    return person.tags.filter(name__in=settings.SELF_QUERYABLE_TAGS).order_by("name")
 
 
 def remove_self_queryable_tag(
