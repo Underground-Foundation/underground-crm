@@ -325,49 +325,53 @@ class EmailCampaign(PreviewableMixin, models.Model):
         return context
 
 
-class UnsubscriptionPage(FormPage):
+class SubscriptionPage(FormPage):
     """
-    The page on which a person unsubscribes from what we send them. Its form
-    (see underground_email.unsubscription_form.UnsubscriptionForm) lists their
-    current memberships and their tags named in SELF_QUERYABLE_TAGS, each with a
-    ticked checkbox; unticking a box and pressing "Unsubscribe" cancels that
-    membership or removes that tag. Being a FormPage, it may also ask questions
-    (such as why they are leaving).
+    The page on which a person manages what they receive from us. Its form
+    (see underground_email.subscription_form.SubscriptionForm) lists their
+    current memberships, each with a ticked checkbox, and every tag named in
+    SELF_QUERYABLE_TAGS, ticked if they hold it. Unticking a membership cancels
+    it; ticking or unticking a tag subscribes or unsubscribes them. Being a
+    FormPage, it may also ask questions (such as why they are leaving).
 
-    The page exists, rather than people being unsubscribed as soon as they
-    follow the link at the foot of an email, to get around over-eager email
-    clients and security scanners, which follow the links in a message before
-    its recipient has read it. Following the link only shows this page, with the
-    link's signed token carried in a hidden field of the form; nothing changes
-    until somebody submits it.
+    The link at the foot of each campaign email leads here. We have this page,
+    rather than unsubscribing people as soon as they follow that link, to get
+    around over-eager email clients and security scanners, which follow the
+    links in a message before its recipient has read it. Following the link
+    only shows this page, with the link's signed token carried in a hidden
+    field of the form; nothing changes until somebody submits it.
+
+    The visitor is identified by their login or by that token, never by an
+    email address and name typed into the form, which would let anybody manage
+    anybody else's subscriptions; hence should_request_signup_fields is off.
 
     Every site is given one of these pages by migration 0018, and it is always
-    served at /unsubscribe (by underground_email.views.email_click_handler.
-    unsubscription_view), wherever it sits in the page tree, because that is
-    the address that the links in our emails point to. A request that reaches
-    the page through its place in the tree is redirected there.
+    served at /subscriptions (by underground_email.views.email_click_handler.
+    subscriptions_view), wherever it sits in the page tree. A request that
+    reaches the page through its place in the tree is redirected there.
     """
 
     is_creatable = True
     subpage_types: list[str] = []
-    template = "underground_email/pages/unsubscription_page.html"
+    template = "underground_email/pages/subscription_page.html"
+    should_request_signup_fields = False
 
     class Meta:
-        verbose_name = _("Unsubscription Page")
+        verbose_name = _("Subscription Page")
 
     def serve(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        unsubscription_path = reverse("unsubscribe")
-        if request.path != unsubscription_path:
+        subscriptions_path = reverse("subscriptions")
+        if request.path != subscriptions_path:
             query_string = request.META.get("QUERY_STRING", "")
             return redirect(
-                f"{unsubscription_path}?{query_string}" if query_string else unsubscription_path
+                f"{subscriptions_path}?{query_string}" if query_string else subscriptions_path
             )
         return super().serve(request, *args, **kwargs)
 
     def get_submission_form_class(self):
-        from underground_email.unsubscription_form import UnsubscriptionForm
+        from underground_email.subscription_form import SubscriptionForm
 
-        return UnsubscriptionForm
+        return SubscriptionForm
 
     def _calculated_cache_time(self) -> int:
         """Never cache by default, because the page lists the visitor's own

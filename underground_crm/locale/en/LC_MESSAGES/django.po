@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 14:19+1100\n"
+"POT-Creation-Date: 2026-11-20 14:38+1100\n"
 "PO-Revision-Date: 2026-06-13 00:00+1000\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -33,7 +33,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: admin.py:255 models/filter.py:89 models/pages.py:607
+#: admin.py:255 models/filter.py:89 models/pages.py:613
 msgid "Membership"
 msgstr ""
 
@@ -221,7 +221,7 @@ msgstr ""
 msgid "This account has been deactivated."
 msgstr ""
 
-#: forms/event_guest.py:21 models/pages.py:1107
+#: forms/event_guest.py:21 models/pages.py:1113
 msgid "How many guests will be accompanying you?"
 msgstr ""
 
@@ -244,7 +244,11 @@ msgstr ""
 msgid "Last name"
 msgstr ""
 
-#: forms/form_submission.py:248 forms/registration.py:386
+#: forms/form_submission.py:255
+msgid "Please log in to submit this form."
+msgstr ""
+
+#: forms/form_submission.py:259 forms/registration.py:386
 #: views/subscribe.py:107
 msgid "Email address is required."
 msgstr ""
@@ -665,25 +669,25 @@ msgid ""
 "beneath this page's own URL as usual."
 msgstr ""
 
-#: models/pages.py:344 models/pages.py:532 models/pages.py:626
-#: models/pages.py:710 models/pages.py:854 models/pages.py:980
-#: models/pages.py:1041
+#: models/pages.py:344 models/pages.py:538 models/pages.py:632
+#: models/pages.py:716 models/pages.py:860 models/pages.py:986
+#: models/pages.py:1047
 msgid "Content"
 msgstr ""
 
-#: models/pages.py:345 models/pages.py:533 models/pages.py:627
-#: models/pages.py:711 models/pages.py:855 models/pages.py:981
-#: models/pages.py:1042
+#: models/pages.py:345 models/pages.py:539 models/pages.py:633
+#: models/pages.py:717 models/pages.py:861 models/pages.py:987
+#: models/pages.py:1048
 msgid "Metadata"
 msgstr ""
 
-#: models/pages.py:346 models/pages.py:534 models/pages.py:628
-#: models/pages.py:712 models/pages.py:856 models/pages.py:982
-#: models/pages.py:1043
+#: models/pages.py:346 models/pages.py:540 models/pages.py:634
+#: models/pages.py:718 models/pages.py:862 models/pages.py:988
+#: models/pages.py:1049
 msgid "Visibility"
 msgstr ""
 
-#: models/pages.py:351 models/pages.py:717
+#: models/pages.py:351 models/pages.py:723
 msgid "Basic Page"
 msgstr ""
 
@@ -739,86 +743,86 @@ msgstr ""
 msgid "Date and time"
 msgstr ""
 
-#: models/pages.py:521
+#: models/pages.py:527
 msgid "Tags to apply on submission"
 msgstr ""
 
-#: models/pages.py:522
+#: models/pages.py:528
 msgid ""
 "Applied to the submitting Person's record. Authenticated submissions only."
 msgstr ""
 
-#: models/pages.py:539
+#: models/pages.py:545
 msgid "Form Page"
 msgstr ""
 
-#: models/pages.py:602
+#: models/pages.py:608
 msgid "Tags to apply on registration"
 msgstr ""
 
-#: models/pages.py:603
+#: models/pages.py:609
 msgid "Applied to the registering Person's record."
 msgstr ""
 
-#: models/pages.py:613
+#: models/pages.py:619
 msgid ""
 "Granted to the registering Person on submission, unless they already hold "
 "one of this type (active or not)."
 msgstr ""
 
-#: models/pages.py:633
+#: models/pages.py:639
 msgid "Registration Page"
 msgstr ""
 
-#: models/pages.py:699
+#: models/pages.py:705
 msgid "Show the table-of-contents sidebar for this page."
 msgstr ""
 
-#: models/pages.py:700
+#: models/pages.py:706
 msgid "Show table of contents"
 msgstr ""
 
-#: models/pages.py:822
+#: models/pages.py:828
 msgid "Newest first (blog)"
 msgstr ""
 
-#: models/pages.py:823
+#: models/pages.py:829
 msgid "Soonest first, upcoming only (events)"
 msgstr ""
 
-#: models/pages.py:830
+#: models/pages.py:836
 msgid "Number of items to display per page."
 msgstr ""
 
-#: models/pages.py:837
+#: models/pages.py:843
 msgid ""
 "Newest first lists items by publication date, like a blog. Soonest first "
 "lists only items dated in the future, like an events calendar."
 msgstr ""
 
-#: models/pages.py:847
+#: models/pages.py:853
 msgid "External feed subscriptions"
 msgstr ""
 
-#: models/pages.py:848
+#: models/pages.py:854
 msgid "Subscription"
 msgstr ""
 
-#: models/pages.py:861
+#: models/pages.py:867
 msgid "Feed Page"
 msgstr ""
 
-#: models/pages.py:964 models/pages.py:975
+#: models/pages.py:970 models/pages.py:981
 msgid "Author"
 msgstr ""
 
-#: models/pages.py:1028
+#: models/pages.py:1034
 msgid ""
 "This is updated automatically. It is only defined as a field so we can "
 "migrate legacy events seamlessly."
 msgstr ""
 
-#: models/pages.py:1106
+#: models/pages.py:1112
 msgid "Extra guests"
 msgstr ""
 

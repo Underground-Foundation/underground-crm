@@ -509,6 +509,12 @@ class FormPage(FormServingPage):
 
     is_creatable = True
 
+    # Whether a visitor who is not logged in is asked for their email address
+    # and name, so that their answers can be filed under a Person (see
+    # FormSubmissionForm). A page that identifies its visitors some other way,
+    # such as SubscriptionPage, turns this off.
+    should_request_signup_fields: bool = True
+
     body = DeclaredBlocksStreamField(
         FORM_PAGE_BLOCKS,
         use_json_field=True,

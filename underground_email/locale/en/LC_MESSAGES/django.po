@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 14:19+1100\n"
+"POT-Creation-Date: 2026-11-20 14:38+1100\n"
 "PO-Revision-Date: 2026-11-20 00:00+1100\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -180,8 +180,44 @@ msgstr ""
 msgid "smtp2go template ID"
 msgstr ""
 
-#: models.py:356
-msgid "Unsubscription Page"
+#: models.py:360
+msgid "Subscription Page"
+msgstr ""
+
+#: subscription_form.py:50
+#, python-format
+msgid "%(membership_type)s (awaiting approval)"
+msgstr ""
+
+#: subscription_form.py:82
+#: templates/underground_email/pages/subscription_page.html:41
+msgid "Your memberships"
+msgstr ""
+
+#: subscription_form.py:88
+#: templates/underground_email/pages/subscription_page.html:48
+msgid "Your subscriptions"
+msgstr ""
+
+#: subscription_form.py:163
+msgid ""
+"Please follow the unsubscription link in one of our emails, or log in, to "
+"manage your memberships and subscriptions."
+msgstr ""
+
+#: subscription_form.py:218
+#, python-format
+msgid "Your %(membership_type)s membership has been cancelled."
+msgstr ""
+
+#: subscription_form.py:224
+#, python-format
+msgid "You will no longer receive %(tag)s emails."
+msgstr ""
+
+#: subscription_form.py:229
+#, python-format
+msgid "You will now receive %(tag)s emails."
 msgstr ""
 
 #: templates/underground_email/bulk_actions/confirm_cancel.html:7
@@ -222,43 +258,33 @@ msgid ""
 "will be skipped."
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:27
+#: templates/underground_email/pages/subscription_page.html:28
 msgid ""
 "This unsubscription link is not valid. Please follow the link in one of our "
 "emails again, or log in."
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:31
-#: templates/underground_email/pages/unsubscription_page.html:33
+#: templates/underground_email/pages/subscription_page.html:32
+#: templates/underground_email/pages/subscription_page.html:34
 msgid "Log in"
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:32
+#: templates/underground_email/pages/subscription_page.html:33
 msgid ""
 "Please follow the unsubscription link in one of our emails, or log in, to "
 "see your memberships and subscriptions."
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:40
-#: unsubscription_form.py:77
-msgid "Your memberships"
-msgstr ""
-
-#: templates/underground_email/pages/unsubscription_page.html:44
+#: templates/underground_email/pages/subscription_page.html:45
 msgid "You are not a member."
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:47
-#: unsubscription_form.py:83
-msgid "Your subscriptions"
-msgstr ""
-
-#: templates/underground_email/pages/unsubscription_page.html:51
+#: templates/underground_email/pages/subscription_page.html:50
 msgid "You are not subscribed to the newsletter."
 msgstr ""
 
-#: templates/underground_email/pages/unsubscription_page.html:58
-msgid "Unsubscribe"
+#: templates/underground_email/pages/subscription_page.html:59
+msgid "Update subscriptions"
 msgstr ""
 
 #: templates/wagtailsnippets/bulk_actions/confirm_bulk_action.html:20
@@ -267,27 +293,6 @@ msgstr ""
 
 #: templates/wagtailsnippets/bulk_actions/confirm_bulk_action.html:21
 msgid "Go back"
-msgstr ""
-
-#: unsubscription_form.py:47
-#, python-format
-msgid "%(membership_type)s (awaiting approval)"
-msgstr ""
-
-#: unsubscription_form.py:158
-msgid ""
-"Please follow the unsubscription link in one of our emails, or log in, to "
-"manage your memberships and subscriptions."
-msgstr ""
-
-#: unsubscription_form.py:197
-#, python-format
-msgid "Your %(membership_type)s membership has been cancelled."
-msgstr ""
-
-#: unsubscription_form.py:203
-#, python-format
-msgid "You will no longer receive %(tag)s emails."
 msgstr ""
 
 #: wagtail_hooks.py:51

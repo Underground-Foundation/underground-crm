@@ -1,12 +1,13 @@
 """
-Tests for the UnsubscriptionPage served at /unsubscribe.
+Tests for the SubscriptionPage served at /subscriptions.
 
-The page is about whoever the signed token in an email's unsubscription link
-names, or else whoever is logged in. Its form lists their current memberships
-and those of their tags named in SELF_QUERYABLE_TAGS, each with a ticked
-checkbox; submitting it with a box unticked cancels that membership or removes
-that tag. Following the link changes nothing by itself, because over-eager
-email clients follow links that nobody clicked.
+The page is about whoever is logged in, or else whoever the signed token in an
+email's unsubscription link names. Its form lists their current memberships,
+each with a ticked checkbox, and every tag named in SELF_QUERYABLE_TAGS, ticked
+if they hold it. Submitting it with a membership unticked cancels it; ticking
+or unticking a tag subscribes or unsubscribes them. Following the link changes
+nothing by itself, because over-eager email clients follow links that nobody
+clicked.
 
 Every site is given the page by migration 0018, so these tests use the page
 that the migrated test database already has, rather than creating one.
@@ -30,9 +31,10 @@ from underground_crm.models import Engagement, PeopleFilter
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership, MembershipType
 from underground_crm.models.person import Tag
-from underground_email.models import EmailCampaign, EmailSender, UnsubscriptionPage
+from underground_crm.models.pages import FormPage
+from underground_email.models import EmailCampaign, EmailSender, SubscriptionPage
 from underground_email.unsubscription import generate_unsubscription_signature
-from underground_email.unsubscription_form import TOKEN_FIELD_NAME
+from underground_email.subscription_form import TOKEN_FIELD_NAME
 
 Person = get_user_model()
 
@@ -51,13 +53,15 @@ PAST_EXPIRY = timezone.localdate() - datetime.timedelta(days=30)
 NOT_A_MEMBER_TEXT = "You are not a member."
 NOT_SUBSCRIBED_TEXT = "You are not subscribed to the newsletter."
 INVALID_LINK_TEXT = "This unsubscription link is not valid."
-UNSUBSCRIBE_BUTTON_TEXT = "Unsubscribe"
+SUBMIT_BUTTON_TEXT = "Update subscriptions"
+# Where links in emails sent before the page was renamed lead.
+OLD_UNSUBSCRIPTION_PATH = "/unsubscribe"
 
 
 @override_settings(SELF_QUERYABLE_TAGS=SELF_QUERYABLE_TAG_NAMES)
-class UnsubscriptionPageTestCase(django.test.TestCase):
+class SubscriptionPageTestCase(django.test.TestCase):
     def setUp(self) -> None:
-        self.url = reverse("unsubscribe")
+        self.url = reverse("subscriptions")
         self.newsletter = Tag.objects.create(name=NEWSLETTER_TAG_NAME)
         self.press_releases = Tag.objects.create(name=PRESS_RELEASES_TAG_NAME)
         self.staff_only_tag = Tag.objects.create(name=STAFF_ONLY_TAG_NAME)
@@ -99,14 +103,14 @@ class UnsubscriptionPageTestCase(django.test.TestCase):
         return f"{self.url}?{TOKEN_FIELD_NAME}={token}"
 
 
-class MigrationTests(UnsubscriptionPageTestCase):
-    def test_every_site_is_given_a_live_unsubscription_page(self) -> None:
+class MigrationTests(SubscriptionPageTestCase):
+    def test_every_site_is_given_a_live_subscription_page(self) -> None:
         for site in Site.objects.all():
             self.assertTrue(
-                UnsubscriptionPage.objects.live()
+                SubscriptionPage.objects.live()
                 .descendant_of(site.root_page, inclusive=True)
                 .exists(),
-                f"Migration 0018 should have given {site} an unsubscription page.",
+                f"Migration 0018 should have given {site} a subscription page.",
             )
 
     def test_the_page_tree_is_intact(self) -> None:
@@ -115,8 +119,8 @@ class MigrationTests(UnsubscriptionPageTestCase):
         problems = Page.find_problems()
         self.assertFalse(any(problems), f"Treebeard found problems in the page tree: {problems}")
 
-    def test_the_page_s_place_in_the_tree_redirects_to_the_unsubscription_url(self) -> None:
-        page = UnsubscriptionPage.objects.get()
+    def test_the_page_s_place_in_the_tree_redirects_to_the_subscriptions_url(self) -> None:
+        page = SubscriptionPage.objects.get()
         query_string = f"{TOKEN_FIELD_NAME}=signed-token"
 
         response = self.client.get(f"{page.url}?{query_string}")
@@ -124,7 +128,7 @@ class MigrationTests(UnsubscriptionPageTestCase):
         self.assertRedirects(response, f"{self.url}?{query_string}", fetch_redirect_response=False)
 
 
-class ListingTests(UnsubscriptionPageTestCase):
+class ListingTests(SubscriptionPageTestCase):
     def test_a_member_sees_their_membership_and_self_queryable_tags_ticked(self) -> None:
         membership = self.give_membership()
         self.member.tags.add(self.newsletter, self.staff_only_tag)
@@ -145,7 +149,7 @@ class ListingTests(UnsubscriptionPageTestCase):
         )
         self.assertNotContains(response, NOT_A_MEMBER_TEXT)
         self.assertNotContains(response, NOT_SUBSCRIBED_TEXT)
-        self.assertContains(response, UNSUBSCRIBE_BUTTON_TEXT)
+        self.assertContains(response, SUBMIT_BUTTON_TEXT)
 
     def test_info_boxes_are_shown_to_someone_with_neither_memberships_nor_subscriptions(
         self,
@@ -198,7 +202,7 @@ class ListingTests(UnsubscriptionPageTestCase):
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
 
 
-class EmailLinkTests(UnsubscriptionPageTestCase):
+class EmailLinkTests(SubscriptionPageTestCase):
     def test_following_the_link_changes_nothing(self) -> None:
         # An over-eager email client or security scanner follows the link
         # before the recipient has read the email.
@@ -263,10 +267,14 @@ class EmailLinkTests(UnsubscriptionPageTestCase):
             1,
             "The one submission should be counted against the campaign whose link was followed.",
         )
-        self.assertNotContains(response, f'value="{self.newsletter.pk}"')
+        self.assertEqual(
+            list(response.context["form"]["tags"].value()),
+            [self.press_releases.pk],
+            "The page shown afterwards should have only the kept tag ticked.",
+        )
 
     def test_the_token_in_the_hidden_field_is_enough_to_identify_the_recipient(self) -> None:
-        # Posting to /unsubscribe without the query string shows that the
+        # Posting to /subscriptions without the query string shows that the
         # hidden field, not the address of the page, carries the token.
         membership = self.give_membership()
         token = self.token_for(self.make_campaign())
@@ -326,7 +334,7 @@ class EmailLinkTests(UnsubscriptionPageTestCase):
         )
 
 
-class LoggedInTests(UnsubscriptionPageTestCase):
+class LoggedInTests(SubscriptionPageTestCase):
     def test_unticking_a_membership_and_submitting_cancels_it(self) -> None:
         membership = self.give_membership()
         self.client.force_login(self.member)
@@ -357,7 +365,9 @@ class LoggedInTests(UnsubscriptionPageTestCase):
         membership.refresh_from_db()
         self.assertTrue(membership.is_current)
 
-    def test_an_anonymous_visitor_without_a_link_cannot_unsubscribe_anybody(self) -> None:
+    def test_an_anonymous_visitor_without_a_link_cannot_change_anybody_s_subscriptions(
+        self,
+    ) -> None:
         membership = self.give_membership()
 
         response = self.client.post(self.url, {"memberships": []})
@@ -410,3 +420,78 @@ class LoggedInTests(UnsubscriptionPageTestCase):
             1,
             "The token names the logged-in member, so it still says which campaign brought them.",
         )
+
+
+class SubscribingTests(SubscriptionPageTestCase):
+    def test_ticking_an_unticked_tag_subscribes_the_visitor(self) -> None:
+        self.member.tags.add(self.newsletter)
+        self.member.email_opt_in = False
+        self.member.save(update_fields=["email_opt_in"])
+        token = self.token_for(self.make_campaign())
+
+        response = self.client.get(self.email_link(token))
+        self.assertEqual(
+            list(response.context["form"]["tags"].value()),
+            [self.newsletter.pk],
+            "A tag the visitor does not hold is offered, unticked.",
+        )
+        self.assertContains(response, PRESS_RELEASES_TAG_NAME)
+
+        self.client.post(
+            self.url,
+            {
+                TOKEN_FIELD_NAME: token,
+                "tags": [str(self.newsletter.pk), str(self.press_releases.pk)],
+            },
+        )
+
+        self.assertEqual(
+            set(self.member.tags.values_list("name", flat=True)),
+            {NEWSLETTER_TAG_NAME, PRESS_RELEASES_TAG_NAME},
+        )
+        self.member.refresh_from_db()
+        self.assertTrue(
+            self.member.email_opt_in,
+            "Subscribing to a mailing list is asking for email, as on the subscription endpoint.",
+        )
+
+    def test_a_staff_only_tag_is_never_offered(self) -> None:
+        self.client.force_login(self.member)
+
+        response = self.client.post(self.url, {"tags": [str(self.staff_only_tag.pk)]})
+
+        self.assertTrue(response.context["form"].errors)
+        self.assertFalse(self.member.tags.filter(pk=self.staff_only_tag.pk).exists())
+
+    def test_the_not_subscribed_box_accompanies_the_tags_on_offer(self) -> None:
+        self.client.force_login(self.member)
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, NOT_SUBSCRIBED_TEXT)
+        self.assertContains(response, NEWSLETTER_TAG_NAME)
+
+
+class SignupFieldTests(SubscriptionPageTestCase):
+    def test_an_anonymous_visitor_is_never_asked_who_they_are(self) -> None:
+        response = self.client.get(self.url)
+
+        for field_name in ("email", "first_name", "last_name"):
+            self.assertNotIn(
+                field_name,
+                response.context["form"].fields,
+                "A typed address proves nothing, so the page must not ask for one.",
+            )
+
+    def test_an_ordinary_form_page_still_asks_anonymous_visitors_who_they_are(self) -> None:
+        self.assertTrue(FormPage.should_request_signup_fields)
+        self.assertFalse(SubscriptionPage.should_request_signup_fields)
+
+
+class OldAddressTests(SubscriptionPageTestCase):
+    def test_the_old_unsubscription_address_redirects_to_the_subscriptions_page(self) -> None:
+        response = self.client.get(OLD_UNSUBSCRIPTION_PATH, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.redirect_chain[-1][0], self.url)
+        self.assertIsInstance(response.context["page"], SubscriptionPage)

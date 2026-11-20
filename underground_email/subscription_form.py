@@ -1,9 +1,9 @@
 """
-The form of the UnsubscriptionPage.
+The form of the SubscriptionPage.
 
-We have an unsubscription page, rather than unsubscribing people as soon as
-they follow the link at the foot of an email, to get around over-eager email
-clients and security scanners, which follow the links in a message (to check
+We have that page, rather than unsubscribing people as soon as they follow the
+link at the foot of an email, to get around over-eager email clients and
+security scanners, which follow the links in a message (to check
 them for malware, or to preview them) before its recipient has read it. Had
 following the link been enough, such a client would have unsubscribed people
 who never asked to be. So following the link only shows this form; nothing
@@ -19,6 +19,7 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db import transaction
 from django.http import HttpRequest
+from wagtail.models import Site
 from django.utils.translation import gettext, gettext_lazy as _
 
 from underground_crm.forms.form_submission import FormSubmissionForm
@@ -26,12 +27,14 @@ from underground_crm.models import Engagement
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership
 from underground_crm.models.person import Tag
+from underground_crm.signals import subscription_created
 from underground_email.models import EmailCampaign
 from underground_email.unsubscription import (
+    add_self_queryable_tag,
     cancel_own_membership,
     decode_unsubscription_token,
     remove_self_queryable_tag,
-    self_queryable_tags_of,
+    self_queryable_tags,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,20 +53,22 @@ class MembershipChoiceField(forms.ModelMultipleChoiceField):
         return obj.type.name
 
 
-class UnsubscriptionForm(FormSubmissionForm):
+class SubscriptionForm(FormSubmissionForm):
     """
-    Lists the visitor's current memberships and their tags named in
-    SELF_QUERYABLE_TAGS, each with a ticked checkbox. Submitting the form with
-    a box unticked cancels that membership or removes that tag; nothing else
-    about the visitor's record can be changed through it, because only their
-    own memberships and those tags are offered as choices.
+    Lists the visitor's current memberships, each with a ticked checkbox, and
+    every tag named in SELF_QUERYABLE_TAGS, ticked if the visitor holds it.
+    Submitting the form with a membership unticked cancels it; ticking or
+    unticking a tag subscribes the visitor to it or unsubscribes them from it.
+    Nothing else about the visitor's record can be changed through it, because
+    only their own memberships and those tags are offered as choices.
 
     The visitor is whoever is logged in, or else whoever the signed token in an
     email's unsubscription link names (see make_unsubscription_url). The token
     arrives as the "address" query parameter of the link, and is carried in a
     hidden field so that it is decoded again, with decode_unsubscription_token,
     when the form is submitted. A visitor known by their token is not asked for
-    their email address or name, as an anonymous visitor to other forms is.
+    their email address or name; nor is anybody else, because a typed address
+    proves nothing (see SubscriptionPage.should_request_signup_fields).
 
     Any questions an editor places on the page are answered in the same form,
     and recorded as a FormSubmission, as on any FormPage.
@@ -93,20 +98,19 @@ class UnsubscriptionForm(FormSubmissionForm):
         self.fields[TOKEN_FIELD_NAME].initial = self.token
         self.campaign_utm_id: Optional[str] = None
         self.token_is_invalid = False
+        self.subscribed_tags: list[Tag] = []
         self.visitor = self._find_visitor()
         self.is_identified_by_token = self.visitor is not None and not request.user.is_authenticated
-
-        if self.is_identified_by_token:
-            for field_name in ("email", "first_name", "last_name"):
-                self.fields.pop(field_name, None)
 
         if self.visitor is not None:
             current_memberships = self.visitor.memberships.current().select_related("type")
             self.fields["memberships"].queryset = current_memberships.order_by("type__name")
             self.fields["memberships"].initial = list(current_memberships)
-            subscribed_tags = self_queryable_tags_of(self.visitor)
-            self.fields["tags"].queryset = subscribed_tags
-            self.fields["tags"].initial = list(subscribed_tags)
+            self.subscribed_tags = list(
+                self_queryable_tags().filter(tagged_people__content_object=self.visitor)
+            )
+            self.fields["tags"].queryset = self_queryable_tags()
+            self.fields["tags"].initial = self.subscribed_tags
 
     def _find_visitor(self) -> Optional[Any]:
         """
@@ -152,7 +156,8 @@ class UnsubscriptionForm(FormSubmissionForm):
     def clean(self) -> dict[str, Any]:
         if self.visitor is None:
             # Only somebody who followed an email's link or has logged in can be
-            # told apart from anybody else, so nobody else may unsubscribe anyone.
+            # told apart from anybody else, so nobody else may change anyone's
+            # subscriptions.
             raise forms.ValidationError(
                 _(
                     "Please follow the unsubscription link in one of our emails, or log in, "
@@ -162,8 +167,8 @@ class UnsubscriptionForm(FormSubmissionForm):
         if not self.is_identified_by_token:
             return super().clean()
         cleaned = forms.Form.clean(self)
-        # FormSubmissionForm.save() files an anonymous submission under the
-        # address the visitor gave; the token has already proved it.
+        # FormSubmissionForm.save() files an anonymous submission under an
+        # email address, which the token has proved to be the visitor's.
         cleaned["email"] = self.visitor.email
         cleaned["first_name"] = self.visitor.first_name
         cleaned["last_name"] = self.visitor.last_name
@@ -178,18 +183,34 @@ class UnsubscriptionForm(FormSubmissionForm):
                 if membership not in kept_memberships
                 and cancel_own_membership(self.visitor, membership_id=str(membership.pk))
             ]
-            kept_tags = set(self.cleaned_data["tags"])
+            ticked_tags = set(self.cleaned_data["tags"])
             removed = [
                 tag
-                for tag in self.fields["tags"].queryset
-                if tag not in kept_tags
+                for tag in self.subscribed_tags
+                if tag not in ticked_tags
                 and remove_self_queryable_tag(
                     self.visitor, tag_id=str(tag.pk), page_title=self.page.title
                 )
             ]
+            was_authenticated = self.request.user.is_authenticated
+            added = [
+                tag
+                for tag in sorted(ticked_tags, key=lambda tag: tag.name)
+                if add_self_queryable_tag(self.visitor, tag, was_authenticated=was_authenticated)
+            ]
             if cancelled or removed:
                 self._record_campaign_unsubscription()
             submission = super().save()
+
+        for tag in added:
+            subscription_created.send(
+                sender=None,
+                person=self.visitor,
+                tag=tag,
+                was_authenticated=was_authenticated,
+                person_created=False,
+                site=Site.find_for_request(self.request),
+            )
 
         for membership in cancelled:
             messages.success(
@@ -201,6 +222,11 @@ class UnsubscriptionForm(FormSubmissionForm):
             messages.success(
                 self.request,
                 gettext("You will no longer receive %(tag)s emails.") % {"tag": tag.name},
+            )
+        for tag in added:
+            messages.success(
+                self.request,
+                gettext("You will now receive %(tag)s emails.") % {"tag": tag.name},
             )
         return submission
 

@@ -1,13 +1,13 @@
 """
 Unsubscription from our emails.
 
-Each campaign email carries a link to the UnsubscriptionPage at /unsubscribe,
+Each campaign email carries a link to the SubscriptionPage at /subscriptions,
 with a signed token naming its recipient (see make_unsubscription_url). We have
-an unsubscription page, rather than unsubscribing people as soon as they follow
-that link, to get around over-eager email clients and security scanners, which
-follow the links in a message before its recipient has read it. Following the
-link only shows the page; people unsubscribe by submitting its form (see
-underground_email.unsubscription_form), which uses the functions below.
+that page, rather than unsubscribing people as soon as they follow the link, to
+get around over-eager email clients and security scanners, which follow the
+links in a message before its recipient has read it. Following the link only
+shows the page; people unsubscribe (or subscribe) by submitting its form (see
+underground_email.subscription_form), which uses the functions below.
 """
 
 import logging
@@ -17,6 +17,7 @@ from typing import Optional
 from django.conf import settings
 from django.core import signing
 from django.db.models import QuerySet
+from django.urls import reverse
 
 from underground_crm.models import Engagement
 from underground_crm.models.membership import Membership
@@ -61,13 +62,35 @@ def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, root_
     Following it changes nothing by itself (see this module's docstring).
     """
     signature = generate_unsubscription_signature(email_address=person.email, utm_id=utm_id)
-    return f"{root_url}/unsubscribe?utm_campaign={utm_id}&address={signature}"
+    return f"{root_url}{reverse('subscriptions')}?utm_campaign={utm_id}&address={signature}"
 
 
-def self_queryable_tags_of(person: settings.AUTH_USER_MODEL) -> QuerySet[Tag]:
-    """The person's tags that are named in SELF_QUERYABLE_TAGS, which are the
-    only ones a person is ever shown; the rest are for staff."""
-    return person.tags.filter(name__in=settings.SELF_QUERYABLE_TAGS).order_by("name")
+def self_queryable_tags() -> QuerySet[Tag]:
+    """The tags named in SELF_QUERYABLE_TAGS, which are the only ones a person
+    is ever shown, and may apply to or remove from themselves; the rest are for
+    staff."""
+    return Tag.objects.filter(name__in=settings.SELF_QUERYABLE_TAGS).order_by("name")
+
+
+def add_self_queryable_tag(
+    person: settings.AUTH_USER_MODEL, tag: Tag, was_authenticated: bool
+) -> bool:
+    """Subscribe the person to one of the SELF_QUERYABLE_TAGS, at their own request.
+
+    Subscribing to a mailing list is asking for email, so the person is opted
+    into email too, as by the subscription endpoint (underground_crm.views.
+    subscribe). Returns whether the person did not already hold the tag.
+    """
+    if tag.name not in settings.SELF_QUERYABLE_TAGS:
+        return False
+    if person.tags.filter(pk=tag.pk).exists():
+        return False
+    person.tags.add(tag, through_defaults={"was_authenticated": was_authenticated})
+    if not person.email_opt_in:
+        person.email_opt_in = True
+        person.save(update_fields=["email_opt_in"])
+    logger.info("%s has subscribed to tag '%s'", person, tag)
+    return True
 
 
 def remove_self_queryable_tag(

@@ -2,13 +2,14 @@
 {% load i18n %}
 
 {% comment %}
-  Served at /unsubscribe, the address of the link at the foot of each campaign
-  email. We have this page, rather than unsubscribing people as soon as they
-  follow that link, to get around over-eager email clients and security
-  scanners, which follow the links in a message before its recipient has read
-  it. Following the link only shows this page; the link's signed token is
-  carried in the form's hidden "address" field, and nothing changes until
-  somebody unticks a box and presses "Unsubscribe". See UnsubscriptionForm.
+  Served at /subscriptions, the address of the link at the foot of each
+  campaign email. We have this page, rather than unsubscribing people as soon
+  as they follow that link, to get around over-eager email clients and
+  security scanners, which follow the links in a message before its recipient
+  has read it. Following the link only shows this page; the link's signed
+  token is carried in the form's hidden "address" field, and nothing changes
+  until somebody ticks or unticks a box and submits the form. See
+  SubscriptionForm.
 {% endcomment %}
 
 {% block toast %}
@@ -45,14 +46,14 @@
       {% endif %}
     </section>
     <section class="subscriptions my-4" aria-label="{% trans 'Your subscriptions' %}">
+      {% if not form.subscribed_tags %}
+        <p class="alert alert-info" role="status">{% trans "You are not subscribed to the newsletter." %}</p>
+      {% endif %}
       {% if form.fields.tags.queryset %}
         {% include "underground_crm/includes/form_group.html" with field=form.tags %}
-      {% else %}
-        <p class="alert alert-info" role="status">{% trans "You are not subscribed to the newsletter." %}</p>
       {% endif %}
     </section>
   {% endif %}
 {% endblock %}
 
-{% block submit_button_class %}btn-danger{% endblock %}
-{% block submit_button_text %}{% trans "Unsubscribe" %}{% endblock %}
+{% block submit_button_text %}{% trans "Update subscriptions" %}{% endblock %}
