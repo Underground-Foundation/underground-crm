@@ -5,7 +5,8 @@
 
 .toast-notification-container {
   position: fixed;
-  top: 1rem;
+  /* Room for a nav bar. form_page.html overrides this with its top_offset block. */
+  top: 6rem;
   right: 1rem;
   z-index: 1080;
   max-width: 22rem;

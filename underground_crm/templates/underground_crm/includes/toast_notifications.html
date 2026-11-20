@@ -1,0 +1,14 @@
+{% load i18n static %}
+{# Messages from the messages framework (e.g. "Your membership has been cancelled"), shown as dismissable toasts. #}
+{% if messages %}
+  <link rel="stylesheet" href="{% static 'underground_crm/css/toast_notifications.css' %}">
+  <div class="toast-notification-container">
+    {% for message in messages %}
+      <div class="toast-notification alert alert-{{ message.tags|default:'success' }}" role="status" aria-live="polite">
+        <span class="toast-notification-body">{{ message }}</span>
+        <button type="button" class="toast-notification-close" aria-label="{% trans 'Dismiss' %}">&times;</button>
+      </div>
+    {% endfor %}
+  </div>
+  <script defer src="{% static 'underground_crm/js/toast_notifications.js' %}"></script>
+{% endif %}

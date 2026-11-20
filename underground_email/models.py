@@ -13,6 +13,8 @@ from wagtail.models import PreviewableMixin, Site
 from wagtail.rich_text import expand_db_html
 
 from underground_crm.models import PeopleFilter
+from underground_crm.models.form_submission import FormSubmission
+from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from .blocks import EmailBodyBlock, _RICH_TEXT_FEATURES
 from .forms import EmailSenderForm
@@ -319,3 +321,105 @@ class EmailCampaign(PreviewableMixin, models.Model):
             }
         )
         return context
+
+
+class SubscriptionPage(FormPage):
+    """
+    The page allowing a person to manage their memberships and email tags. Its form
+    (see underground_email.subscription_form.SubscriptionForm) lists their
+    current memberships, each with a ticked checkbox, and every tag named in
+    SELF_QUERYABLE_TAGS, ticked if they hold it. Unticking a membership cancels
+    it; ticking or unticking a tag subscribes or unsubscribes them. Being a
+    FormPage, it may also ask questions (such as why they are leaving).
+
+    The link at the foot of each campaign email leads here. We have this page,
+    rather than unsubscribing people as soon as they follow that link, to get
+    around over-eager email clients and security scanners, which follow the
+    links in a message before its recipient has read it. Following the link
+    only shows this page, with the link's signed token carried in a hidden
+    field of the form; nothing changes until somebody submits it.
+
+    The visitor is identified by their login or by that token, never by an
+    email address and name typed into the form, which would let anybody manage
+    anybody else's subscriptions; hence should_request_signup_fields is off.
+
+    Every site is given one of these pages by migration 0018, at /unsubscribe/
+    beneath its root page. Wagtail serves it from its place in the tree, like
+    any other page, and each email's link is built from wherever the page is
+    (see for_site and underground_email.unsubscription.subscription_page_url).
+    Links in emails sent before the page existed lead to /unsubscribe, which
+    Django's APPEND_SLASH redirects to /unsubscribe/, query string and all.
+    """
+
+    is_creatable = True
+    subpage_types: list[str] = []
+    template = "underground_email/pages/subscription_page.html"
+    should_request_signup_fields = False
+
+    class Meta:
+        verbose_name = _("Subscription Page")
+
+    @classmethod
+    def for_site(cls, site: Optional[Site]) -> Optional["SubscriptionPage"]:
+        """The live SubscriptionPage beneath the site's root page, or else any
+        live one, for a site added after migration 0018 gave each site its own.
+        None if there is no live SubscriptionPage at all.
+
+        Where several qualify, a page whose title starts with "unsubscribe" is
+        preferred, then one whose title starts with "subscri" (as in
+        "Subscriptions" or "Subscribe"), ignoring case. Between equally
+        preferred pages, the oldest wins. Wagtail records no creation time for
+        a page (first_published_at is null for pages that migrations create),
+        so the oldest is taken to be the one with the lowest ID, which
+        increases in the order that pages are created."""
+        pages = (
+            cls.objects.live()
+            .annotate(
+                title_preference=models.Case(
+                    models.When(title__istartswith="unsubscribe", then=models.Value(0)),
+                    models.When(title__istartswith="subscri", then=models.Value(1)),
+                    default=models.Value(2),
+                    output_field=models.IntegerField(),
+                )
+            )
+            .order_by("title_preference", "id")
+        )
+        if site is not None:
+            page = pages.descendant_of(site.root_page, inclusive=True).first()
+            if page is not None:
+                return page
+        return pages.first()
+
+    def get_submission_form_class(self):
+        from underground_email.subscription_form import SubscriptionForm
+
+        return SubscriptionForm
+
+    def _calculated_cache_time(self) -> int:
+        """Never cache by default, because the page lists the visitor's own
+        memberships and subscriptions. Editors can still set
+        cache_ttl_override."""
+        return 0
+
+
+class SubscriptionPageSubmission(FormSubmission):
+    """
+    A submission of a SubscriptionPage's form, called an "unsubscription
+    submission" in the admin. Extends FormSubmission, as EventGuest does, for
+    the one answer that no input block on the page asks for: the notes a person
+    may leave about why they are cancelling a membership or unsubscribing.
+    Answers to questions an editor placed on the page are recorded as ordinary
+    SubmittedField rows against it. One is saved only when there is something
+    to record (see SubscriptionForm.save).
+    """
+
+    departure_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name=_("Departure notes"),
+        help_text=_("Why the person is cancelling a membership or unsubscribing, in their words."),
+    )
+
+    class Meta:
+        verbose_name = _("Unsubscription submission")
+        verbose_name_plural = _("Unsubscription submissions")

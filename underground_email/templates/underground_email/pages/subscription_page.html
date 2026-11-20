@@ -1,0 +1,92 @@
+{% extends "underground_crm/form_page.html" %}
+{% load i18n %}
+
+{% comment %}
+  Served at /unsubscribe/, the address of the link at the foot of each
+  campaign email. We have this page, rather than unsubscribing people as soon
+  as they follow that link, to get around over-eager email clients and
+  security scanners, which follow the links in a message before its recipient
+  has read it. Following the link only shows this page; the link's signed
+  token is carried in the form's hidden "address" field, and nothing changes
+  until somebody ticks or unticks a box and submits the form. See
+  SubscriptionForm.
+{% endcomment %}
+
+{% block toast %}
+  {% include "underground_crm/includes/toast_notifications.html" %}
+{% endblock %}
+
+{# The toasts say what was cancelled or removed, which says more than this notice would. #}
+{% block submitted_notice %}{% endblock %}
+
+{# The form's own error, or the notice below, speaks to a visitor whom neither a link nor a login identifies. #}
+{% block login_notice %}{% endblock %}
+
+{% block memberships %}
+  {% if form.token_is_invalid %}
+    <p class="alert alert-warning" role="alert">
+      {% trans "This unsubscription link is not valid. Please follow the link in one of our emails again, or log in." %}
+    </p>
+  {% endif %}
+  {% if not form.visitor %}
+    <section class="alert alert-info my-4" aria-label="{% trans 'Log in' %}">
+      <p>{% trans "Please follow the unsubscription link in one of our emails, or log in, to see your memberships and subscriptions." %}</p>
+      <a class="btn btn-primary" href="{% url 'underground_crm:login' %}?next={{ request.get_full_path|urlencode }}">{% trans "Log in" %}</a>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block before_form_fields %}
+  {% if form.visitor %}
+    <section class="memberships my-4" aria-label="{% trans 'Your memberships' %}">
+      {% if form.fields.memberships.queryset %}
+        {% include "underground_crm/includes/form_group.html" with field=form.memberships %}
+      {% else %}
+        <p class="alert alert-info" role="status">{% trans "You are not a member." %}</p>
+      {% endif %}
+    </section>
+    <section class="subscriptions my-4" aria-label="{% trans 'Your subscriptions' %}">
+      {% if not form.subscribed_tags %}
+        <p class="alert alert-info" role="status">{% trans "You are not subscribed to the newsletter." %}</p>
+      {% endif %}
+      {% if form.fields.tags.queryset %}
+        {% include "underground_crm/includes/form_group.html" with field=form.tags %}
+      {% endif %}
+    </section>
+    {% comment %}
+      Shown by the script below once the visitor unticks a membership, or a
+      subscription they hold, and hidden (and disabled, so that it is not
+      submitted) while they have unticked nothing. Without JavaScript it is
+      always shown. The info box is the textarea's label.
+    {% endcomment %}
+    <section class="departure-notes my-4" id="departure-notes">
+      {{ form.departure_notes.errors }}
+      <label class="alert alert-info d-block" for="{{ form.departure_notes.id_for_label }}">{{ form.departure_notes.label }}</label>
+      {{ form.departure_notes }}
+    </section>
+    <script>
+      (function () {
+        var notes = document.getElementById("departure-notes");
+        var textarea = notes.querySelector("textarea");
+        var boxes = document.querySelectorAll(
+          'input[type="checkbox"][name="memberships"], input[type="checkbox"][name="tags"]'
+        );
+        function update() {
+          // defaultChecked is whether the box was ticked when the page loaded,
+          // that is, whether the visitor held the membership or subscription.
+          var isLeaving = Array.prototype.some.call(boxes, function (box) {
+            return box.defaultChecked && !box.checked;
+          });
+          notes.hidden = !isLeaving;
+          textarea.disabled = !isLeaving;
+        }
+        Array.prototype.forEach.call(boxes, function (box) {
+          box.addEventListener("change", update);
+        });
+        update();
+      })();
+    </script>
+  {% endif %}
+{% endblock %}
+
+{% block submit_button_text %}{% trans "Update subscriptions" %}{% endblock %}

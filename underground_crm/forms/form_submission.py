@@ -178,7 +178,7 @@ class FormSubmissionForm(forms.Form):
         self.page = page
         super().__init__(*args, **kwargs)
 
-        if request.user.is_authenticated:
+        if request.user.is_authenticated or not self.requests_signup_fields:
             del self.fields["email"]
             del self.fields["first_name"]
             del self.fields["last_name"]
@@ -188,6 +188,13 @@ class FormSubmissionForm(forms.Form):
 
         for field in self.fields.values():
             apply_bootstrap_classes(field.widget)
+
+    @property
+    def requests_signup_fields(self) -> bool:
+        """Whether the page asks a visitor who is not logged in for their email
+        address and name (see FormPage.should_request_signup_fields). Pages that
+        are not FormPages, such as RegistrationPage, always do."""
+        return getattr(self.page, "should_request_signup_fields", True)
 
     def _field_names_at(self, block: StreamValue.StreamChild) -> list[str]:
         """
@@ -242,6 +249,10 @@ class FormSubmissionForm(forms.Form):
         cleaned = super().clean()
         if self.request.user.is_authenticated:
             return cleaned
+        if not self.requests_signup_fields:
+            # The page does not ask anonymous visitors who they are, so there
+            # is nobody to file their answers under.
+            raise forms.ValidationError(_("Please log in to submit this form."))
 
         email = cleaned.get("email")
         if not email:

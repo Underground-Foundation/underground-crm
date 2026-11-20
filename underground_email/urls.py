@@ -1,9 +1,10 @@
 from django.urls import path
 
-from underground_email.views.email_click_handler import unsubscription_view
 from underground_email.views.webhooks import email_webhook
 
 urlpatterns = [
-    path("unsubscribe", unsubscription_view, name="unsubscribe"),
+    # At the bottom of each campaign email, there is a link to a
+    # SubscriptionPage, intended for unsubscribing. See
+    # underground_email.unsubscription.subscription_page_url.
     path("webhooks/email", email_webhook, name="email_webhook"),
 ]

@@ -23,7 +23,7 @@ from underground_email.api import (
     POSITIVE_ENGAGEMENT_OUTCOMES,
 )
 from underground_email.models import EmailCampaign
-from underground_email.unsubscription import make_unsubscription_url
+from underground_email.unsubscription import make_unsubscription_url, subscription_page_url
 
 if TYPE_CHECKING:
     from django_q.models import Schedule
@@ -74,9 +74,18 @@ def _render_greeting(greeting_template: str, person) -> str:
     )
 
 
-def _render_email_html(campaign: EmailCampaign, person) -> str:
-    """Render the campaign's email template for a specific recipient."""
+def _render_email_html(
+    campaign: EmailCampaign, person, unsubscription_page_url: Optional[str] = None
+) -> str:
+    """Render the campaign's email template for a specific recipient.
+
+    unsubscription_page_url is the URL of the campaign site's SubscriptionPage,
+    which send_emails looks up once for all its recipients; it is looked up
+    here if not given.
+    """
     root_url = campaign.site.root_url.rstrip("/")
+    if unsubscription_page_url is None:
+        unsubscription_page_url = subscription_page_url(campaign.site)
 
     return render_to_string(
         campaign.template,
@@ -88,7 +97,9 @@ def _render_email_html(campaign: EmailCampaign, person) -> str:
             "body": campaign.body,
             "signature": None if not campaign.sender else campaign.sender.signature,
             "preview_text": campaign.preview_text,
-            "unsubscription_url": make_unsubscription_url(person, campaign.utm_id, root_url),
+            "unsubscription_url": make_unsubscription_url(
+                person, campaign.utm_id, unsubscription_page_url
+            ),
             "recipient_email": person.email,
             "site_url": root_url,
         },
@@ -138,6 +149,10 @@ def send_emails(campaign_utm_id: str) -> None:
         recipients_qs.only("id", "email", "preferred_name", "first_name", "last_name")
     )
     sent_count = 0
+    # Looked up once, before anything is sent, so that a site without a
+    # subscription page stops the campaign rather than sending emails whose
+    # unsubscription links lead nowhere.
+    unsubscription_page_url = subscription_page_url(campaign.site)
 
     for person in all_recipients:
         try:
@@ -145,7 +160,7 @@ def send_emails(campaign_utm_id: str) -> None:
                 sender=sender_str,
                 recipients=[f"{person.full_name} <{person.email}>"],
                 subject=campaign.subject,
-                html=_render_email_html(campaign, person),
+                html=_render_email_html(campaign, person, unsubscription_page_url),
             )
             if response.success:
                 sent_count += 1

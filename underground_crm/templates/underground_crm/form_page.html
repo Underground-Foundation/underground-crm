@@ -9,12 +9,21 @@
 
 {% block stream_content %}
   {% block toast %}{% endblock %}
+  {% comment %}
+    The toasts' distance from the top of the window, set in place so that a
+    theme can override the top_offset block to clear its own nav bar. It is
+    drawn here rather than in includes/toast_notifications.html, because the
+    blocks of an included template cannot be overridden.
+  {% endcomment %}
+  <style>.toast-notification-container { top: {% block top_offset %}6rem{% endblock %}; }</style>
   <div class="form-page-form">
-    {% if submitted %}
-      <p class="alert alert-success" role="status">
-        {% trans "Thanks — your response has been recorded." %}
-      </p>
-    {% endif %}
+    {% block submitted_notice %}
+      {% if submitted %}
+        <p class="alert alert-success" role="status">
+          {% trans "Thanks — your response has been recorded." %}
+        </p>
+      {% endif %}
+    {% endblock %}
     {% block memberships %}{% endblock %}
     <form method="post">
       {% csrf_token %}
@@ -30,6 +39,8 @@
           <p class="alert alert-secondary" role="note">{% trans "You are not logged in." %}</p>
         {% endif %}
       {% endblock %}
+      {# Fields that a page's form draws ahead of the body, such as SubscriptionPage's checkboxes. #}
+      {% block before_form_fields %}{% endblock %}
       {% block form_fields %}
         {% comment %}
           form.body_parts is every block of the body in the editor's order,
@@ -55,7 +66,7 @@
         {% endfor %}
       {% endblock %}
       {% for field in form.hidden_fields %}{{ field }}{% endfor %}
-      <button type="submit" class="btn {% block submit_button_class %}btn-primary{% endblock %}">{% trans "Submit" %}</button>
+      <button type="submit" class="btn {% block submit_button_class %}btn-primary{% endblock %}">{% block submit_button_text %}{% trans "Submit" %}{% endblock %}</button>
     </form>
     {# Widget assets, e.g. the address autocomplete script. #}
     {{ form.media }}

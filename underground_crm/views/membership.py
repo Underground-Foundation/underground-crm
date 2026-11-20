@@ -88,8 +88,7 @@ def cancel_membership_view(request: HttpRequest, membership_id: uuid.UUID) -> Ht
     somebody else's membership.
     """
     membership = get_object_or_404(Membership, pk=membership_id, person=request.user)
-    membership.expires_on = timezone.now().date()
-    membership.save(update_fields=["expires_on"])
+    membership.cancel()
 
     messages.success(
         request,
