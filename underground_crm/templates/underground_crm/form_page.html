@@ -9,6 +9,13 @@
 
 {% block stream_content %}
   {% block toast %}{% endblock %}
+  {% comment %}
+    The toasts' distance from the top of the window, set in place so that a
+    theme can override the top_offset block to clear its own nav bar. It is
+    drawn here rather than in includes/toast_notifications.html, because the
+    blocks of an included template cannot be overridden.
+  {% endcomment %}
+  <style>.toast-notification-container { top: {% block top_offset %}6rem{% endblock %}; }</style>
   <div class="form-page-form">
     {% block submitted_notice %}
       {% if submitted %}
