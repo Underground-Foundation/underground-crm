@@ -22,7 +22,7 @@ from django.http import HttpRequest
 from wagtail.models import Site
 from django.utils.translation import gettext, gettext_lazy as _
 
-from underground_crm.forms.form_submission import FormSubmissionForm
+from underground_crm.forms.form_submission import FormSubmissionForm, _field_name
 from underground_crm.models import Engagement
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership
@@ -181,7 +181,26 @@ class SubscriptionForm(FormSubmissionForm):
         cleaned["last_name"] = self.visitor.last_name
         return cleaned
 
-    def save(self) -> FormSubmission:
+    def has_anything_to_record(self) -> bool:
+        """
+        Whether the visitor left departure notes or answered any question an
+        editor placed on the page. Only then is a submission saved: the changes
+        to their memberships and subscriptions are recorded where they are made
+        (on the Membership, as Engagements and on the campaign), so a
+        submission with nothing else in it would say nothing new.
+        """
+        if self.cleaned_data.get("departure_notes"):
+            return True
+        for input_block in self.page.inputs:
+            answer = self.cleaned_data.get(_field_name(input_block))
+            if answer not in (None, "", [], False):
+                return True
+        return False
+
+    def save(self) -> Optional[FormSubmission]:
+        """Make the changes the visitor asked for, and save a submission if
+        there is anything to record (see has_anything_to_record). Returns the
+        submission, or None if none was saved."""
         with transaction.atomic():
             kept_memberships = set(self.cleaned_data["memberships"])
             cancelled = [
@@ -207,7 +226,9 @@ class SubscriptionForm(FormSubmissionForm):
             ]
             if cancelled or removed:
                 self._record_campaign_unsubscription()
-            submission = super().save()
+            # Skipping the submission also skips the page's tags_to_apply,
+            # which FormSubmissionForm.save applies along with it.
+            submission = super().save() if self.has_anything_to_record() else None
 
         for tag in added:
             subscription_created.send(

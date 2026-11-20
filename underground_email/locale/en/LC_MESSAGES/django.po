@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 15:00+1100\n"
+"POT-Creation-Date: 2026-11-20 15:28+1100\n"
 "PO-Revision-Date: 2026-11-20 00:00+1100\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -184,17 +184,21 @@ msgstr ""
 msgid "Subscription Page"
 msgstr ""
 
-#: models.py:397
+#: models.py:399
 msgid "Departure notes"
 msgstr ""
 
-#: models.py:398
+#: models.py:400
 msgid ""
 "Why the person is cancelling a membership or unsubscribing, in their words."
 msgstr ""
 
-#: models.py:402
-msgid "Subscription page submission"
+#: models.py:404
+msgid "Unsubscription submission"
+msgstr ""
+
+#: models.py:405
+msgid "Unsubscription submissions"
 msgstr ""
 
 #: subscription_form.py:50
@@ -222,17 +226,17 @@ msgid ""
 "manage your memberships and subscriptions."
 msgstr ""
 
-#: subscription_form.py:225
+#: subscription_form.py:246
 #, python-format
 msgid "Your %(membership_type)s membership has been cancelled."
 msgstr ""
 
-#: subscription_form.py:231
+#: subscription_form.py:252
 #, python-format
 msgid "You will no longer receive %(tag)s emails."
 msgstr ""
 
-#: subscription_form.py:236
+#: subscription_form.py:257
 #, python-format
 msgid "You will now receive %(tag)s emails."
 msgstr ""

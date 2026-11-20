@@ -57,7 +57,8 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "verbose_name": "Subscription page submission",
+                "verbose_name": "Unsubscription submission",
+                "verbose_name_plural": "Unsubscription submissions",
             },
             bases=("underground_crm.formsubmission",),
         ),

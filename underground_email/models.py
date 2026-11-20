@@ -384,11 +384,13 @@ class SubscriptionPage(FormPage):
 
 class SubscriptionPageSubmission(FormSubmission):
     """
-    A submission of a SubscriptionPage's form. Extends FormSubmission, as
-    EventGuest does, for the one answer that no input block on the page asks
-    for: the notes a person may leave about why they are cancelling a
-    membership or unsubscribing. Answers to questions an editor placed on the
-    page are recorded as ordinary SubmittedField rows against it.
+    A submission of a SubscriptionPage's form, called an "unsubscription
+    submission" in the admin. Extends FormSubmission, as EventGuest does, for
+    the one answer that no input block on the page asks for: the notes a person
+    may leave about why they are cancelling a membership or unsubscribing.
+    Answers to questions an editor placed on the page are recorded as ordinary
+    SubmittedField rows against it. One is saved only when there is something
+    to record (see SubscriptionForm.save).
     """
 
     departure_notes = models.TextField(
@@ -399,4 +401,5 @@ class SubscriptionPageSubmission(FormSubmission):
     )
 
     class Meta:
-        verbose_name = _("Subscription page submission")
+        verbose_name = _("Unsubscription submission")
+        verbose_name_plural = _("Unsubscription submissions")

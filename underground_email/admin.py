@@ -6,8 +6,8 @@ from underground_email.models import SubscriptionPageSubmission
 
 @admin.register(SubscriptionPageSubmission)
 class SubscriptionPageSubmissionAdmin(admin.ModelAdmin):
-    """Submissions of the subscription page, where staff can read why people
-    cancelled their memberships or unsubscribed."""
+    """The "unsubscription submissions": submissions of the subscription page,
+    where staff can read why people cancelled their memberships or unsubscribed."""
 
     list_display = ["__str__", "person", "email_address", "submission_time", "departure_notes"]
     list_filter = ["is_authenticated"]

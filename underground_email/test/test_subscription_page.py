@@ -31,7 +31,9 @@ from underground_crm.models import Engagement, PeopleFilter
 from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership, MembershipType
 from underground_crm.models.person import Tag
+from underground_crm.forms.form_submission import _field_name
 from underground_crm.models.pages import FormPage
+from underground_crm.test.form_inputs import typed_input
 from underground_email.models import (
     EmailCampaign,
     EmailSender,
@@ -59,6 +61,9 @@ NOT_A_MEMBER_TEXT = "You are not a member."
 NOT_SUBSCRIBED_TEXT = "You are not subscribed to the newsletter."
 INVALID_LINK_TEXT = "This unsubscription link is not valid."
 SUBMIT_BUTTON_TEXT = "Update subscriptions"
+# A question an editor might place on the page.
+REASON_QUESTION = "What made you decide to unsubscribe?"
+REASON_ANSWER = "I was getting more emails than I could read."
 DEPARTURE_NOTES_PROMPT = "Sorry to see you go. Feel free to leave any notes about why this is:"
 
 
@@ -326,11 +331,23 @@ class EmailLinkTests(SubscriptionPageTestCase):
     def test_an_answer_to_the_page_s_questions_is_recorded_with_the_recipient_s_address(
         self,
     ) -> None:
+        page = SubscriptionPage.objects.get()
+        page.body = [("text", typed_input(REASON_QUESTION))]
+        page.save()
+        page.refresh_from_db()
+        (reason_input,) = page.inputs
         token = self.token_for(self.make_campaign())
 
-        self.client.post(self.url, {TOKEN_FIELD_NAME: token})
+        self.client.post(
+            self.url,
+            {TOKEN_FIELD_NAME: token, _field_name(reason_input): REASON_ANSWER},
+        )
 
         submission = FormSubmission.objects.get()
+        self.assertEqual(
+            submission.submitted_fields.get(block_id=str(reason_input.id)).value,
+            REASON_ANSWER,
+        )
         self.assertEqual(submission.email_address, self.member.email)
         self.assertFalse(
             submission.is_authenticated,
@@ -517,12 +534,17 @@ class DepartureNotesTests(SubscriptionPageTestCase):
         self.assertEqual(submission.departure_notes, notes)
         self.assertEqual(submission.email_address, self.member.email)
 
-    def test_a_submission_without_notes_saves_none(self) -> None:
+    def test_without_notes_or_answers_no_submission_is_saved(self) -> None:
         self.member.tags.add(self.newsletter)
         self.client.force_login(self.member)
 
         self.client.post(self.url, {"tags": []})
 
-        submission = SubscriptionPageSubmission.objects.get()
-        self.assertEqual(submission.departure_notes, "")
-        self.assertEqual(submission.person, self.member)
+        self.assertFalse(
+            self.member.tags.filter(pk=self.newsletter.pk).exists(),
+            "The unsubscription itself must happen whether or not a submission is saved.",
+        )
+        self.assertFalse(
+            FormSubmission.objects.exists(),
+            "With nothing written and no question answered, there is nothing to record.",
+        )
