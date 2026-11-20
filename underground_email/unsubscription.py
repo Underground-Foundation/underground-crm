@@ -1,7 +1,7 @@
 """
 Unsubscription from our emails.
 
-Each campaign email carries a link to the SubscriptionPage at /subscriptions,
+Each campaign email carries a link to the SubscriptionPage at /unsubscribe,
 with a signed token naming its recipient (see make_unsubscription_url). We have
 that page, rather than unsubscribing people as soon as they follow the link, to
 get around over-eager email clients and security scanners, which follow the
@@ -62,7 +62,7 @@ def make_unsubscription_url(person: settings.AUTH_USER_MODEL, utm_id: str, root_
     Following it changes nothing by itself (see this module's docstring).
     """
     signature = generate_unsubscription_signature(email_address=person.email, utm_id=utm_id)
-    return f"{root_url}{reverse('subscriptions')}?utm_campaign={utm_id}&address={signature}"
+    return f"{root_url}{reverse('unsubscribe')}?utm_campaign={utm_id}&address={signature}"
 
 
 def self_queryable_tags() -> QuerySet[Tag]:

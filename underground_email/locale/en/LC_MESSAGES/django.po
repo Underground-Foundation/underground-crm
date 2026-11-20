@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: underground-crm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 14:42+1100\n"
+"POT-Creation-Date: 2026-11-20 15:00+1100\n"
 "PO-Revision-Date: 2026-11-20 00:00+1100\n"
 "Last-Translator: Underground CRM Contributors\n"
 "Language-Team: English <LL@li.org>\n"
@@ -14,11 +14,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: models.py:50
+#: models.py:51
 msgid "Attributed sender"
 msgstr ""
 
-#: models.py:52
+#: models.py:53
 msgid ""
 "Emails will be sent from this user's email address. This assumes the domain "
 "has been registered with SMTP2Go. Choose someone who is a staff member or "
@@ -26,162 +26,175 @@ msgid ""
 "DJANGO_ALLOWED_HOSTS."
 msgstr ""
 
-#: models.py:60
+#: models.py:61
 msgid "Sending permission group"
 msgstr ""
 
-#: models.py:61
+#: models.py:62
 msgid "Who can send emails attributed to this identity?"
 msgstr ""
 
-#: models.py:66
+#: models.py:67
 msgid "Signature"
 msgstr ""
 
-#: models.py:67
+#: models.py:68
 msgid "This editing view looks slightly different to the final version"
 msgstr ""
 
-#: models.py:91 models.py:155
+#: models.py:92 models.py:156
 msgid "greeting"
 msgstr ""
 
-#: models.py:94
+#: models.py:95
 msgid ""
 "Use {{ first_name }}, {{ preferred_or_first_name }}, {{ last_name }}, or "
 "{{ full_name }}, along with a greeting. This will be included in every email."
 msgstr ""
 
-#: models.py:108
+#: models.py:109
 msgid "Draft"
 msgstr ""
 
-#: models.py:109
+#: models.py:110
 msgid "Scheduled"
 msgstr ""
 
-#: models.py:110
+#: models.py:111
 msgid "Sent"
 msgstr ""
 
-#: models.py:125
+#: models.py:126
 msgid "UTM identifier"
 msgstr ""
 
-#: models.py:126
+#: models.py:127
 msgid "A unique identifier for the Urchin Traffic Module to track conversions"
 msgstr ""
 
-#: models.py:132
+#: models.py:133
 msgid "subject"
 msgstr ""
 
-#: models.py:134
+#: models.py:135
 msgid "The campaign's subject line, as you'd like it to be seen by the public"
 msgstr ""
 
-#: models.py:137
+#: models.py:138
 msgid "preview text"
 msgstr ""
 
-#: models.py:141
+#: models.py:142
 msgid "Short summary shown by email clients after the subject line"
 msgstr ""
 
-#: models.py:143
+#: models.py:144
 msgid "sender"
 msgstr ""
 
-#: models.py:148
+#: models.py:149
 msgid "site"
 msgstr ""
 
-#: models.py:149
+#: models.py:150
 msgid "This will be used when generating URLs in the email body"
 msgstr ""
 
-#: models.py:159
+#: models.py:160
 msgid "template"
 msgstr ""
 
-#: models.py:161
+#: models.py:162
 msgid "The Django template used to render this email"
 msgstr ""
 
-#: models.py:168
+#: models.py:169
 msgid "people filter"
 msgstr ""
 
-#: models.py:169
+#: models.py:170
 msgid "This must be specified before sending"
 msgstr ""
 
-#: models.py:177
+#: models.py:178
 msgid "Unsubscription tag"
 msgstr ""
 
-#: models.py:179
+#: models.py:180
 msgid ""
 "Which tag should be removed if the recipient clicks to unsubscribe? If not "
 "set, such recipients will be converted to tombstones (losing their "
 "membership)."
 msgstr ""
 
-#: models.py:186
+#: models.py:187
 msgid ""
 "To actually send the email campaign, please run the action from the previous "
 "menu"
 msgstr ""
 
-#: models.py:192
+#: models.py:193
 msgid "sending date"
 msgstr ""
 
-#: models.py:193
+#: models.py:194
 msgid "Leave this blank to send immediately"
 msgstr ""
 
-#: models.py:195
+#: models.py:196
 msgid "sent count"
 msgstr ""
 
-#: models.py:197
+#: models.py:198
 msgid "clicked count"
 msgstr ""
 
-#: models.py:198
+#: models.py:199
 msgid "A count of how many users clicked links from this email"
 msgstr ""
 
-#: models.py:203
+#: models.py:204
 msgid "opened count"
 msgstr ""
 
-#: models.py:207
+#: models.py:208
 msgid ""
 "Google and Apple have measures preventing us from measuring this, so it "
 "should not be trusted"
 msgstr ""
 
-#: models.py:211
+#: models.py:212
 msgid "spam count"
 msgstr ""
 
-#: models.py:212
+#: models.py:213
 msgid ""
 "A count of how many recipients marked this as spam or rejected the message"
 msgstr ""
 
-#: models.py:217
+#: models.py:218
 msgid "unsubscription count"
 msgstr ""
 
-#: models.py:220
+#: models.py:221
 msgid "smtp2go template ID"
 msgstr ""
 
-#: models.py:360
+#: models.py:362
 msgid "Subscription Page"
+msgstr ""
+
+#: models.py:397
+msgid "Departure notes"
+msgstr ""
+
+#: models.py:398
+msgid ""
+"Why the person is cancelling a membership or unsubscribing, in their words."
+msgstr ""
+
+#: models.py:402
+msgid "Subscription page submission"
 msgstr ""
 
 #: subscription_form.py:50
@@ -199,23 +212,27 @@ msgstr ""
 msgid "Your subscriptions"
 msgstr ""
 
-#: subscription_form.py:163
+#: subscription_form.py:93
+msgid "Sorry to see you go. Feel free to leave any notes about why this is:"
+msgstr ""
+
+#: subscription_form.py:170
 msgid ""
 "Please log in or follow the unsubscription link from your email in order to "
 "manage your memberships and subscriptions."
 msgstr ""
 
-#: subscription_form.py:218
+#: subscription_form.py:225
 #, python-format
 msgid "Your %(membership_type)s membership has been cancelled."
 msgstr ""
 
-#: subscription_form.py:224
+#: subscription_form.py:231
 #, python-format
 msgid "You will no longer receive %(tag)s emails."
 msgstr ""
 
-#: subscription_form.py:229
+#: subscription_form.py:236
 #, python-format
 msgid "You will now receive %(tag)s emails."
 msgstr ""
@@ -283,7 +300,7 @@ msgstr ""
 msgid "You are not subscribed to the newsletter."
 msgstr ""
 
-#: templates/underground_email/pages/subscription_page.html:59
+#: templates/underground_email/pages/subscription_page.html:93
 msgid "Update subscriptions"
 msgstr ""
 

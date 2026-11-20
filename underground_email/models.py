@@ -16,6 +16,7 @@ from wagtail.models import PreviewableMixin, Site
 from wagtail.rich_text import expand_db_html
 
 from underground_crm.models import PeopleFilter
+from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.pages import FormPage
 from underground_crm.models.person import Tag
 from .blocks import EmailBodyBlock, _RICH_TEXT_FEATURES
@@ -346,8 +347,9 @@ class SubscriptionPage(FormPage):
     anybody else's subscriptions; hence should_request_signup_fields is off.
 
     Every site is given one of these pages by migration 0018, and it is always
-    served at /subscriptions (by underground_email.views.email_click_handler.
-    subscriptions_view), wherever it sits in the page tree. A request that
+    served at /unsubscribe (by underground_email.views.email_click_handler.
+    subscriptions_view), wherever it sits in the page tree, because that is the
+    address that the links in our emails have always pointed to. A request that
     reaches the page through its place in the tree is redirected there.
     """
 
@@ -360,11 +362,11 @@ class SubscriptionPage(FormPage):
         verbose_name = _("Subscription Page")
 
     def serve(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        subscriptions_path = reverse("subscriptions")
-        if request.path != subscriptions_path:
+        unsubscription_path = reverse("unsubscribe")
+        if request.path != unsubscription_path:
             query_string = request.META.get("QUERY_STRING", "")
             return redirect(
-                f"{subscriptions_path}?{query_string}" if query_string else subscriptions_path
+                f"{unsubscription_path}?{query_string}" if query_string else unsubscription_path
             )
         return super().serve(request, *args, **kwargs)
 
@@ -378,3 +380,23 @@ class SubscriptionPage(FormPage):
         memberships and subscriptions. Editors can still set
         cache_ttl_override."""
         return 0
+
+
+class SubscriptionPageSubmission(FormSubmission):
+    """
+    A submission of a SubscriptionPage's form. Extends FormSubmission, as
+    EventGuest does, for the one answer that no input block on the page asks
+    for: the notes a person may leave about why they are cancelling a
+    membership or unsubscribing. Answers to questions an editor placed on the
+    page are recorded as ordinary SubmittedField rows against it.
+    """
+
+    departure_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name=_("Departure notes"),
+        help_text=_("Why the person is cancelling a membership or unsubscribing, in their words."),
+    )
+
+    class Meta:
+        verbose_name = _("Subscription page submission")

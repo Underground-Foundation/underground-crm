@@ -1,5 +1,5 @@
 """
-Tests for the SubscriptionPage served at /subscriptions.
+Tests for the SubscriptionPage served at /unsubscribe.
 
 The page is about whoever is logged in, or else whoever the signed token in an
 email's unsubscription link names. Its form lists their current memberships,
@@ -32,7 +32,12 @@ from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership, MembershipType
 from underground_crm.models.person import Tag
 from underground_crm.models.pages import FormPage
-from underground_email.models import EmailCampaign, EmailSender, SubscriptionPage
+from underground_email.models import (
+    EmailCampaign,
+    EmailSender,
+    SubscriptionPage,
+    SubscriptionPageSubmission,
+)
 from underground_email.unsubscription import generate_unsubscription_signature
 from underground_email.subscription_form import TOKEN_FIELD_NAME
 
@@ -54,14 +59,13 @@ NOT_A_MEMBER_TEXT = "You are not a member."
 NOT_SUBSCRIBED_TEXT = "You are not subscribed to the newsletter."
 INVALID_LINK_TEXT = "This unsubscription link is not valid."
 SUBMIT_BUTTON_TEXT = "Update subscriptions"
-# Where links in emails sent before the page existed lead.
-OLD_UNSUBSCRIPTION_PATH = "/unsubscribe"
+DEPARTURE_NOTES_PROMPT = "Sorry to see you go. Feel free to leave any notes about why this is:"
 
 
 @override_settings(SELF_QUERYABLE_TAGS=SELF_QUERYABLE_TAG_NAMES)
 class SubscriptionPageTestCase(django.test.TestCase):
     def setUp(self) -> None:
-        self.url = reverse("subscriptions")
+        self.url = reverse("unsubscribe")
         self.newsletter = Tag.objects.create(name=NEWSLETTER_TAG_NAME)
         self.press_releases = Tag.objects.create(name=PRESS_RELEASES_TAG_NAME)
         self.staff_only_tag = Tag.objects.create(name=STAFF_ONLY_TAG_NAME)
@@ -274,7 +278,7 @@ class EmailLinkTests(SubscriptionPageTestCase):
         )
 
     def test_the_token_in_the_hidden_field_is_enough_to_identify_the_recipient(self) -> None:
-        # Posting to /subscriptions without the query string shows that the
+        # Posting to /unsubscribe without the query string shows that the
         # hidden field, not the address of the page, carries the token.
         membership = self.give_membership()
         token = self.token_for(self.make_campaign())
@@ -488,10 +492,37 @@ class SignupFieldTests(SubscriptionPageTestCase):
         self.assertFalse(SubscriptionPage.should_request_signup_fields)
 
 
-class OldAddressTests(SubscriptionPageTestCase):
-    def test_the_old_unsubscription_address_redirects_to_the_subscriptions_page(self) -> None:
-        response = self.client.get(OLD_UNSUBSCRIPTION_PATH, follow=True)
+class DepartureNotesTests(SubscriptionPageTestCase):
+    def test_the_notes_box_is_offered_beneath_its_prompt(self) -> None:
+        self.give_membership()
+        self.client.force_login(self.member)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.redirect_chain[-1][0], self.url)
-        self.assertIsInstance(response.context["page"], SubscriptionPage)
+        response = self.client.get(self.url)
+
+        self.assertContains(response, DEPARTURE_NOTES_PROMPT)
+        self.assertContains(response, 'name="departure_notes"')
+
+    def test_notes_left_when_cancelling_are_saved_with_the_submission(self) -> None:
+        notes = "I have moved to Hobart and joined the local branch there instead."
+        membership = self.give_membership()
+        token = self.token_for(self.make_campaign())
+
+        self.client.post(
+            self.url, {TOKEN_FIELD_NAME: token, "memberships": [], "departure_notes": notes}
+        )
+
+        membership.refresh_from_db()
+        self.assertFalse(membership.is_current)
+        submission = SubscriptionPageSubmission.objects.get()
+        self.assertEqual(submission.departure_notes, notes)
+        self.assertEqual(submission.email_address, self.member.email)
+
+    def test_a_submission_without_notes_saves_none(self) -> None:
+        self.member.tags.add(self.newsletter)
+        self.client.force_login(self.member)
+
+        self.client.post(self.url, {"tags": []})
+
+        submission = SubscriptionPageSubmission.objects.get()
+        self.assertEqual(submission.departure_notes, "")
+        self.assertEqual(submission.person, self.member)

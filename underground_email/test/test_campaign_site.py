@@ -61,7 +61,7 @@ class CampaignSiteTests(TestCase):
 
         html = _render_email_html(self.campaign, self.recipient)
 
-        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}{reverse("subscriptions")}?', html)
+        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}{reverse("unsubscribe")}?', html)
         self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}/supporter_portal/memberships"', html)
         self.assertNotIn(ADMIN_ROOT_URL, html)
 
@@ -84,7 +84,5 @@ class CampaignSiteTests(TestCase):
         self.assertEqual(
             sent_email["recipients"], [f"{self.recipient.full_name} <{self.recipient.email}>"]
         )
-        self.assertIn(
-            f'href="{STATE_BRANCH_ROOT_URL}{reverse("subscriptions")}?', sent_email["html"]
-        )
+        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}{reverse("unsubscribe")}?', sent_email["html"])
         self.assertNotIn(ADMIN_ROOT_URL, sent_email["html"])

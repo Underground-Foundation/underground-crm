@@ -28,7 +28,7 @@ from underground_crm.models.form_submission import FormSubmission
 from underground_crm.models.membership import Membership
 from underground_crm.models.person import Tag
 from underground_crm.signals import subscription_created
-from underground_email.models import EmailCampaign
+from underground_email.models import EmailCampaign, SubscriptionPageSubmission
 from underground_email.unsubscription import (
     add_self_queryable_tag,
     cancel_own_membership,
@@ -87,8 +87,13 @@ class SubscriptionForm(FormSubmissionForm):
         widget=forms.CheckboxSelectMultiple,
         label=_("Your subscriptions"),
     )
+    departure_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 4}),
+        label=_("Sorry to see you go. Feel free to leave any notes about why this is:"),
+    )
     # Drawn by the template above the page's body, rather than among the trailing fields.
-    CHOICE_FIELD_NAMES = ("memberships", "tags")
+    TEMPLATE_DRAWN_FIELD_NAMES = ("memberships", "tags", "departure_notes")
 
     def __init__(self, *args: Any, request: HttpRequest, page: Any, **kwargs: Any) -> None:
         super().__init__(*args, request=request, page=page, **kwargs)
@@ -150,7 +155,9 @@ class SubscriptionForm(FormSubmissionForm):
     @property
     def trailing_fields(self) -> list[forms.BoundField]:
         return [
-            field for field in super().trailing_fields if field.name not in self.CHOICE_FIELD_NAMES
+            field
+            for field in super().trailing_fields
+            if field.name not in self.TEMPLATE_DRAWN_FIELD_NAMES
         ]
 
     def clean(self) -> dict[str, Any]:
@@ -229,6 +236,13 @@ class SubscriptionForm(FormSubmissionForm):
                 gettext("You will now receive %(tag)s emails.") % {"tag": tag.name},
             )
         return submission
+
+    def _build_submission(self) -> SubscriptionPageSubmission:
+        return SubscriptionPageSubmission(
+            is_authenticated=self.request.user.is_authenticated,
+            page=self.page,
+            departure_notes=self.cleaned_data.get("departure_notes") or "",
+        )
 
     def _record_campaign_unsubscription(self) -> None:
         """Count the unsubscription against the campaign whose email's link

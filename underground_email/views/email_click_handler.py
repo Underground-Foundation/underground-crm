@@ -21,7 +21,7 @@ def _find_subscription_page(request: HttpRequest) -> Optional[SubscriptionPage]:
 
 @require_http_methods(["GET", "POST"])
 def subscriptions_view(request: HttpRequest) -> HttpResponse:
-    """Serve the SubscriptionPage at /subscriptions, the address that the link
+    """Serve the SubscriptionPage at /unsubscribe, the address that the link
     at the foot of each campaign email points to (see make_unsubscription_url).
 
     Following the link (a GET) changes nothing: it only shows the page, whose

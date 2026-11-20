@@ -2,7 +2,7 @@
 Give every site a SubscriptionPage, beneath its root page.
 
 Every installation needs one, because the link at the foot of each campaign
-email leads to it (at /subscriptions). We have such a page, rather than
+email leads to it (at /unsubscribe). We have such a page, rather than
 unsubscribing people as soon as they follow that link, to get around
 over-eager email clients and security scanners, which follow the links in a
 message before its recipient has read it.
@@ -20,7 +20,9 @@ PATH_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 PATH_STEP_LENGTH = 4
 
 PAGE_TITLE = "Subscriptions"
-PAGE_SLUG = "subscriptions"
+# The page is served at /unsubscribe wherever it is, but a slug that matches
+# keeps its place in the tree from suggesting otherwise.
+PAGE_SLUG = "unsubscribe"
 
 
 def _encode_path_step(number: int) -> str:

@@ -32,4 +32,33 @@ class Migration(migrations.Migration):
             },
             bases=("underground_crm.formpage",),
         ),
+        migrations.CreateModel(
+            name="SubscriptionPageSubmission",
+            fields=[
+                (
+                    "formsubmission_ptr",
+                    models.OneToOneField(
+                        auto_created=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        parent_link=True,
+                        primary_key=True,
+                        serialize=False,
+                        to="underground_crm.formsubmission",
+                    ),
+                ),
+                (
+                    "departure_notes",
+                    models.TextField(
+                        blank=True,
+                        default="",
+                        help_text="Why the person is cancelling a membership or unsubscribing, in their words.",
+                        verbose_name="Departure notes",
+                    ),
+                ),
+            ],
+            options={
+                "verbose_name": "Subscription page submission",
+            },
+            bases=("underground_crm.formsubmission",),
+        ),
     ]
