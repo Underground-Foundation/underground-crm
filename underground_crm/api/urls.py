@@ -4,6 +4,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.urls import include, path
 
 from .discord_membership import discord_membership
+from .integration_views import people as integration_people
+from .integration_views import person_detail as integration_person_detail
 from .views import (
     AddressViewSet,
     DonationViewSet,
@@ -29,6 +31,15 @@ urlpatterns = [
         "integrations/discord/membership/<str:discord_id>/",
         discord_membership,
         name="discord-membership",
+    ),
+    # Versioned, read-only feed for server-to-server integrations. It is
+    # separate from the staff REST API so a service credential can be scoped to
+    # this contract instead of a staff account's entire surface.
+    path("integrations/v1/people/", integration_people, name="integration-people-v1"),
+    path(
+        "integrations/v1/people/<uuid:person_id>/",
+        integration_person_detail,
+        name="integration-person-detail-v1",
     ),
     path("", include(router.urls)),
     path("me/", me, name="me"),

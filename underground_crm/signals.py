@@ -3,14 +3,16 @@ import logging
 from allauth.account.models import EmailAddress
 from allauth.account.signals import email_confirmed
 from django.core.exceptions import PermissionDenied
-from django.db.models.signals import post_save, pre_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import Signal, receiver
+from django.utils import timezone
 from django_q.tasks import async_task
 from wagtail.models import Site
 
 from .models.address import Address
+from .models.membership import Membership
 from .models.pages import EventGuest
-from .models.person import PersonTag, Tag
+from .models.person import Person, PersonTag, Tag
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,29 @@ def on_address_post_save(sender: type[Address], instance: Address, **kwargs) -> 
         return
     if any(getattr(instance, f) for f in _ADDRESS_CONTENT_FIELDS):
         async_task("underground_crm.tasks.geocode_address", str(instance.pk))
+
+
+def _touch_person_for_membership_change(person_id) -> None:
+    """Move the owning person to the end of the integration feed.
+
+    The feed pages by ``Person.updated_at``. A membership can be created,
+    changed or deleted without saving its person, so without this the change
+    would never reach an integration and a removed membership could remain
+    active in the consuming system. A queryset update avoids Person.save(),
+    which would rewrite unrelated fields and add a history entry for a change
+    that did not touch them.
+    """
+    Person.objects.filter(pk=person_id).update(updated_at=timezone.now())
+
+
+@receiver(post_save, sender=Membership)
+def on_membership_saved(sender: type[Membership], instance: Membership, **kwargs) -> None:
+    _touch_person_for_membership_change(instance.person_id)
+
+
+@receiver(post_delete, sender=Membership)
+def on_membership_deleted(sender: type[Membership], instance: Membership, **kwargs) -> None:
+    _touch_person_for_membership_change(instance.person_id)
 
 
 @receiver(post_save, sender=EventGuest)
