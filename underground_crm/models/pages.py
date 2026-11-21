@@ -13,6 +13,7 @@ from django.urls import resolve, Resolver404
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.cache import patch_cache_control
+from django.utils.functional import cached_property
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from wagtail.contrib.routable_page.models import RoutablePageMixin, route
@@ -106,7 +107,8 @@ class PageWithMetadata(Page):
     Abstract base class for pages that carry Open Graph metadata and
     automatic cache-control headers.
 
-    Provides search_image and og_type fields, a standard set of
+    Provides search_image and og_type fields (with og_image and site_name,
+    which fall back to the page's site), a standard set of
     promote_panels covering the OG properties shared by all concrete
     page types that inherit from this class, and cache-time logic that
     suppresses public caching for pages that require a login.
@@ -137,6 +139,35 @@ class PageWithMetadata(Page):
     @property
     def og_type(self) -> str:
         return self.og_type_override or "website"
+
+    @cached_property
+    def og_image(self):
+        """The image offered as og:image: this page's search_image, or else that of the
+        root page of the site that this page belongs to. None when neither is set."""
+        if self.search_image_id is not None:
+            return self.search_image
+        site = self.get_site()
+        if site is None or site.root_page_id == self.pk:
+            return None
+        return getattr(site.root_page.specific, "search_image", None)
+
+    @property
+    def site_name(self) -> str:
+        """The name of the site that this page belongs to, as set on its Wagtail Site,
+        or else WAGTAIL_SITE_NAME. Offered as og:site_name."""
+        site = self.get_site()
+        return (site.site_name if site else "") or settings.WAGTAIL_SITE_NAME
+
+    include_in_sitemap = models.BooleanField(
+        default=True,
+        verbose_name=_("Include in sitemap"),
+        help_text=_("Whether this page is listed in the sitemap.xml offered to search engines."),
+    )
+
+    def get_sitemap_urls(self, request=None):
+        if not self.include_in_sitemap:
+            return []
+        return super().get_sitemap_urls(request)
 
     cache_ttl_override = models.PositiveIntegerField(
         null=True,
@@ -233,6 +264,7 @@ class PageWithMetadata(Page):
 
     visibility_panels = [
         FieldPanel("show_in_menus"),
+        FieldPanel("include_in_sitemap"),
         FieldPanel("go_live_at", heading=_("Publication time")),
         FieldPanel("expire_at", heading=_("Expiration time")),
         FieldPanel("cache_ttl_override"),
@@ -922,9 +954,7 @@ class FeedPage(FeedRoutedIndexMixin, BasicPage):
         context["feed_items"] = Paginator(items, self.page_size).get_page(request.GET.get("page"))
         context["source"] = source
         context["has_subscriptions"] = self.subscriptions.exists()
-        site = self.get_site()
-        site_name = site.site_name if site else ""
-        context["site_name"] = site_name or settings.WAGTAIL_SITE_NAME
+        context["site_name"] = self.site_name
         return context
 
     def get_rss_feed_class(self) -> type[Feed]:

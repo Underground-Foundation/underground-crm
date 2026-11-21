@@ -1,13 +1,20 @@
 {% load wagtailimages_tags %}{% comment %}
-Open Graph and description metadata for the <head> of a page, built from the
-fields in PageWithMetadata.promote_panels. Each tag is left out when its value
-is missing, so this is safe to include on views that have no Wagtail page.
-{% endcomment %}{% if page.title %}
+Open Graph, Twitter card, canonical and description metadata for the <head> of a
+page, built from the fields in PageWithMetadata.promote_panels. Each tag is left
+out when its value is missing, so this is safe to include on views that have no
+Wagtail page. og:image is PageWithMetadata.og_image, which falls back to the
+search image of the site's root page.
+{% endcomment %}{% if page.full_url %}
+  <link rel="canonical" href="{{ page.full_url }}">{% endif %}{% if page.site_name %}
+  <meta property="og:site_name" content="{{ page.site_name }}">{% endif %}{% if page.title %}
   <meta property="og:title" content="{{ page.seo_title|default:page.title }}">{% endif %}{% if page.search_description %}
   <meta name="description" content="{{ page.search_description }}">
   <meta property="og:description" content="{{ page.search_description }}">{% endif %}{% if page.og_type %}
   <meta property="og:type" content="{{ page.og_type }}">{% endif %}{% if page.full_url %}
-  <meta property="og:url" content="{{ page.full_url }}">{% endif %}{% if page.search_image %}{% image page.search_image fill-1200x630 as og_image %}
+  <meta property="og:url" content="{{ page.full_url }}">{% endif %}{% if page.og_image %}{% image page.og_image fill-1200x630 as og_image %}
   <meta property="og:image" content="{{ og_image.full_url }}">
   <meta property="og:image:width" content="{{ og_image.width }}">
-  <meta property="og:image:height" content="{{ og_image.height }}">{% endif %}
+  <meta property="og:image:height" content="{{ og_image.height }}">{% if page.og_image.default_alt_text %}
+  <meta property="og:image:alt" content="{{ page.og_image.default_alt_text }}">{% endif %}
+  <meta name="twitter:card" content="summary_large_image">{% elif page.title %}
+  <meta name="twitter:card" content="summary">{% endif %}
