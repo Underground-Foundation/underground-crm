@@ -141,21 +141,27 @@ class PageWithMetadata(Page):
         return self.og_type_override or "website"
 
     @cached_property
+    def _site(self):
+        """The Site that this page belongs to, kept for the lifetime of this instance, since
+        each call of Page.get_site() is a database query."""
+        return self.get_site()
+
+    @cached_property
     def og_image(self):
         """The image offered as og:image: this page's search_image, or else that of the
         root page of the site that this page belongs to. None when neither is set."""
         if self.search_image_id is not None:
             return self.search_image
-        site = self.get_site()
+        site = self._site
         if site is None or site.root_page_id == self.pk:
             return None
         return getattr(site.root_page.specific, "search_image", None)
 
-    @property
+    @cached_property
     def site_name(self) -> str:
         """The name of the site that this page belongs to, as set on its Wagtail Site,
         or else WAGTAIL_SITE_NAME. Offered as og:site_name."""
-        site = self.get_site()
+        site = self._site
         return (site.site_name if site else "") or settings.WAGTAIL_SITE_NAME
 
     include_in_sitemap = models.BooleanField(

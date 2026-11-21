@@ -1,6 +1,8 @@
 import re
 
 import django.test
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from wagtail.images.models import Image
 from wagtail.images.tests.utils import get_test_image_file
@@ -131,3 +133,24 @@ class IncludeInSitemapTest(django.test.TestCase):
         sitemap = response.content.decode()
         self.assertIn(f"<loc>{volunteer.full_url}</loc>", sitemap)
         self.assertNotIn(donation_thanks.full_url, sitemap)
+
+
+class SiteLookupTest(django.test.TestCase):
+    def test_the_site_is_queried_once_per_page_instance(self) -> None:
+        """site_name is read several times in one render (see open_graph.html) and og_image
+        reads the site as well, whereas each call of Page.get_site() is a query."""
+        WagtailSite.clear_site_root_paths_cache()
+        self.addCleanup(WagtailSite.clear_site_root_paths_cache)
+        root_page = WagtailSite.objects.get(is_default_site=True).root_page
+        page = BasicPage(title=VOLUNTEER_PAGE_TITLE, slug="volunteer")
+        root_page.add_child(instance=page)
+        site_name = page.site_name
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(page.site_name, site_name)
+            self.assertIsNone(page.og_image, "Neither this page nor the root has an image.")
+        site_table = WagtailSite._meta.db_table
+        self.assertEqual(
+            [query["sql"] for query in queries if f'"{site_table}"' in query["sql"]],
+            [],
+            "The Site was already fetched for site_name, so neither property fetches it again.",
+        )
