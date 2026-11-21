@@ -70,7 +70,7 @@ class CampaignSiteTests(TestCase):
         html = _render_email_html(self.campaign, self.recipient)
 
         self.assertIn(f'href="{self.unsubscription_page_url()}?', html)
-        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}/supporter_portal/memberships"', html)
+        self.assertIn(f'href="{STATE_BRANCH_ROOT_URL}/membership"', html)
         self.assertNotIn(ADMIN_ROOT_URL, html)
 
     @override_settings(WAGTAILADMIN_BASE_URL=ADMIN_ROOT_URL)
