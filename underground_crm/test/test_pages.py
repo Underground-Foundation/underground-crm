@@ -1,6 +1,9 @@
 import re
 
 import django.test
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from wagtail.images.models import Image
 from wagtail.images.tests.utils import get_test_image_file
 from wagtail.models import Site as WagtailSite
@@ -32,10 +35,17 @@ class OpenGraphMetadataTest(django.test.TestCase):
     """The <head> of a served page carries the metadata from its Promote tab,
     as defined by underground_crm/includes/open_graph.html."""
 
-    def serve(self, **fields) -> str:
-        root_page = WagtailSite.objects.get(is_default_site=True).root_page
+    def setUp(self) -> None:
+        # Wagtail caches the site root paths, which page.url depends on, in the shared cache,
+        # where a rolled-back test (or a development server) can leave them out of date.
+        WagtailSite.clear_site_root_paths_cache()
+        self.addCleanup(WagtailSite.clear_site_root_paths_cache)
+
+    def serve(self, parent=None, **fields) -> str:
+        if parent is None:
+            parent = WagtailSite.objects.get(is_default_site=True).root_page
         page = BasicPage(title=VOLUNTEER_PAGE_TITLE, slug="volunteer", **fields)
-        root_page.add_child(instance=page)
+        parent.add_child(instance=page)
         response = self.client.get(page.url)
         self.assertEqual(response.status_code, 200)
         self.page = page
@@ -67,4 +77,80 @@ class OpenGraphMetadataTest(django.test.TestCase):
             og_image.group(1),
             r"^https?://",
             "Crawlers resolve og:image without reference to the page, so it must be absolute.",
+        )
+
+    def test_image_falls_back_to_that_of_the_site_root(self) -> None:
+        image = Image.objects.create(title="Logo", file=get_test_image_file())
+        site = WagtailSite.objects.get(is_default_site=True)
+        # A site root's slug is shown as a breadcrumb (see BasicPage.save); this page only
+        # becomes the root once it exists, so the flag is set here for its children's URLs.
+        home = BasicPage(
+            title="Home", slug="welcome", search_image=image, show_slug_as_breadcrumb=True
+        )
+        site.root_page.get_parent().add_child(instance=home)
+        site.root_page = home
+        site.save()
+        html = self.serve(parent=home)
+        self.assertEqual(self.page.og_image, image)
+        self.assertIn('<meta property="og:image" content="', html)
+        self.assertInHTML('<meta name="twitter:card" content="summary_large_image">', html)
+
+    def test_own_image_takes_precedence_over_that_of_the_site_root(self) -> None:
+        image = Image.objects.create(title="Volunteers", file=get_test_image_file())
+        self.serve(search_image=image)
+        self.assertEqual(self.page.og_image, image)
+
+    def test_summary_card_without_an_image(self) -> None:
+        html = self.serve()
+        self.assertIsNone(self.page.og_image)
+        self.assertNotIn("og:image", html)
+        self.assertInHTML('<meta name="twitter:card" content="summary">', html)
+
+    def test_canonical_link_and_site_name(self) -> None:
+        html = self.serve()
+        self.assertInHTML(f'<link rel="canonical" href="{self.page.full_url}">', html)
+        self.assertInHTML(f'<meta property="og:site_name" content="{self.page.site_name}">', html)
+
+
+class IncludeInSitemapTest(django.test.TestCase):
+    """A page whose include_in_sitemap is unset is left out of sitemap.xml."""
+
+    def setUp(self) -> None:
+        WagtailSite.clear_site_root_paths_cache()
+        self.addCleanup(WagtailSite.clear_site_root_paths_cache)
+        self.root_page = WagtailSite.objects.get(is_default_site=True).root_page
+
+    def add_page(self, slug: str, **fields) -> BasicPage:
+        page = BasicPage(title=slug.replace("_", " ").capitalize(), slug=slug, **fields)
+        self.root_page.add_child(instance=page)
+        return page
+
+    def test_only_included_pages_are_listed(self) -> None:
+        volunteer = self.add_page("volunteer")
+        donation_thanks = self.add_page("donation_thanks", include_in_sitemap=False)
+        response = self.client.get(reverse("sitemap"))
+        self.assertEqual(response.status_code, 200)
+        sitemap = response.content.decode()
+        self.assertIn(f"<loc>{volunteer.full_url}</loc>", sitemap)
+        self.assertNotIn(donation_thanks.full_url, sitemap)
+
+
+class SiteLookupTest(django.test.TestCase):
+    def test_the_site_is_queried_once_per_page_instance(self) -> None:
+        """site_name is read several times in one render (see open_graph.html) and og_image
+        reads the site as well, whereas each call of Page.get_site() is a query."""
+        WagtailSite.clear_site_root_paths_cache()
+        self.addCleanup(WagtailSite.clear_site_root_paths_cache)
+        root_page = WagtailSite.objects.get(is_default_site=True).root_page
+        page = BasicPage(title=VOLUNTEER_PAGE_TITLE, slug="volunteer")
+        root_page.add_child(instance=page)
+        site_name = page.site_name
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(page.site_name, site_name)
+            self.assertIsNone(page.og_image, "Neither this page nor the root has an image.")
+        site_table = WagtailSite._meta.db_table
+        self.assertEqual(
+            [query["sql"] for query in queries if f'"{site_table}"' in query["sql"]],
+            [],
+            "The Site was already fetched for site_name, so neither property fetches it again.",
         )
