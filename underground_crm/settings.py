@@ -185,7 +185,7 @@ Q_CLUSTER = {
     # stall the queue with nothing in the logs to explain why.
     #
     # Individual tasks override this with async_task(..., timeout=N) where the work is
-    # legitimately longer; underground_email.tasks.send_emails is the one that does.  Any
+    # legitimately longer; underground_email.tasks.send_email_batch is the one that does.  Any
     # new task that can outlive two minutes needs the same treatment, so weigh that up
     # before raising this ceiling for everything.
     "timeout": 120,

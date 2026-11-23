@@ -10,10 +10,10 @@ from django.contrib.auth import get_user_model
 from django.template import Context, Template as DjangoTemplate
 from django.template.loader import render_to_string
 from django.utils import timezone
-from smtp2go.core import Smtp2goClient
 from wagtail.models import Site
 
 from underground_email import app_settings
+from underground_email.backends import SEND_TIMEOUT_SECONDS
 from underground_email.api import (
     SMTP2GoEventType,
     BAD_OUTCOMES,
@@ -31,20 +31,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _ACTIVITY_BATCH_SIZE = 1_000  # https://developers.SMTP2Go.com/reference/activity-search
 
-# Overrides Q_CLUSTER["timeout"] for send_emails only, which sends one SMTP2Go request
-# per recipient in a single task: at a few hundred milliseconds each, a list in the
-# thousands runs for well over the cluster's two-minute default.
+# How many recipients send_emails gives each send_email_batch task.
+CAMPAIGN_BATCH_SIZE = 500
+
+# Overrides Q_CLUSTER["timeout"] for send_email_batch only, which sends one SMTP2Go request
+# per recipient: at a few hundred milliseconds each, a batch of CAMPAIGN_BATCH_SIZE runs
+# for longer than the cluster's two-minute default.
 #
-# Being killed part-way through is not merely a retry away, because send_emails is not
-# idempotent. The TimeoutException would land before the campaign is marked sent, so
-# state stays "sending" and sent_count is never written, while some recipients already
-# have the email — and re-running would send to all of them again. That makes a generous
-# ceiling the safer failure mode: an hour is far longer than any realistic send, and its
-# purpose is only to stop a wedged send occupying a worker forever.
-#
-# The real fix is to chunk the send across several tasks so each is short and resumable;
-# until then this keeps a legitimately long send from being cut off mid-flight.
-CAMPAIGN_SEND_TIMEOUT_SECONDS = 3_600
+# Being killed part-way through is not merely a retry away, because send_email_batch is
+# not idempotent: some of the batch's recipients already have the email, and re-running
+# the batch would send it to them again. That makes a generous ceiling the safer failure
+# mode; its purpose is only to stop a wedged batch occupying a worker forever.
+CAMPAIGN_BATCH_TIMEOUT_SECONDS = 1_800
 
 # How long after sending a campaign we wait before collecting its results from SMTP2Go,
 # by which time most of the recipients who will ever open it have done so.
@@ -108,86 +106,197 @@ def _render_email_html(
 
 def send_emails(campaign_utm_id: str) -> None:
     """
-    Upload the campaign template to SMTP2Go and dispatch personalised emails to
-    all eligible recipients using the batch send endpoint. Recipients are
-    processed in batches of 1,000 to keep request sizes manageable.
+    Divide a campaign's eligible recipients into batches of CAMPAIGN_BATCH_SIZE, ordered
+    by their IDs, and queue a send_email_batch task for each batch. The campaign is then
+    marked as sent and get_email_results is scheduled (see schedule_email_results); the
+    batches run afterwards, in parallel on as many of the cluster's workers as are free,
+    and each adds the emails that it sent to the campaign's sent_count.
 
-    After all batches are dispatched, a results-check task is scheduled to run
-    24 hours later.
+    Each batch is given the range of IDs that it covers rather than a list of people, and
+    the ranges are contiguous: the first is open at its start and the last at its end. A
+    person who becomes eligible between this task and their batch is therefore sent the
+    email by whichever batch's range contains their ID, and a person who stops being
+    eligible is not sent it.
+
+    A batch cannot be resumed. Nothing records which recipients have already been sent
+    the campaign, so a batch that is interrupted part-way has sent the email to only some
+    of its recipients, and running it again would send the email to all of them again
+    (see CAMPAIGN_BATCH_TIMEOUT_SECONDS). The workaround is to choose different
+    recipients: find the people in that batch who were not sent the email (from SMTP2Go's
+    activity search, or from the "sent to" lines that the batch logs), give the campaign
+    a people filter that selects only them, and run send_email_batch again for the
+    batch's range.
 
     Notice that this function is invoked through ScheduleEmailCampaignAction in
     wagtail_hooks.py
     """
+    from django_q.tasks import async_task
+
     from .models import EmailCampaign
 
     logger.info("send_emails started for campaign %s.", campaign_utm_id)
+
+    campaign = EmailCampaign.objects.select_related("people_filter", "site").get(
+        utm_id=campaign_utm_id
+    )
+
+    recipients_qs = campaign.get_potential_recipients()
+    recipient_ids = (
+        []
+        if recipients_qs is None
+        else [str(pk) for pk in recipients_qs.order_by("id").values_list("id", flat=True)]
+    )
+    logger.info(
+        "Campaign %s (%r): %s eligible recipient(s) found.",
+        campaign_utm_id,
+        campaign.subject,
+        len(recipient_ids) if recipients_qs is not None else "no filter set — 0",
+    )
+    if not recipient_ids:
+        logger.warning("Campaign %s has no eligible recipients; marking as sent.", campaign_utm_id)
+        campaign.state = 2
+        campaign.save(update_fields=["state"])
+        return
+
+    # Looked up before anything is queued, so that a site without a subscription page
+    # stops the campaign rather than sending emails whose unsubscription links lead
+    # nowhere.
+    subscription_page_url(campaign.site)
+
+    # The first ID of each batch, which is also where the batch before it ends.
+    boundaries = recipient_ids[CAMPAIGN_BATCH_SIZE::CAMPAIGN_BATCH_SIZE]
+    ranges = list(zip([None, *boundaries], [*boundaries, None]))
+
+    # Written before any batch is queued, because each batch adds to it.
+    campaign.sent_count = 0
+    campaign.save(update_fields=["sent_count"])
+    for number, (start_id, end_id) in enumerate(ranges, start=1):
+        async_task(
+            send_email_batch,
+            campaign_utm_id,
+            start_id,
+            end_id,
+            task_name=f"email_campaign_{campaign_utm_id}_batch_{number}",
+            timeout=CAMPAIGN_BATCH_TIMEOUT_SECONDS,
+        )
+    logger.info(
+        "Campaign %s: queued %d batch(es) of up to %d recipients.",
+        campaign_utm_id,
+        len(ranges),
+        CAMPAIGN_BATCH_SIZE,
+    )
+
+    campaign.state = 2
+    updated = ["state"]
+    if not campaign.sending_date:
+        campaign.sending_date = datetime.datetime.now(tz=datetime.timezone.utc)
+        updated.append("sending_date")
+    campaign.save(update_fields=updated)
+
+    schedule_email_results(campaign_utm_id)
+
+
+def send_email_batch(campaign_utm_id: str, start_id: Optional[str], end_id: Optional[str]) -> None:
+    """
+    Send a campaign to those of its eligible recipients whose IDs are at least start_id
+    and less than end_id, with one request to SMTP2Go's email/send endpoint per recipient
+    so that every email is personalised, and add the number sent to the campaign's
+    sent_count. A start_id or end_id of None leaves the range open at that end.
+
+    Every request goes through one requests.Session, so that the connection to SMTP2Go
+    is kept alive across recipients rather than being established anew for each of them.
+
+    send_emails queues one of these tasks per batch; see its documentation for how the
+    ranges are chosen, and for what to do when a batch is interrupted.
+    """
+    from django.db.models import F, Value
+    from django.db.models.functions import Coalesce
+
+    from .models import EmailCampaign
 
     campaign = EmailCampaign.objects.select_related(
         "sender__sender", "greeting", "people_filter", "site"
     ).get(utm_id=campaign_utm_id)
 
     recipients_qs = campaign.get_potential_recipients()
-    logger.info(
-        "Campaign %s (%r): %s eligible recipient(s) found.",
-        campaign_utm_id,
-        campaign.subject,
-        recipients_qs.count() if recipients_qs is not None else "no filter set — 0",
+    if recipients_qs is None:
+        raise RuntimeError(f"Campaign {campaign_utm_id} no longer has a people filter.")
+    if start_id is not None:
+        recipients_qs = recipients_qs.filter(id__gte=start_id)
+    if end_id is not None:
+        recipients_qs = recipients_qs.filter(id__lt=end_id)
+    recipients = list(
+        recipients_qs.order_by("id").only(
+            "id", "email", "preferred_name", "first_name", "last_name"
+        )
     )
-    if not recipients_qs:
-        logger.warning("Campaign %s has no eligible recipients; marking as sent.", campaign_utm_id)
-        campaign.state = 2
-        campaign.save(update_fields=["state"])
-        return
+    logger.info(
+        "Campaign %s: sending the batch from %s to %s, of %d recipient(s).",
+        campaign_utm_id,
+        start_id or "the first recipient",
+        end_id or "the last recipient",
+        len(recipients),
+    )
 
-    # The SMTP2Go client library only wraps the single-send endpoint, so we
-    # send one request per recipient to support per-person personalisation.
-    client = Smtp2goClient(api_key=_api_key())
     sender_person = campaign.sender.sender
     sender_str = f"{sender_person.full_name} <{sender_person.email}>"
-
-    all_recipients = list(
-        recipients_qs.only("id", "email", "preferred_name", "first_name", "last_name")
-    )
-    sent_count = 0
-    # Looked up once, before anything is sent, so that a site without a
-    # subscription page stops the campaign rather than sending emails whose
-    # unsubscription links lead nowhere.
     unsubscription_page_url = subscription_page_url(campaign.site)
+    sent_count = 0
 
-    for person in all_recipients:
-        try:
-            response = client.send(
-                sender=sender_str,
-                recipients=[f"{person.full_name} <{person.email}>"],
-                subject=campaign.subject,
-                html=_render_email_html(campaign, person, unsubscription_page_url),
-            )
-            if response.success:
-                sent_count += 1
-            else:
-                logger.error(
-                    "Campaign %s: failed to send to %s: %s",
+    with requests.Session() as session:
+        session.headers["X-Smtp2go-Api-Key"] = _api_key()
+        for person in recipients:
+            try:
+                # https://developers.smtp2go.com/reference/send-standard-email
+                response = session.post(
+                    app_settings.SMTP2GO_API_URL + "email/send",
+                    json={
+                        "sender": sender_str,
+                        "to": [f"{person.full_name} <{person.email}>"],
+                        "subject": campaign.subject,
+                        "html_body": _render_email_html(campaign, person, unsubscription_page_url),
+                    },
+                    timeout=SEND_TIMEOUT_SECONDS,
+                )
+                response_json = response.json()
+                data = response_json.get("data", {})
+                if response.ok and data.get("succeeded") and not data.get("failed"):
+                    sent_count += 1
+                    logger.info(
+                        "Campaign %s: sent to %s (request %s).",
+                        campaign_utm_id,
+                        person.pk,
+                        response_json.get("request_id"),
+                    )
+                else:
+                    logger.error(
+                        "Campaign %s: failed to send to %s (HTTP %s, request %s): %s",
+                        campaign_utm_id,
+                        person.email,
+                        response.status_code,
+                        response_json.get("request_id"),
+                        data.get("failures") or data.get("error"),
+                    )
+            except Exception:
+                logger.exception(
+                    "Campaign %s: exception sending to %s.",
                     campaign_utm_id,
                     person.email,
-                    response.errors,
                 )
-        except Exception:
-            logger.exception(
-                "Campaign %s: exception sending to %s.",
-                campaign_utm_id,
-                person.email,
-            )
 
-    campaign.state = 2
-    campaign.sent_count = sent_count
-    updated = ["state", "sent_count"]
-    if not campaign.sending_date:
-        campaign.sending_date = datetime.datetime.now(tz=datetime.timezone.utc)
-        updated.append("sending_date")
-    campaign.save(update_fields=updated)
-    logger.info("Campaign %s sent to %d recipients.", campaign_utm_id, sent_count)
-
-    schedule_email_results(campaign_utm_id)
+    # Added in the database rather than read, added to and saved, because the
+    # campaign's other batches are doing the same at the same time.
+    EmailCampaign.objects.filter(pk=campaign.pk).update(
+        sent_count=Coalesce(F("sent_count"), Value(0)) + sent_count
+    )
+    logger.info(
+        "Campaign %s: the batch from %s to %s sent %d of %d email(s).",
+        campaign_utm_id,
+        start_id or "the first recipient",
+        end_id or "the last recipient",
+        sent_count,
+        len(recipients),
+    )
 
 
 def schedule_email_results(

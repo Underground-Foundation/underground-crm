@@ -108,8 +108,6 @@ class ScheduleEmailCampaignAction(EmailCampaignBulkAction):
         from django_q.models import Schedule
         from django_q.tasks import async_task, schedule as q_schedule
 
-        from .tasks import CAMPAIGN_SEND_TIMEOUT_SECONDS
-
         count = 0
         for campaign in objects:
             if campaign.state != 0:
@@ -140,11 +138,6 @@ class ScheduleEmailCampaignAction(EmailCampaignBulkAction):
                         task_name=task_name,
                         schedule_type=Schedule.ONCE,
                         next_run=campaign.sending_date,
-                        # Stored on the Schedule and handed to async_task when it fires,
-                        # which treats "timeout" as a task option rather than an argument
-                        # to send_emails. See CAMPAIGN_SEND_TIMEOUT_SECONDS for why the
-                        # cluster-wide timeout is too short for a campaign send.
-                        timeout=CAMPAIGN_SEND_TIMEOUT_SECONDS,
                     )
                 else:
                     logger.info(
@@ -157,7 +150,6 @@ class ScheduleEmailCampaignAction(EmailCampaignBulkAction):
                         "underground_email.tasks.send_emails",
                         campaign.utm_id,
                         task_name=task_name,
-                        timeout=CAMPAIGN_SEND_TIMEOUT_SECONDS,
                     )
             except Exception:
                 logger.exception(

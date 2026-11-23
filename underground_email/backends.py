@@ -18,7 +18,7 @@ from underground_email import app_settings
 
 logger = logging.getLogger(__name__)
 
-_SEND_TIMEOUT_SECONDS = 30
+SEND_TIMEOUT_SECONDS = 30
 
 
 def _attachment_payload(attachment) -> dict:
@@ -99,7 +99,7 @@ class SMTP2GoEmailBackend(BaseEmailBackend):
                     app_settings.SMTP2GO_API_URL + "email/send",
                     json=message_payload(message),
                     headers={"X-Smtp2go-Api-Key": _api_key()},
-                    timeout=_SEND_TIMEOUT_SECONDS,
+                    timeout=SEND_TIMEOUT_SECONDS,
                 )
                 data = response.json().get("data", {})
                 if response.ok and not data.get("failed") and data.get("succeeded"):
