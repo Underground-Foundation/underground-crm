@@ -1,12 +1,11 @@
 """
-Tests for the queued-task timeout applied to campaign sends.
+Tests for the queued-task timeouts that apply to campaign sends.
 
-Q_CLUSTER sets a two-minute ceiling so a wedged task cannot occupy a worker forever, but
-send_emails issues one SMTP2Go request per recipient in a single task and legitimately
-runs far longer than that on a list of any size.  It therefore overrides the ceiling at
-both of its enqueue sites.  Losing that override would not fail loudly: campaigns would
-simply stop part-way, after some recipients had already been emailed and before the
-campaign was marked sent.
+Q_CLUSTER sets a two-minute ceiling so a wedged task cannot occupy a worker forever.
+send_emails only divides a campaign's recipients into batches, so it runs within that
+ceiling, but each send_email_batch it queues issues one SMTP2Go request per recipient and
+legitimately runs for longer (see CAMPAIGN_BATCH_TIMEOUT_SECONDS). The batches' own
+timeout is tested in test_campaign_batches.py.
 """
 
 import ast
@@ -18,7 +17,7 @@ from django_q.conf import Conf
 from django_q.models import Schedule
 from django_q.signing import SignedPackage
 
-from underground_email.tasks import CAMPAIGN_SEND_TIMEOUT_SECONDS
+from underground_email.tasks import CAMPAIGN_BATCH_TIMEOUT_SECONDS
 from underground_email.wagtail_hooks import ScheduleEmailCampaignAction
 
 
@@ -35,8 +34,8 @@ class ClusterTimeoutSettingsTests(SimpleTestCase):
         self.assertTrue(Conf.TIMEOUT)
         self.assertLessEqual(Conf.TIMEOUT, Conf.RETRY)
 
-    def test_campaign_sends_are_given_room_beyond_the_cluster_ceiling(self):
-        self.assertGreater(CAMPAIGN_SEND_TIMEOUT_SECONDS, Conf.TIMEOUT)
+    def test_campaign_batches_are_given_room_beyond_the_cluster_ceiling(self):
+        self.assertGreater(CAMPAIGN_BATCH_TIMEOUT_SECONDS, Conf.TIMEOUT)
 
 
 class CampaignSendEnqueueTests(TestCase):
@@ -68,32 +67,20 @@ class CampaignSendEnqueueTests(TestCase):
             ScheduleEmailCampaignAction.execute_action([campaign])
         return captured
 
-    def test_immediate_send_carries_the_longer_timeout(self):
+    def test_immediate_send_queues_send_emails_for_the_campaign(self):
         captured = self._run_bulk_action(sending_date=None)
 
         self.assertEqual(captured["func"], "underground_email.tasks.send_emails")
-        self.assertEqual(captured["timeout"], CAMPAIGN_SEND_TIMEOUT_SECONDS)
-
-    def test_timeout_is_a_task_option_not_an_argument_to_send_emails(self):
-        """
-        django-q2 pops "timeout" out of the keyword arguments and treats it as a task
-        option.  If that ever stopped being true it would reach send_emails() as an
-        unexpected keyword argument and every campaign send would fail immediately.
-        """
-        captured = self._run_bulk_action(sending_date=None)
-
         self.assertEqual(captured["args"], ("abc123",))
-        self.assertNotIn("timeout", captured.get("kwargs", {}))
 
-    def test_scheduled_send_stores_the_longer_timeout_for_when_it_fires(self):
+    def test_scheduled_send_stores_send_emails_for_when_it_fires(self):
         """
         The scheduled path enqueues nothing now — it writes a Schedule row whose stored
-        kwargs are handed to async_task when it fires, where "timeout" is picked up as a
-        task option in exactly the same way.  The kwargs are read back with
-        ast.literal_eval because that is precisely what django_q/scheduler.py does.
+        arguments are handed to async_task when it fires. The arguments are read back
+        with ast.literal_eval because that is precisely what django_q/scheduler.py does.
         """
         captured = self._run_bulk_action(sending_date=timezone.now())
 
         self.assertEqual(captured, {}, "a scheduled send should not enqueue immediately")
         row = Schedule.objects.get(func="underground_email.tasks.send_emails")
-        self.assertEqual(ast.literal_eval(row.kwargs)["timeout"], CAMPAIGN_SEND_TIMEOUT_SECONDS)
+        self.assertEqual(ast.literal_eval(row.args), ("abc123",))
