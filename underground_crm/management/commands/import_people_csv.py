@@ -23,11 +23,13 @@ import ran. Those naive timestamps are read in Australia/Melbourne by default;
 set LEGACY_SOURCE_TIMEZONE to import an export produced in another region.
 
 Optional flags:
-  --with-interactions   After importing each person, fetch their interactions from
-                        the legacy CRM API and import them (requires LEGACY_API_TOKEN).
-  --with-notes          After importing each person, fetch their private notes from
-                        the legacy CRM admin endpoint and import them (requires
-                        LEGACY_ADMIN_COOKIE_FILE and browser session cookies).
+  --with-interactions   After every person in the CSV has been imported, fetch each
+                        person's interactions from the legacy CRM API and import them
+                        (requires LEGACY_API_TOKEN).
+  --with-notes          After every person in the CSV has been imported, fetch each
+                        person's private notes from the legacy CRM admin endpoint and
+                        import them (requires LEGACY_ADMIN_COOKIE_FILE and browser
+                        session cookies).
   --dry-run             Parse and validate the CSV without writing anything to the
                         database.
 

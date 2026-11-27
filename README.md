@@ -315,26 +315,28 @@ Get the cookie file using e.g. the Chrome extension
 
 Get the user agent from e.g. <https://whatmyuseragent.com/>
 
-### Standalone fetch scripts
+### Fetch scripts
 
-The `migration/` directory contains standalone Python scripts for fetching
-data from the legacy CRM and writing newline-delimited JSON to stdout:
+The `migration/` directory contains Python scripts for fetching data from the
+legacy CRM and writing newline-delimited JSON to stdout. They use the functions
+in `underground_crm/management/commands/`, so they are run as modules from the
+underground-crm root directory, in the underground-crm virtualenv:
 
 ```bash
-cd migration
-python fetch_all_interactions.py          # all interactions
-python fetch_all_interactions.py 12345    # one person
-python fetch_all_private_notes.py         # all private notes
-python fetch_all_private_notes.py 12345   # one person
+python -m migration.fetch_all_interactions           # all interactions
+python -m migration.fetch_all_interactions 12345     # one person
+python -m migration.fetch_all_private_notes          # all private notes
+python -m migration.fetch_all_private_notes 12345    # one person
 ```
 
 Pipe the output to a file for later import:
 
 ```bash
-python fetch_all_interactions.py > interactions.ndjson
+python -m migration.fetch_all_interactions > interactions.ndjson
 ```
 
-These scripts read their configuration from `../.env` automatically.
+These scripts read their configuration from `.env` in the underground-crm root
+directory, by way of `migration/config.py`.
 
 ### Import CMS pages
 
@@ -343,7 +345,6 @@ Pages are imported in three steps: fetching, parsing, then importing.
 **Step 1 — fetch each page's JSON and HTML from the legacy CRM:**
 
 ```bash
-cd migration
 python manage.py fetch_pages --domain fusionparty.org.au --slug climate_rescue
 python manage.py fetch_pages --domain fusionparty.org.au --slug future_focused
 ```

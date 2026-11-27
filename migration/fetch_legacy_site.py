@@ -28,8 +28,6 @@ Reads LEGACY_ADMIN_URL and LEGACY_USER_AGENT from the environment (see ../.env).
 """
 
 import argparse
-import datetime
-import email.utils
 import json
 import re
 import sys
@@ -40,20 +38,17 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-from .config import LEGACY_ADMIN_URL, LEGACY_USER_AGENT
-
-# One request every half-second: brisk, but gentle enough that the site does not throttle
-# us. Several hundred pages fetched back to back will earn an HTTP 429 whatever the delay,
-# which is what THROTTLED_STATUSES below is for.
-DEFAULT_REQUEST_DELAY = 0.5
+# config must be imported first: it loads ../.env, and the underground_crm modules read
+# LEGACY_USER_AGENT from the environment when they are imported.
+from migration.config import LEGACY_ADMIN_URL, LEGACY_USER_AGENT
+from underground_crm.management.commands.fetch_pages import (
+    DEFAULT_REQUEST_DELAY,
+    ThrottleAwareOpener,
+)
 
 # A network blip (DNS, a dropped connection) says nothing about the page, so retry it.
 NETWORK_ATTEMPTS = 4
 NETWORK_RETRY_BACKOFF = 2.0  # seconds, doubling on each further attempt
-
-# Statuses by which a site asks us to slow down, rather than telling us about the page.
-THROTTLED_STATUSES = frozenset({429, 503})
-THROTTLED_RETRY_BACKOFF = 30.0  # seconds, doubling on each further attempt
 
 # Saved pages land inside the repository, in a directory named after the site.
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -61,24 +56,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ---- Fetching ----
 
-
-def retry_delay(error: urllib.error.HTTPError, attempt: int) -> float:
-    """
-    How long to wait before asking again, when the site has told us to slow down.
-
-    A server that rate-limits us usually says when to come back, in a Retry-After header
-    given either as a number of seconds or as an HTTP date. We honor whichever it sends,
-    and otherwise back off exponentially.
-    """
-    retry_after = error.headers.get("Retry-After") if error.headers else None
-    if retry_after:
-        if retry_after.strip().isdigit():
-            return float(retry_after.strip())
-        resume_at = email.utils.parsedate_to_datetime(retry_after)
-        if resume_at is not None:
-            seconds = (resume_at - datetime.datetime.now(resume_at.tzinfo)).total_seconds()
-            return max(seconds, 0.0)
-    return THROTTLED_RETRY_BACKOFF * 2 ** (attempt - 1)
+_plain_opener = urllib.request.build_opener()
+_plain_opener.addheaders = [("User-Agent", LEGACY_USER_AGENT)]
+_opener = ThrottleAwareOpener(_plain_opener, lambda message: print(message, file=sys.stderr))
 
 
 def fetch_page(url: str, attempts: int = NETWORK_ATTEMPTS) -> tuple[int, str]:
@@ -89,26 +69,16 @@ def fetch_page(url: str, attempts: int = NETWORK_ATTEMPTS) -> tuple[int, str]:
     a page that is gone or forbidden will stay that way however often we ask. Two kinds
     of failure are worth retrying, because neither says anything about the page itself:
 
-      * being throttled (429, or a 503 while the site catches its breath), which asks us
-        to come back later and is a site's normal defence against a bulk fetch;
-      * a network-level failure (DNS, a dropped connection).
+      * being throttled, which ThrottleAwareOpener waits out (see fetch_pages.py);
+      * a network-level failure (DNS, a dropped connection), retried here.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": LEGACY_USER_AGENT})
     for attempt in range(1, attempts + 1):
         try:
-            with urllib.request.urlopen(request) as response:
+            with _opener.open(url) as response:
                 return response.status, response.read().decode("utf-8", errors="replace")
 
         except urllib.error.HTTPError as error:
-            if error.code not in THROTTLED_STATUSES or attempt == attempts:
-                return error.code, error.read().decode("utf-8", errors="replace")
-            backoff = retry_delay(error, attempt)
-            print(
-                f"  [throttled] {url}: HTTP {error.code}. Waiting {backoff:.0f}s "
-                f"(attempt {attempt + 1} of {attempts}).",
-                file=sys.stderr,
-            )
-            time.sleep(backoff)
+            return error.code, error.read().decode("utf-8", errors="replace")
 
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
             if attempt == attempts:
@@ -131,8 +101,7 @@ def canonical_base(url: str) -> str:
     LEGACY_ADMIN_URL names the legacy CRM's own domain, which redirects to the public
     website; the public website is what we want to fetch, and to name files after.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": LEGACY_USER_AGENT})
-    with urllib.request.urlopen(request) as response:
+    with _plain_opener.open(url) as response:
         final = urllib.parse.urlparse(response.url)
     return f"{final.scheme}://{final.netloc}"
 

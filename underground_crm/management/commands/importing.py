@@ -67,8 +67,8 @@ def fetch_private_notes(
     """
     Return all private note activities for a person from the legacy CRM admin endpoint.
 
-    Each returned dict has keys: activity_id, person_legacy_id, author_legacy_id,
-    text, created_at.
+    Each returned dict has keys: activity_id, person_legacy_id, person_name,
+    author_legacy_id, author_name, text, is_private, created_at.
     """
     notes: list[dict] = []
     page = 1
@@ -83,6 +83,9 @@ def fetch_private_notes(
                 "type_id": "",
             }
         )
+        # This is the endpoint called from within the browser − see that we're setting the referrer
+        # as if we're on the admin page. If we'd called
+        # https://nationbuilder.com/api/v2/reference#get-/api/v2/signups, see that only one "note" exists.
         url = f"{legacy_admin_url}/admin/activities/signup.json?{params}"
         req = urllib.request.Request(
             url,
@@ -98,12 +101,17 @@ def fetch_private_notes(
         for act in activities:
             if act.get("type") == "profile_private_note":
                 related = act.get("relatedSignups", {})
+                subject = related.get("signup", {})
+                author = related.get("author", {})
                 notes.append(
                     {
                         "activity_id": act["id"],
-                        "person_legacy_id": related.get("signup", {}).get("id") or legacy_person_id,
-                        "author_legacy_id": related.get("author", {}).get("id"),
+                        "person_legacy_id": subject.get("id") or legacy_person_id,
+                        "person_name": subject.get("name", ""),
+                        "author_legacy_id": author.get("id"),
+                        "author_name": author.get("name", ""),
                         "text": extract_note_text(act.get("oneliner", "")),
+                        "is_private": act.get("isPrivate", True),
                         "created_at": act.get("timestamp", ""),
                     }
                 )
@@ -185,7 +193,7 @@ def _normalize_interaction(contact: dict) -> dict:
     }
 
 
-def _get_legacy_api_json(
+def get_legacy_api_json(
     legacy_admin_url: str, path: str, api_headers: dict, params: dict | None = None
 ):
     url = f"{legacy_admin_url}{path}"
@@ -200,7 +208,7 @@ def fetch_interactions_for_person(
     legacy_admin_url: str, api_headers: dict, legacy_person_id: int
 ) -> tuple[list[dict] | None, int]:
     """Return (normalized interactions, status) for a single legacy person ID."""
-    data, status = _get_legacy_api_json(
+    data, status = get_legacy_api_json(
         legacy_admin_url, f"/api/v1/people/{legacy_person_id}/contacts", api_headers, {"limit": 100}
     )
     if status != 200:
@@ -219,7 +227,7 @@ def fetch_all_interactions(legacy_admin_url: str, api_headers: dict, stdout=None
         if next_cursor:
             params["next"] = next_cursor
 
-        data, status = _get_legacy_api_json(
+        data, status = get_legacy_api_json(
             legacy_admin_url, "/api/v1/contacts", api_headers, params
         )
         if status != 200:
