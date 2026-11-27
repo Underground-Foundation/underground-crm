@@ -2,9 +2,9 @@
 """
 Fetch all private notes from the legacy party website using admin session cookies.
 
-Usage:
-  python fetch_all_private_notes.py [person_id]
-  python fetch_all_private_notes.py 27322
+Usage, from the underground-crm root directory:
+  python -m migration.fetch_all_private_notes [person_id]
+  python -m migration.fetch_all_private_notes 27322
 
 Without a person_id, pages through all signups and fetches notes for each.
 Outputs newline-delimited JSON to stdout. Redirect to a file for import.
@@ -13,7 +13,9 @@ Fetching and parsing are done by fetch_private_notes() in
 underground_crm/management/commands/importing.py, which defines the fields of
 each output record; this script only selects the people and prints the result.
 Importing that module requires Django, so run this script from the
-underground-crm virtualenv.
+underground-crm virtualenv. It must be run as a module (python -m) so that the
+root directory is on sys.path and both the migration and underground_crm
+packages can be imported.
 
 Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
 LEGACY_ADMIN_COOKIE_FILE from the environment (see ../.env).
@@ -25,16 +27,17 @@ import sys
 import time
 import urllib.error
 import urllib.parse
-from pathlib import Path
 
 # config must be imported first: it loads ../.env, and importing.py reads
 # LEGACY_USER_AGENT from the environment when it is imported.
-from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_ADMIN_URL
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from underground_crm.management.commands.importing import (  # noqa: E402
-    _get_legacy_api_json,
+from migration.config import (
+    LEGACY_API_TOKEN,
+    LEGACY_ADMIN_COOKIE_FILE,
+    LEGACY_USER_AGENT,
+    LEGACY_ADMIN_URL,
+)
+from underground_crm.management.commands.importing import (
+    get_legacy_api_json,
     build_cookie_opener,
     fetch_private_notes,
     make_legacy_api_headers,
@@ -52,7 +55,7 @@ def fetch_all_person_ids():
         if next_cursor:
             params["next"] = next_cursor
         try:
-            data, _ = _get_legacy_api_json(LEGACY_ADMIN_URL, "/api/v2/signups", api_headers, params)
+            data, _ = get_legacy_api_json(LEGACY_ADMIN_URL, "/api/v2/signups", api_headers, params)
         except urllib.error.URLError as e:
             print(f"  [error] listing signups: {e}", file=sys.stderr)
             break

@@ -193,7 +193,7 @@ def _normalize_interaction(contact: dict) -> dict:
     }
 
 
-def _get_legacy_api_json(
+def get_legacy_api_json(
     legacy_admin_url: str, path: str, api_headers: dict, params: dict | None = None
 ):
     url = f"{legacy_admin_url}{path}"
@@ -208,7 +208,7 @@ def fetch_interactions_for_person(
     legacy_admin_url: str, api_headers: dict, legacy_person_id: int
 ) -> tuple[list[dict] | None, int]:
     """Return (normalized interactions, status) for a single legacy person ID."""
-    data, status = _get_legacy_api_json(
+    data, status = get_legacy_api_json(
         legacy_admin_url, f"/api/v1/people/{legacy_person_id}/contacts", api_headers, {"limit": 100}
     )
     if status != 200:
@@ -227,7 +227,7 @@ def fetch_all_interactions(legacy_admin_url: str, api_headers: dict, stdout=None
         if next_cursor:
             params["next"] = next_cursor
 
-        data, status = _get_legacy_api_json(
+        data, status = get_legacy_api_json(
             legacy_admin_url, "/api/v1/contacts", api_headers, params
         )
         if status != 200:

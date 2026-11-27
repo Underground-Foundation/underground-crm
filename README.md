@@ -324,8 +324,15 @@ data from the legacy CRM and writing newline-delimited JSON to stdout:
 cd migration
 python fetch_all_interactions.py          # all interactions
 python fetch_all_interactions.py 12345    # one person
-python fetch_all_private_notes.py         # all private notes
-python fetch_all_private_notes.py 12345   # one person
+```
+
+`fetch_all_private_notes.py` uses the functions in
+`underground_crm/management/commands/importing.py`, so it is run as a module
+from the underground-crm root directory, in the underground-crm virtualenv:
+
+```bash
+python -m migration.fetch_all_private_notes         # all private notes
+python -m migration.fetch_all_private_notes 12345   # one person
 ```
 
 Pipe the output to a file for later import:
