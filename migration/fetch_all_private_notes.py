@@ -9,108 +9,41 @@ Usage:
 Without a person_id, pages through all signups and fetches notes for each.
 Outputs newline-delimited JSON to stdout. Redirect to a file for import.
 
+Fetching and parsing are done by fetch_private_notes() in
+underground_crm/management/commands/importing.py, which defines the fields of
+each output record; this script only selects the people and prints the result.
+Importing that module requires Django, so run this script from the
+underground-crm virtualenv.
+
 Reads LEGACY_ADMIN_URL, LEGACY_API_TOKEN, LEGACY_USER_AGENT, and
 LEGACY_ADMIN_COOKIE_FILE from the environment (see ../.env).
 """
 
 import argparse
-import html
-import http.cookiejar
 import json
-import re
 import sys
 import time
+import urllib.error
 import urllib.parse
-import urllib.request
+from pathlib import Path
 
+# config must be imported first: it loads ../.env, and importing.py reads
+# LEGACY_USER_AGENT from the environment when it is imported.
 from config import LEGACY_API_TOKEN, LEGACY_ADMIN_COOKIE_FILE, LEGACY_USER_AGENT, LEGACY_ADMIN_URL
 
-# --- HTTP setup with cookie jar ---
-cookie_jar = http.cookiejar.MozillaCookieJar(LEGACY_ADMIN_COOKIE_FILE)
-cookie_jar.load(ignore_discard=True, ignore_expires=True)
-opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
-opener.addheaders = [
-    ("User-Agent", LEGACY_USER_AGENT),
-    ("Accept", "application/json, text/javascript, */*; q=0.01"),
-    ("X-Requested-With", "XMLHttpRequest"),
-]
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-
-def get(path, params=None, referer=None):
-    url = f"{LEGACY_ADMIN_URL}{path}"
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(
-        url,
-        headers={"Referer": referer or f"{LEGACY_ADMIN_URL}/admin/signups"},
-    )
-    try:
-        with opener.open(req) as resp:
-            return json.loads(resp.read()), resp.status
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()[:300]
-        return {"error": str(e), "body": body}, e.code
-
-
-def strip_html(text):
-    text = re.sub(r"<[^>]+>", " ", text)
-    return html.unescape(re.sub(r"\s+", " ", text)).strip()
-
-
-def extract_note_text(oneliner):
-    """Extract the note body from the activity_content_text div."""
-    match = re.search(r'<div class="activity_content_text">(.*?)</div>', oneliner, re.DOTALL)
-    if match:
-        return strip_html(match.group(1))
-    return ""
-
-
-def fetch_private_notes_for_person(person_id):
-    """Fetch all private note activities for a person, all pages."""
-    notes = []
-    page = 1
-    while True:
-        params = {"id": person_id, "page": page, "range": "All time", "type_id": ""}
-        data, status = get(
-            "/admin/activities/signup.json",
-            params,
-            referer=f"{LEGACY_ADMIN_URL}/admin/signups/{person_id}",
-        )
-        if status != 200:
-            print(f"  [warn] person {person_id} page {page}: HTTP {status}", file=sys.stderr)
-            break
-
-        activities = data.get("activities", [])
-        if not activities:
-            break
-
-        for act in activities:
-            if act.get("type") == "profile_private_note":
-                related = act.get("relatedSignups", {})
-                author = related.get("author", {})
-                subject = related.get("signup", {})
-                notes.append(
-                    {
-                        "activity_id": act.get("id"),
-                        "person_legacy_id": subject.get("id") or person_id,
-                        "person_name": subject.get("name", ""),
-                        "author_legacy_id": author.get("id"),
-                        "author_name": author.get("name", ""),
-                        "text": extract_note_text(act.get("oneliner", "")),
-                        "is_private": act.get("isPrivate", True),
-                        "created_at": act.get("timestamp", ""),
-                    }
-                )
-
-        if len(activities) < 20:
-            break
-        page += 1
-
-    return notes
+from underground_crm.management.commands.importing import (  # noqa: E402
+    _get_legacy_api_json,
+    build_cookie_opener,
+    fetch_private_notes,
+    make_legacy_api_headers,
+)
 
 
 def fetch_all_person_ids():
     """Page through all signups via the API to collect person IDs."""
+    api_headers = make_legacy_api_headers(LEGACY_API_TOKEN, LEGACY_USER_AGENT)
     ids = []
     next_cursor = None
     page = 0
@@ -118,19 +51,9 @@ def fetch_all_person_ids():
         params = {"limit": 100}
         if next_cursor:
             params["next"] = next_cursor
-        url = f"{LEGACY_ADMIN_URL}/api/v2/signups?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"Bearer {LEGACY_API_TOKEN}",
-                "Accept": "application/json",
-                "User-Agent": LEGACY_USER_AGENT,
-            },
-        )
         try:
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read())
-        except Exception as e:
+            data, _ = _get_legacy_api_json(LEGACY_ADMIN_URL, "/api/v2/signups", api_headers, params)
+        except urllib.error.URLError as e:
             print(f"  [error] listing signups: {e}", file=sys.stderr)
             break
 
@@ -162,9 +85,15 @@ else:
     person_ids = fetch_all_person_ids()
     print(f"Found {len(person_ids)} people. Fetching private notes...", file=sys.stderr)
 
+opener = build_cookie_opener(LEGACY_ADMIN_COOKIE_FILE)
+
 all_notes = []
 for i, pid in enumerate(person_ids):
-    notes = fetch_private_notes_for_person(pid)
+    try:
+        notes = fetch_private_notes(opener, LEGACY_ADMIN_URL, pid)
+    except urllib.error.URLError as e:
+        print(f"  [warn] person {pid}: {e}", file=sys.stderr)
+        continue
     for n in notes:
         print(json.dumps(n))
         all_notes.append(n)
