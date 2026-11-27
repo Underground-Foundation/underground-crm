@@ -31,10 +31,12 @@ underground_crm/          Django app (the pip-installable library)
                           them in the Wagtail image library, for legacy_html.py's
                           `image_resolver`
 
-migration/                One-off data migration scripts (not Django management commands)
+migration/                One-off data migration scripts (not Django management commands),
+                          run from the root as `python -m migration.<script>`
   config.py               Loads ../.env and exports LEGACY_* constants — import from here
   fetch_all_interactions.py   Fetch contact/interaction records from the legacy CRM API
   fetch_all_private_notes.py  Fetch private notes from the legacy CRM (requires cookie auth)
+  fetch_legacy_site.py    Fetch the legacy website's pages listed by its sitemap
 ```
 
 ## Key models
